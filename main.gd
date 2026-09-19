@@ -6,18 +6,21 @@ const ElevatorSystem := preload("res://elevator_system.gd")
 const GameClock := preload("res://game_clock.gd")
 const CommuteSystem := preload("res://commute_system.gd")
 const EconomySystem := preload("res://economy_system.gd")
+const HotelSystem := preload("res://hotel_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
 
 # ---------------------------------------------------
 # 建物の定義（種類を増やすときはここに追記する）
-# "color" があるものは、TileSetに画像がなくてもコードでタイルを生成する
+# "color" があるものは、TileSetに画像がなくてもコードでタイルを生成する（"rails" で左右にレールを描く）
 # ---------------------------------------------------
 const BUILDINGS := {
 	"office": {"name": "オフィス", "cost": 100000, "source_id": 0},
 	"stairs": {"name": "階段", "cost": 50000, "source_id": 1},
-	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2, "color": Color(0.33, 0.35, 0.4)},
+	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2, "color": Color(0.33, 0.35, 0.4), "rails": true},
+	"hotel": {"name": "ホテル客室", "cost": 150000, "source_id": 3, "color": Color(0.55, 0.4, 0.75)},
+	"housekeeping": {"name": "ハウスキーパー室", "cost": 100000, "source_id": 4, "color": Color(0.25, 0.6, 0.6)},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -34,6 +37,7 @@ var elevator_system # エレベーターのシャフトとカゴの管理
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
+var hotel_system # ホテルの客室・宿泊客・清掃員
 var clock_label: Label # 日付と時刻の表示
 var stats_label: Label # 社員の人数の表示
 
@@ -62,6 +66,10 @@ func _ready() -> void:
 	commute_system.setup(self)
 	add_child(commute_system)
 	commute_system.rebuild()
+	hotel_system = HotelSystem.new()
+	hotel_system.setup(self)
+	tile_map.add_child(hotel_system)
+	hotel_system.rebuild()
 	economy_system = EconomySystem.new()
 	economy_system.setup(self)
 	add_child(economy_system)
@@ -81,6 +89,11 @@ func _process(_delta: float) -> void:
 	var unreachable: int = commute_system.count_unreachable()
 	if unreachable > 0:
 		stats_label.text += "（通勤できない %d人）" % unreachable
+	if not hotel_system.rooms.is_empty():
+		stats_label.text += " / 客室: 宿泊 %d・清掃待ち %d・空室 %d" % [
+			hotel_system.count_rooms(hotel_system.RoomState.OCCUPIED),
+			hotel_system.count_rooms(hotel_system.RoomState.DIRTY),
+			hotel_system.count_rooms(hotel_system.RoomState.CLEAN)]
 
 func _notification(what: int) -> void:
 	# マウスがウィンドウの外に出たらマスの強調表示を消す
@@ -103,7 +116,8 @@ func focus_camera_on_building():
 #                  2段目: モード切り替えボタン
 #   操作説明    … 上部バーの下に表示（ボタンで開閉）
 #   （マップ）  … クリックはそのままマップに届く
-#   下部バー    … 操作結果のメッセージ / 社員の人数 / カーソル下のマスの情報
+#   下部バー    … 1段目: 操作結果のメッセージ
+#                  2段目: 社員・客室の状況 / カーソル下のマスの情報
 # バーの上のクリックはバーが受け止めるので、下のマスに建設されることはない。
 func create_ui():
 	var canvas = CanvasLayer.new()
@@ -178,7 +192,9 @@ func create_ui():
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"社員: オフィス1マスに1人。8〜9時に入口（1階の左端）から出勤し、17〜18時に帰る",
 		"速度: 1x / 4x / 16x で時間の進みを早送り",
-		"収支: 毎日0時に決算。出勤があったオフィスから賃料1万円/マス、エレベーターの維持費2千円/マス",
+		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料2万円を払って帰る。清掃が済むまで次の客は泊まれない",
+		"ハウスキーパー室: 清掃員が1人。清掃待ちの部屋を近い順に掃除する",
+		"収支: 毎日0時に決算。賃料1万円/オフィス、宿泊料、維持費（エレベーター2千円・ハウスキーパー室5千円/マス）",
 		"ズーム: マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 	])
@@ -191,23 +207,34 @@ func create_ui():
 	map_space.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_child(map_space)
 	
-	# --- 下部バー ---
-	var bottom_row = HBoxContainer.new()
-	layout.add_child(make_bar(bottom_row))
+	# --- 下部バー（2段） ---
+	#   1段目: 操作結果のメッセージ
+	#   2段目: 社員・客室の状況 / カーソル下のマスの情報
+	var bottom_rows = VBoxContainer.new()
+	bottom_rows.add_theme_constant_override("separation", 2)
+	layout.add_child(make_bar(bottom_rows))
 	
 	message_label = Label.new()
 	message_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
-	message_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom_row.add_child(message_label)
+	# 長いメッセージは末尾を「…」で省略する（文字数に合わせてバーが画面幅を超えないように）
+	message_label.clip_text = true
+	message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	bottom_rows.add_child(message_label)
+	
+	var info_row = HBoxContainer.new()
+	bottom_rows.add_child(info_row)
 	
 	stats_label = Label.new()
-	bottom_row.add_child(stats_label)
+	stats_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_label.clip_text = true
+	stats_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	info_row.add_child(stats_label)
 	
 	var separator = VSeparator.new()
-	bottom_row.add_child(separator)
+	info_row.add_child(separator)
 	
 	hover_label = Label.new()
-	bottom_row.add_child(hover_label)
+	info_row.add_child(hover_label)
 	
 	update_mode_buttons()
 
@@ -287,6 +314,8 @@ func update_hover_label():
 	var cell: Vector2i = grid_overlay.hover_cell
 	var type = get_building_type(cell)
 	var text = "マス %s: %s" % [cell, BUILDINGS[type].name if type != "" else "空き"]
+	if type == "hotel":
+		text += "（%s）" % hotel_system.get_room_state_text(cell)
 	var resident = get_resident_at(cell)
 	if resident:
 		text += " / 住人のストレス: %d" % int(resident.stress)
@@ -303,7 +332,7 @@ func show_message(text: String):
 # ---------------------------------------------------
 
 # BUILDINGSで "color" を指定した建物のうち、TileSetにまだないものはタイルを生成して追加する
-# （エレベーターなど。見た目: 指定色の塗りつぶし＋左右のレール）
+# （エレベーター・ホテルなど。見た目: 指定色の塗りつぶし。"rails" なら左右にレール）
 func create_generated_tile_sources():
 	var tile_set: TileSet = tile_map.tile_set
 	var size: Vector2i = tile_set.tile_size
@@ -313,10 +342,11 @@ func create_generated_tile_sources():
 			continue
 		var image := Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
 		image.fill(data.color)
-		var rail_color: Color = data.color.darkened(0.4)
-		for y in size.y:
-			image.set_pixel(2, y, rail_color)
-			image.set_pixel(size.x - 3, y, rail_color)
+		if data.get("rails", false):
+			var rail_color: Color = data.color.darkened(0.4)
+			for y in size.y:
+				image.set_pixel(2, y, rail_color)
+				image.set_pixel(size.x - 3, y, rail_color)
 		var source := TileSetAtlasSource.new()
 		source.texture = ImageTexture.create_from_image(image)
 		source.texture_region_size = size
@@ -563,6 +593,7 @@ func build_at(map_pos: Vector2i):
 	building_grid[map_pos] = {"type": current_mode}
 	elevator_system.rebuild()
 	commute_system.rebuild()
+	hotel_system.rebuild()
 	update_funds_display()
 	show_message("%sを建設しました %s" % [data.name, map_pos])
 
@@ -579,5 +610,6 @@ func demolish_at(map_pos: Vector2i):
 	building_grid.erase(map_pos)
 	elevator_system.rebuild()
 	commute_system.rebuild()
+	hotel_system.rebuild()
 	update_funds_display()
 	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, map_pos, refund])

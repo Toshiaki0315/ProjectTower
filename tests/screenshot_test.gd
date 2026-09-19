@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -215,7 +215,7 @@ func run_ui_scenario() -> bool:
 	# 上部バーの上をクリックしても、その下のマスには建設されない
 	# 最後のモードボタンの右隣（ボタンのない位置）
 	var last_button: Button = main.mode_buttons.values().back()
-	var bar_pos := Vector2(last_button.get_global_rect().end.x + 40, 15)
+	var bar_pos := Vector2(last_button.get_global_rect().end.x + 40, last_button.get_global_rect().get_center().y)
 	var cell_under_bar: Vector2i = main.tile_map.local_to_map(main.camera.screen_to_world(bar_pos))
 	await click_at(bar_pos, MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(cell_under_bar) and main.funds == 1000000, "上部バーの上をクリックしても建設されない")
@@ -574,6 +574,78 @@ func run_economy_scenario() -> bool:
 	check(main.funds_label.text.contains("（前日 +658,000円）"), "資金の横に前日の収支が出る")
 	check(main.message_label.text.contains("1日目の決算"), "決算の内容がメッセージに出る")
 	await capture("economy_01_settled")
+	return true
+
+# ---------------------------------------------------
+# シナリオ11: ホテルとハウスキーパー
+# ブロック最下段(y=18)の右隣に、客室3室(x=8〜10)とハウスキーパー室(x=11)を並べる。
+# 入口(-8,18)から同じ階を歩いて行き来できる。
+# ---------------------------------------------------
+func run_hotel_scenario() -> bool:
+	print("[シナリオ] ホテルとハウスキーパー")
+	main.funds = 10000000
+	var hotel = main.hotel_system
+	var room_cells: Array[Vector2i] = [Vector2i(8, 18), Vector2i(9, 18), Vector2i(10, 18)]
+	await click_button(main.mode_buttons["hotel"])
+	for cell in room_cells:
+		await click_cell(cell, MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["housekeeping"])
+	await click_cell(Vector2i(11, 18), MOUSE_BUTTON_LEFT)
+	check(main.funds == 10000000 - 3 * 150000 - 100000, "客室15万円×3とハウスキーパー室10万円がかかる")
+	check(hotel.rooms.size() == 3 and hotel.count_rooms(hotel.RoomState.CLEAN) == 3, "客室が3室でき、最初はきれいな空室")
+	check(hotel.housekeepers.size() == 1, "ハウスキーパー室に清掃員が1人いる")
+	var keeper = hotel.housekeepers.values()[0].resident
+	check(keeper.base_color == hotel.HOUSEKEEPER_COLOR, "清掃員は水色")
+	
+	# 夕方 → 客が来て泊まる
+	main.clock.set_time(1, 16, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 21 * 60 + 30, 30.0)
+	check(hotel.count_rooms(hotel.RoomState.OCCUPIED) == 3, "21時半には3室とも宿泊中になる")
+	var guests_in_room := 0
+	for cell in room_cells:
+		var guest = hotel.rooms[cell].guest
+		if is_instance_valid(guest) and guest.cell == cell and guest.base_color == hotel.GUEST_COLOR:
+			guests_in_room += 1
+	check(guests_in_room == 3, "薄紫の宿泊客がそれぞれの部屋に着いている")
+	await hover_cell(room_cells[0])
+	check(main.hover_label.text.contains("ホテル客室（宿泊中）"), "カーソルを合わせると部屋の状態が出る")
+	check(main.stats_label.text.contains("客室: 宿泊 3"), "下部バーに客室の状況が出る")
+	var viewport_width: float = main.get_viewport_rect().size.x
+	var help_button_right := 0.0
+	for node in main.find_children("*", "Button", true, false):
+		help_button_right = maxf(help_button_right, node.get_global_rect().end.x)
+	check(help_button_right <= viewport_width, "文字が増えてもUIのボタンが画面からはみ出さない")
+	await capture("hotel_01_night")
+	
+	# 翌朝 → チェックアウトして帰り、部屋は清掃待ち → 清掃員が掃除する
+	main.clock.set_time(2, 6, 59)
+	await wait_until(func(): return hotel.count_rooms(hotel.RoomState.OCCUPIED) == 0, 30.0)
+	check(hotel.revenue_by_day.get(2, 0) == 60000, "チェックアウトで宿泊料2万円×3室が入る")
+	var saw_dirty := [false]
+	var saw_cleaning := [false]
+	await wait_until(func():
+		if hotel.count_rooms(hotel.RoomState.DIRTY) > 0:
+			saw_dirty[0] = true
+		for cell in room_cells:
+			if hotel.get_room_state_text(cell) == "清掃中":
+				saw_cleaning[0] = true
+		return hotel.count_rooms(hotel.RoomState.CLEAN) == 3, 30.0)
+	check(saw_dirty[0], "チェックアウトした部屋は清掃待ちになる")
+	check(saw_cleaning[0], "清掃員が部屋に来て清掃する")
+	check(hotel.count_rooms(hotel.RoomState.CLEAN) == 3, "清掃が済むと3室ともきれいな空室に戻る")
+	await wait_until(func(): return keeper.cell == Vector2i(11, 18) and not keeper.is_moving(), 20.0)
+	check(keeper.cell == Vector2i(11, 18), "仕事が終わると清掃員はハウスキーパー室に戻る")
+	
+	# 2日目の決算に宿泊料と維持費が入る
+	main.clock.set_time(2, 23, 59)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == 2, 10.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(main.economy_system.last_report.get("hotel") == 60000, "2日目の決算に宿泊料6万円が入る")
+	check(main.economy_system.last_report.get("maintenance") == 5000, "ハウスキーパー室の維持費5千円がかかる")
+	check(main.message_label.text.contains("宿泊料 +60,000円"), "決算のメッセージに宿泊料が出る")
 	return true
 
 func count_rides(path: Array[Vector2i]) -> int:

@@ -37,6 +37,7 @@ var state := State.WALKING
 var car = null                 # 待っている／乗っているカゴ
 var ride_dir := 0              # 乗りたい方向（カゴのDirection.UP / DOWN）
 var stress := 0.0
+var base_color := Color.WHITE  # 平常時の体の色（社員: 白 / 宿泊客: 薄紫 / 清掃員: 水色）
 var selected := false:
 	set(value):
 		selected = value
@@ -165,7 +166,7 @@ func get_body_color() -> Color:
 		return RED_COLOR
 	if stress >= STRESS_PINK:
 		return PINK_COLOR
-	return Color.WHITE
+	return base_color
 
 func leave(message: String) -> void:
 	world.show_message(message)
