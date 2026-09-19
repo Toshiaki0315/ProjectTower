@@ -58,8 +58,9 @@ func _process(_delta: float) -> void:
 	var now: int = world.clock.minute_of_day()
 	for cell in workers:
 		var w = workers[cell]
-		# 出勤の時刻になったら、入口に現れてオフィスへ向かう（休日は出勤しない）
-		if w.arrived_day != day and now >= w.arrive and now < w.leave and not world.clock.is_holiday():
+		# 出勤の時刻になったら、入口に現れてオフィスへ向かう（休日と、オフィスが空室の間は出勤しない）
+		if w.arrived_day != day and now >= w.arrive and now < w.leave and not world.clock.is_holiday() \
+				and not world.tenant_system.is_vacant(cell):
 			w.arrived_day = day
 			w.unreachable = not start_commute(cell, w)
 		var resident = w.resident
@@ -118,6 +119,14 @@ func count_at_office() -> int:
 	for cell in workers:
 		var resident = workers[cell].resident
 		if is_instance_valid(resident) and resident.cell == cell and not resident.is_moving():
+			n += 1
+	return n
+
+# 空室ではないオフィスの社員の数（人口に数える）
+func count_employed() -> int:
+	var n := 0
+	for cell in workers:
+		if not world.tenant_system.is_vacant(cell):
 			n += 1
 	return n
 

@@ -5,6 +5,7 @@ extends Node
 #   賃料収入: その日に社員が出勤したオフィス1マスにつき OFFICE_RENT
 #             （社員が通勤できない空きオフィスからは入らない）
 #             休日はオフィスが休みだが、入口からたどり着けるオフィスからは契約どおり入る
+#             空室のオフィス（テナントが退去した）からは入らない
 #   宿泊料:   その日にチェックアウトした客の宿泊料（hotel_system が記録する）
 #   飲食売上: その日に飲食店で食事をした客の代金（commerce_system が記録する）
 #   住宅販売: その日に入居が決まった住宅の販売収入（housing_system が記録する）
@@ -85,8 +86,10 @@ func settle(day: int) -> void:
 		items.append("ゴミ処理 -%s円（ゴミ%d・処理能力%d）" % [world.format_money(garbage_cost), garbage, recycling_capacity()])
 	items.append("合計 %s円" % world.format_money(total, true))
 	var message := "%d日目の決算: %s" % [day, " / ".join(items)]
-	# オフィスごとの評価（社員のストレスから）
-	world.tenant_system.evaluate_day(day)
+	# オフィスごとの評価（社員のストレスから）と、退去・入居
+	var tenants: Dictionary = world.tenant_system.evaluate_day(day)
+	if tenants.left > 0 or tenants.moved_in > 0:
+		message += " / オフィス退去 %d棟・入居 %d棟" % [tenants.left, tenants.moved_in]
 	# 評価（★）の判定。昇格したら、メッセージの先頭で知らせる（ボーナスは翌日の決算から）
 	if world.rating_system.evaluate():
 		message = "ビルの評価が★%dに上がりました！ %s" % [world.rating_system.stars, message]
@@ -96,7 +99,7 @@ func settle(day: int) -> void:
 func count_reachable_offices() -> int:
 	var n := 0
 	for cell in world.commute_system.workers:
-		if world.nearest_entrance(cell) != null:
+		if not world.tenant_system.is_vacant(cell) and world.nearest_entrance(cell) != null:
 			n += 1
 	return n
 

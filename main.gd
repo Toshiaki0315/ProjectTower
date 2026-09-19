@@ -157,10 +157,11 @@ func _process(_delta: float) -> void:
 	if unreachable > 0:
 		stats_label.text += "（通勤できない %d人）" % unreachable
 	if not tenant_system.offices.is_empty():
-		stats_label.text += " / オフィス評価: 良い %d・普通 %d・悪い %d" % [
+		stats_label.text += " / オフィス: 良い%d・普通%d・悪い%d・空室%d" % [
 			tenant_system.count_rating(tenant_system.Rating.GOOD),
 			tenant_system.count_rating(tenant_system.Rating.NORMAL),
-			tenant_system.count_rating(tenant_system.Rating.BAD)]
+			tenant_system.count_rating(tenant_system.Rating.BAD),
+			tenant_system.count_vacant()]
 	if not hotel_system.rooms.is_empty():
 		stats_label.text += " / 客室: 宿泊 %d・清掃待ち %d・空室 %d" % [
 			hotel_system.count_rooms(hotel_system.RoomState.OCCUPIED),
@@ -288,6 +289,7 @@ func create_ui():
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
 		"オフィスの評価: 毎日の決算で、社員のその日の最大ストレスの平均から 良い（緑）・普通（黄）・悪い（赤）を付ける",
+		"　悪い日が3日続くとテナントが退去して空室（賃料なし）。2日後に新しいテナントが入居する",
 		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
 		"スクロール: マウスホイールで上下、Shift+ホイールで左右、右端のスクロールバー",
 		"ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ",
