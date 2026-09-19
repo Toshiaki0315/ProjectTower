@@ -8,6 +8,7 @@ const CommuteSystem := preload("res://commute_system.gd")
 const EconomySystem := preload("res://economy_system.gd")
 const HotelSystem := preload("res://hotel_system.gd")
 const CommerceSystem := preload("res://commerce_system.gd")
+const RatingSystem := preload("res://rating_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
@@ -24,6 +25,8 @@ const BUILDINGS := {
 	"housekeeping": {"name": "ハウスキーパー室", "cost": 100000, "source_id": 4, "color": Color(0.25, 0.6, 0.6)},
 	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5, "color": Color(0.85, 0.45, 0.2)},
 	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6, "color": Color(0.45, 0.5, 0.3)},
+	"security": {"name": "警備室", "cost": 100000, "source_id": 7, "color": Color(0.25, 0.3, 0.55)},
+	"medical": {"name": "メディカルセンター", "cost": 200000, "source_id": 8, "color": Color(0.8, 0.35, 0.4)},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -42,6 +45,7 @@ var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
 var hotel_system # ホテルの客室・宿泊客・清掃員
 var commerce_system # 飲食店（社員の昼食）
+var rating_system # ビルの評価（★）
 var clock_label: Label # 日付と時刻の表示
 var stats_label: Label # 社員の人数の表示
 
@@ -77,6 +81,9 @@ func _ready() -> void:
 	commerce_system = CommerceSystem.new()
 	commerce_system.setup(self)
 	add_child(commerce_system)
+	rating_system = RatingSystem.new()
+	rating_system.setup(self)
+	add_child(rating_system)
 	economy_system = EconomySystem.new()
 	economy_system.setup(self)
 	add_child(economy_system)
@@ -92,7 +99,8 @@ func _process(_delta: float) -> void:
 	grid_overlay.update_hover()
 	update_hover_label()
 	clock_label.text = clock.get_time_text()
-	stats_label.text = "社員: 在館 %d / 全 %d人" % [commute_system.count_in_building(), commute_system.workers.size()]
+	stats_label.text = rating_system.get_status_text()
+	stats_label.text += " / 社員: 在館 %d / 全 %d人" % [commute_system.count_in_building(), commute_system.workers.size()]
 	var unreachable: int = commute_system.count_unreachable()
 	if unreachable > 0:
 		stats_label.text += "（通勤できない %d人）" % unreachable
@@ -124,7 +132,7 @@ func focus_camera_on_building():
 #   操作説明    … 上部バーの下に表示（ボタンで開閉）
 #   （マップ）  … クリックはそのままマップに届く
 #   下部バー    … 1段目: 操作結果のメッセージ
-#                  2段目: 社員・客室の状況 / カーソル下のマスの情報
+#                  2段目: 評価（★）・社員・客室の状況 / カーソル下のマスの情報
 # バーの上のクリックはバーが受け止めるので、下のマスに建設されることはない。
 func create_ui():
 	var canvas = CanvasLayer.new()
@@ -205,6 +213,8 @@ func create_ui():
 		"ハウスキーパー室: 清掃員が1人。清掃待ちの部屋を近い順に掃除する",
 		"飲食店: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1千円の売上）",
 		"ゴミ処理場: 1マスで1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
+		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
+		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室数）",
 		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
 		"ズーム: マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
@@ -220,16 +230,15 @@ func create_ui():
 	
 	# --- 下部バー（2段） ---
 	#   1段目: 操作結果のメッセージ
-	#   2段目: 社員・客室の状況 / カーソル下のマスの情報
+	#   2段目: 評価（★）・社員・客室の状況 / カーソル下のマスの情報
 	var bottom_rows = VBoxContainer.new()
 	bottom_rows.add_theme_constant_override("separation", 2)
 	layout.add_child(make_bar(bottom_rows))
 	
 	message_label = Label.new()
 	message_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
-	# 長いメッセージは末尾を「…」で省略する（文字数に合わせてバーが画面幅を超えないように）
-	message_label.clip_text = true
-	message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	# 長いメッセージ（決算など）は折り返して全文を表示する（バーが画面幅を超えないように）
+	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bottom_rows.add_child(message_label)
 	
 	var info_row = HBoxContainer.new()

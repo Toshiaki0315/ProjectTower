@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -495,7 +495,7 @@ func run_commute_scenario() -> bool:
 	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT) # 孤立したオフィス
 	check(main.get_entrance() == Vector2i(-10, 20), "入口は一番下の階の左端（孤立したオフィスの行が一番下）")
 	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_RIGHT)
-	await click_cell(Vector2i(-10, 12), MOUSE_BUTTON_LEFT) # 上の方に置き直す
+	await click_cell(Vector2i(-10, 14), MOUSE_BUTTON_LEFT) # 上の方に置き直す
 	check(main.get_entrance() == Vector2i(-8, 18), "入口はブロック最下段の左端(-8,18)")
 	check(commute.workers.size() == 68, "オフィス68マスに社員68人が登録される")
 	
@@ -555,7 +555,7 @@ func run_economy_scenario() -> bool:
 	await click_button(main.mode_buttons["office"])
 	for ox in range(5, 8):
 		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
-	await click_cell(Vector2i(-10, 12), MOUSE_BUTTON_LEFT) # 孤立したオフィス（賃料は入らない）
+	await click_cell(Vector2i(-10, 14), MOUSE_BUTTON_LEFT) # 孤立したオフィス（賃料は入らない）
 	check(main.funds_label.text.contains("現在の資金: 9,000,000円"), "資金の表示もカンマ区切りになる")
 	
 	# 1日目の朝に全員出勤させてから、夜中まで時計を進める
@@ -750,6 +750,65 @@ func run_recycling_scenario() -> bool:
 	check(report.get("total") == 670000 - 22000 - 27000, "合計は+62.1万円（ゴミ処理場なしより4.2万円得）")
 	check(main.message_label.text.contains("ゴミ処理 -27,000円（ゴミ67・処理能力40）"), "決算のメッセージにゴミの量と処理能力が出る")
 	return true
+
+# ---------------------------------------------------
+# シナリオ14: ビルの評価（★）
+# シナリオ10と同じ建物（人口67）に警備室を置くと、1日目の決算で★2に上がり、
+# 2日目の決算から賃料に25%の評価ボーナスが付く。
+# ---------------------------------------------------
+func run_rating_scenario() -> bool:
+	print("[シナリオ] ビルの評価")
+	main.funds = 10000000
+	var rating = main.rating_system
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	check(rating.stars == 1 and rating.population() == 67, "最初は★1、人口67（社員67人）")
+	check(rating.missing_for_next() == ["警備室"], "★2に足りないのは警備室だけ")
+	await wait_frames(2)
+	check(main.stats_label.text.begins_with("★1 人口67（★2まで: 警備室）"), "下部バーに評価と次の★に足りないものが出る")
+	
+	await click_button(main.mode_buttons["security"])
+	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
+	check(rating.missing_for_next().is_empty(), "警備室を置くと★2の条件を満たす")
+	check(rating.stars == 1, "★が上がるのは決算のとき")
+	
+	# 1日目: 決算で★2に上がる（ボーナスはまだ付かない）
+	await run_day(1)
+	var report = main.economy_system.last_report
+	check(rating.stars == 2, "1日目の決算で★2に上がる")
+	check(main.message_label.text.begins_with("ビルの評価が★2に上がりました！"), "昇格がメッセージで知らされる")
+	check(report.get("bonus") == 0, "昇格した日の決算にはまだボーナスが付かない")
+	check(report.get("maintenance") == 12000 + 5000, "警備室の維持費5千円がかかる")
+	await capture("rating_01_star2")
+	
+	# 2日目: 賃料67万円の25% = 16.75万円のボーナス
+	await run_day(2)
+	report = main.economy_system.last_report
+	check(report.get("bonus") == 167500, "★2では賃料に25%（16.75万円）の評価ボーナスが付く")
+	check(main.message_label.text.contains("評価ボーナス +167,500円"), "決算のメッセージに評価ボーナスが出る")
+	
+	# ★3の条件
+	check(rating.missing_for_next() == ["人口120", "メディカルセンター", "ゴミ処理場"], "★3には人口120・メディカルセンター・ゴミ処理場が必要")
+	await click_button(main.mode_buttons["medical"])
+	await click_cell(Vector2i(10, 18), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(10, 18)) == "medical", "メディカルセンターを建てられる")
+	check(rating.missing_for_next() == ["人口120", "ゴミ処理場"], "メディカルセンターを置くと★3の条件から外れる")
+	return true
+
+# 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
+func run_day(day: int) -> void:
+	main.clock.set_time(day, 7, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 8.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
+	main.clock.set_time(day, 23, 58)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == day, 10.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
 
 func count_rides(path: Array[Vector2i]) -> int:
 	var rides := 0
