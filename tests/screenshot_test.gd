@@ -30,14 +30,14 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
 		await start_main(scenario != run_empty_start_scenario)
 		# 建物の支えのルールは、ルールを確かめるシナリオでだけ使う。
 		# ほかのシナリオは、エレベーターや収支などを確かめやすいよう、空中にも建てられる配置で組んである
-		main.require_support = scenario in [run_empty_start_scenario, run_atrium_scenario, run_express_elevator_scenario, run_support_scenario]
+		main.require_support = scenario in [run_empty_start_scenario, run_atrium_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario]
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
 		if finished != true:
@@ -1976,6 +1976,69 @@ func run_support_scenario() -> bool:
 	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_RIGHT)
 	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_RIGHT)
 	check(main.is_cell_empty(Vector2i(8, 18)), "シャフトは上のマスから順に撤去できる")
+	return true
+
+# ---------------------------------------------------
+# シナリオ34: エスカレーター（左下の乗り口と、1つ上の階の右のマスを斜めにつなぐ）
+#   ロビーの右（x=10〜13）にロビーを足し、x=8 のエスカレーターで2階の x=9 へ、
+#   x=9 のエスカレーターで3階の x=10 へ上がる。3階（y=16）には x=10〜13 のオフィス。
+# ---------------------------------------------------
+func run_escalator_scenario() -> bool:
+	print("[シナリオ] エスカレーター")
+	main.funds = 10000000
+	focus_camera(Vector2i(9, 17))
+	await wait_frames(1)
+	main.select_mode("lobby")
+	for x in range(10, 14):
+		main.build_at(Vector2i(x, 18))
+	await choose_mode("escalator")
+	check(main.mode_info_label.text == "建設費 100,000円・横2マス", "エスカレーターは横2マス・10万円")
+	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_unit_cells(Vector2i(9, 18)) == [Vector2i(8, 18), Vector2i(9, 18)], "1階にエスカレーター（横2マス）を建てられる")
+	check(main.get_building_type(Vector2i(10, 17)) == "escalator", "2階にもエスカレーターを重ねて建てられる")
+	check(main.funds == 10000000 - 4 * 30000 - 2 * 100000, "エスカレーター2基で20万円")
+	main.select_mode("security")
+	main.build_at(Vector2i(11, 17))
+	main.select_mode("stairs")
+	main.build_at(Vector2i(13, 17))
+	main.select_mode("office")
+	main.build_at(Vector2i(10, 16))
+	check(main.get_building_type(Vector2i(10, 16)) == "office", "3階のオフィスはエスカレーター・警備室・階段の上に建つ")
+	
+	# 乗り口（左のマス）と、上の階の右のマスの上（降り口）を斜めにつなぐ。上りも下りも使える
+	check(main.can_move(Vector2i(8, 18), Vector2i(9, 17)) and main.can_move(Vector2i(9, 17), Vector2i(8, 18)), "1階の乗り口と2階の降り口を上り下りできる")
+	check(main.can_move(Vector2i(9, 17), Vector2i(10, 16)), "降り口がそのまま上のエスカレーターの乗り口になる")
+	check(not main.can_move(Vector2i(9, 18), Vector2i(9, 17)) and not main.can_move(Vector2i(8, 18), Vector2i(8, 17)), "右のマスや真上には上がれない")
+	check(main.is_escalator_ride(Vector2i(8, 18), Vector2i(9, 17)) and not main.is_elevator_ride(Vector2i(8, 18), Vector2i(9, 17)), "エスカレーターの移動はエレベーターとは別")
+	var route: Array[Vector2i] = main.find_path(Vector2i(-8, 18), Vector2i(12, 16))
+	check(route.has(Vector2i(8, 18)) and route.has(Vector2i(9, 17)) and route.has(Vector2i(10, 16)), "3階のオフィスへはエスカレーターを2回乗り継いで行く")
+	check(count_rides(route) == 0, "エレベーターには乗らない")
+	
+	# 定員がないので、大勢でも待たずに上がれる
+	var people := []
+	for i in 12:
+		var r = main.spawn_resident(Vector2i(4, 18))
+		r.go_to(Vector2i(12, 16))
+		people.append(r)
+	Engine.time_scale = 2.0
+	var captured := false
+	var waited := false
+	var limit := Time.get_ticks_msec() + 20000
+	while Time.get_ticks_msec() < limit and people.any(func(r): return r.is_moving()):
+		for r in people:
+			if r.state != r.State.WALKING:
+				waited = true
+		if not captured and people.any(func(r): return r.cell == Vector2i(9, 17)):
+			Engine.time_scale = 1.0
+			await capture("escalator_01")
+			Engine.time_scale = 2.0
+			captured = true
+		await wait_frames(1)
+	Engine.time_scale = 1.0
+	check(people.all(func(r): return r.cell == Vector2i(12, 16)), "12人全員が3階のオフィスに着いた")
+	check(not waited, "エスカレーターでは誰も待たされない（ストレスがたまらない）")
+	check(main.economy_system.MAINTENANCE["escalator"] == 2000, "エスカレーターの維持費は1基2,000円/日")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

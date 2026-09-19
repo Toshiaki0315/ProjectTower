@@ -22,6 +22,7 @@ enum State { WALKING, WAITING, RIDING }
 
 const WALK_SPEED := 48.0   # 横移動の速さ（px/秒）
 const STAIRS_SPEED := 24.0 # 階段での上下移動の速さ（px/秒）
+const ESCALATOR_SPEED := 40.0 # エスカレーターでの移動の速さ（px/秒。斜めに進む）
 
 const MAX_STRESS := 100.0
 const STRESS_WAIT_RATE := 10.0    # 待っている間に1秒でたまるストレス
@@ -128,7 +129,11 @@ func process_walking(delta: float) -> void:
 		return
 
 	var target_pos: Vector2 = world.tile_map.map_to_local(next)
-	var speed := STAIRS_SPEED if next.y != cell.y else WALK_SPEED
+	var speed := WALK_SPEED
+	if world.is_escalator_ride(cell, next):
+		speed = ESCALATOR_SPEED
+	elif next.y != cell.y:
+		speed = STAIRS_SPEED
 	position = position.move_toward(target_pos, speed * delta)
 	if position == target_pos:
 		cell = next

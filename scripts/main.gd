@@ -49,6 +49,7 @@ const BUILDINGS := {
 	"lobby3": {"name": "吹き抜けロビー（3階分）", "cost": 90000, "source_id": 17, "floors": "ground", "height": 3, "lobby": true},
 	"sky_lobby": {"name": "スカイロビー", "cost": 50000, "source_id": 18, "floors": "sky_lobby"},
 	"express_elevator": {"name": "急行エレベーター", "cost": 120000, "source_id": 19, "floors": "any"},
+	"escalator": {"name": "エスカレーター", "cost": 100000, "source_id": 20, "width": 2, "floors": "any"},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -57,7 +58,7 @@ const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴ�
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
-	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "elevator", "express_elevator", "add_car"]},
+	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "add_car"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway"]},
 	{"name": "その他", "modes": ["resident"]},
 ]
@@ -686,12 +687,15 @@ func find_cells_of_type(type: String) -> Array[Vector2i]:
 # 1〜2階の移動なら階段、3階以上ならエレベーターの方が得になるよう調整している。
 const WALK_COST := 1.0           # 横に1マス歩く
 const STAIRS_COST := 2.0         # 階段で1階分上り下りする
+const ESCALATOR_COST := 1.0      # エスカレーターで1階分上り下りする（待ち時間がなく、階段より楽）
 const ELEVATOR_WAIT_COST := 4.0  # エレベーターに乗る（待ち時間の見込み）
 const ELEVATOR_FLOOR_COST := 0.5 # エレベーターで1階分移動する
 
 # 指定マスから1回で移動できる先とそのコストの一覧（住人の移動ルールはすべてここで決まる）
 # - 横移動:       隣のマスに建物があれば歩ける（エレベーターの扉の前も通り抜けられる）
 # - 階段:         階段マスは、そのマスと1つ上の階をつなぐ
+# - エスカレーター: 横2マス。左のマス（乗り口）と、1つ上の階の右のマスの上（降り口）を斜めにつなぐ。
+#                   上りも下りも使える。定員も待ち時間もない
 # - エレベーター: シャフトのマスから、同じシャフトの別の階へ乗って移動できる
 #                 （急行は1階とスカイロビーの階の間だけ。速いので1階分のコストは標準の1/3）
 # 戻り値: [{"to": Vector2i, "cost": float}, ...]
@@ -706,6 +710,10 @@ func get_moves(cell: Vector2i) -> Array:
 		result.append({"to": cell + Vector2i.UP, "cost": STAIRS_COST})
 	if get_building_type(cell + Vector2i.DOWN) == "stairs":
 		result.append({"to": cell + Vector2i.DOWN, "cost": STAIRS_COST})
+	if is_escalator_foot(cell) and is_walkable(cell + ESCALATOR_UP):
+		result.append({"to": cell + ESCALATOR_UP, "cost": ESCALATOR_COST})
+	if is_escalator_foot(cell - ESCALATOR_UP):
+		result.append({"to": cell - ESCALATOR_UP, "cost": ESCALATOR_COST})
 	if elevator_system.is_shaft_type(get_building_type(cell)):
 		var car = elevator_system.get_car_at(cell)
 		if car and car.is_stop_floor(cell.y):
@@ -722,6 +730,17 @@ func can_move(from: Vector2i, to: Vector2i) -> bool:
 		if move.to == to:
 			return true
 	return false
+
+# エスカレーターの上り口（左下のマス）の、上の階の降り口までのずれ
+const ESCALATOR_UP := Vector2i(1, -1)
+
+# エスカレーターの上り口（左のマス）か
+func is_escalator_foot(cell: Vector2i) -> bool:
+	return get_building_type(cell) == "escalator" and building_grid[cell].origin == cell
+
+# fromからtoへの移動がエスカレーターに乗る移動か
+func is_escalator_ride(from: Vector2i, to: Vector2i) -> bool:
+	return (to - from == ESCALATOR_UP and is_escalator_foot(from)) or (from - to == ESCALATOR_UP and is_escalator_foot(to))
 
 # fromからtoへの移動がエレベーターに乗る移動か（同じシャフト内の別の階への移動）
 func is_elevator_ride(from: Vector2i, to: Vector2i) -> bool:

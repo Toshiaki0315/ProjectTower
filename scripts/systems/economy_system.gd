@@ -23,6 +23,7 @@ const OFFICE_RENT := 10000 # オフィス1マスの1日の賃料
 const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーターは1マスが1つ）
 	"elevator": 2000,
 	"express_elevator": 3000,
+	"escalator": 2000,
 	"housekeeping": 10000,
 	"recycling": 5000,
 	"security": 5000,
