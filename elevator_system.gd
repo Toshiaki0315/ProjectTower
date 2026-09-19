@@ -6,7 +6,8 @@ extends Node
 # 建設・撤去のたびに rebuild() を呼んで、シャフトとカゴを作り直す。
 #
 # カゴ: シャフトを建てると1台できる。add_car() で1本のシャフトに MAX_CARS 台まで増やせる。
-# 乗り場呼び: 待っている人のボタンはシャフト全体で受け付け、choose_car() で選んだカゴに割り当てる。
+# 乗り場呼び（群管理）: 待っている人のボタンはシャフト全体で受け付け、到着までの手間の見積もり
+#   （ElevatorCar.estimate_cost）が一番小さいカゴに割り当てる。割り当てたカゴが満員になったら割り当て直す。
 # ---------------------------------------------------
 
 const ElevatorCar := preload("res://elevator_car.gd")
@@ -117,9 +118,12 @@ func count_extra_cars() -> int:
 func request_hall(cell: Vector2i, dir) -> void:
 	var key := [cell, dir]
 	var assigned = hall_assignments.get(key)
-	if is_instance_valid(assigned) and assigned.has_floor(cell.y) \
+	if is_instance_valid(assigned) and assigned.has_floor(cell.y) and not assigned.is_full() \
 			and (assigned.has_hall_call(cell.y, dir) or assigned.is_doors_open_at(cell.y)):
 		return
+	# 割り当てたカゴが満員になった・呼び出しに応えた後などは、割り当て直す
+	if is_instance_valid(assigned) and not assigned.is_doors_open_at(cell.y):
+		assigned.cancel_hall_call(cell.y, dir)
 	var car = choose_car(cell, dir)
 	if car == null:
 		hall_assignments.erase(key)
@@ -127,12 +131,15 @@ func request_hall(cell: Vector2i, dir) -> void:
 	hall_assignments[key] = car
 	car.call_from_hall(cell.y, dir)
 
-# 乗り場呼びに応えるカゴを選ぶ（今は一番近いカゴ）
-func choose_car(cell: Vector2i, _dir):
+# 乗り場呼びに応えるカゴを選ぶ（群管理）: 到着までの手間の見積もりが一番小さいカゴ
+func choose_car(cell: Vector2i, dir):
 	var best = null
+	var best_cost := 0.0
 	for car in get_cars_at(cell):
-		if best == null or absi(car.current_floor() - cell.y) < absi(best.current_floor() - cell.y):
+		var cost: float = car.estimate_cost(cell.y, dir)
+		if best == null or cost < best_cost:
 			best = car
+			best_cost = cost
 	return best
 
 # dir方向へ行きたい人が、この階で乗れるカゴ（なければnull）

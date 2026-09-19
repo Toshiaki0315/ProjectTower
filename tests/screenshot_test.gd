@@ -1170,8 +1170,8 @@ func run_capacity_scenario() -> bool:
 # ---------------------------------------------------
 # シナリオ21: 1本のシャフトに複数のカゴ
 # シナリオ10と同じ建物（社員68人、x=8 のシャフト y=13〜18）に、カゴを3台追加して4台にする。
-# ※ 今は乗り場の呼び出しを「一番近いカゴ」に割り当てるだけなので、1階の呼び出しが同じカゴに集まり、
-#    4台にしてもラッシュはほとんど早くならない（群管理で改善する）。ここでは台数・費用・表示を確かめる。
+# 群管理（乗り場呼びを到着までの手間が一番小さいカゴに割り当てる）で4台が分担して運ぶので、
+# カゴ1台（定員8人）では10時15分ごろまでかかった朝のラッシュが、9時45分までに終わる。
 # ---------------------------------------------------
 func run_multi_car_scenario() -> bool:
 	print("[シナリオ] 複数のカゴ")
@@ -1203,15 +1203,39 @@ func run_multi_car_scenario() -> bool:
 	await hover_cell(Vector2i(8, 14))
 	check(main.hover_label.text.contains("カゴ4台: 0/8・0/8・0/8・0/8人"), "カーソルを合わせると各カゴの人数が出る")
 	
-	# 乗り場のボタンは一番近いカゴに割り当てる（今は一番近いカゴ。群管理で賢くする）
+	# 群管理: 乗り場の呼び出しは、到着までの手間が一番小さいカゴに割り当てる
+	var all_cars: Array = elevators.get_cars_at(Vector2i(8, 15)) # 18階・13階・15階・16階にいる
 	elevators.request_hall(Vector2i(8, 14), ElevatorCar.Direction.UP)
 	var assigned = elevators.hall_assignments.get([Vector2i(8, 14), ElevatorCar.Direction.UP])
-	check(assigned != null and assigned.floor_y in [13, 15], "乗り場の呼び出しは近いカゴ（13階か15階）に割り当てる")
+	check(assigned != null and assigned.floor_y in [13, 15], "止まっているカゴなら、一番近いカゴ（13階か15階）に割り当てる")
 	assigned.up_calls.clear() # 確認用の呼び出しを取り消す
 	elevators.hall_assignments.clear()
+	# 17階から18階へ下っている途中のカゴと、18階で止まっているカゴ: 16階の「上へ」は18階のカゴの方が早い
+	var moving = all_cars[3] # 16階のカゴを17階へ動かしたことにする
+	moving.floor_y = 17
+	moving.position = moving.floor_position(17)
+	moving.direction = ElevatorCar.Direction.DOWN
+	moving.car_calls[18] = true
+	var idle_bottom = all_cars[0]
+	check(moving.estimate_cost(16, ElevatorCar.Direction.UP) > idle_bottom.estimate_cost(16, ElevatorCar.Direction.UP), "逆方向に進んでいるカゴは、折り返す分だけ手間が大きいと見積もる")
+	check(elevators.choose_car(Vector2i(8, 16), ElevatorCar.Direction.UP) == idle_bottom or elevators.choose_car(Vector2i(8, 16), ElevatorCar.Direction.UP).floor_y == 15, "近くても逆方向に進んでいるカゴは選ばない")
+	# 満員のカゴは選ばない
+	for i in 8:
+		moving.passengers.append(main.spawn_resident(Vector2i(7, 18)))
+	moving.direction = ElevatorCar.Direction.UP
+	moving.car_calls.clear()
+	moving.car_calls[13] = true
+	check(elevators.choose_car(Vector2i(8, 16), ElevatorCar.Direction.UP) != moving, "満員のカゴには割り当てない")
+	for r in moving.passengers:
+		r.queue_free()
+	moving.passengers.clear()
+	moving.car_calls.clear()
+	moving.direction = ElevatorCar.Direction.NONE
+	await wait_frames(2)
 	
-	# 朝のラッシュ: 4台で運ぶ（終わった時刻は記録だけする）
+	# 朝のラッシュ: 4台で分担して運ぶ
 	var done_time := ""
+	var done_minute := 0
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
 	Engine.time_scale = 8.0
@@ -1222,9 +1246,10 @@ func run_multi_car_scenario() -> bool:
 			captured = true
 		if done_time == "" and main.commute_system.count_at_office() == 68:
 			done_time = main.clock.get_time_text()
+			done_minute = main.clock.minute_of_day()
 		await process_frame
 	print("    rush done at ", done_time)
-	check(done_time != "", "4台でも68人全員がオフィスに着く（全員着いた時刻: %s）" % done_time)
+	check(done_time != "" and done_minute <= 9 * 60 + 45, "4台の群管理なら9時45分までに68人全員がオフィスに着く（全員着いた時刻: %s）" % done_time)
 	
 	# 追加したカゴの維持費: 3台 × 3千円
 	main.clock.set_time(1, 23, 58)

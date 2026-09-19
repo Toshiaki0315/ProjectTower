@@ -23,6 +23,11 @@ const SPEED := 48.0    # 昇降の速さ（px/秒）
 const DOOR_TIME := 1.0 # 停車して扉を開けている時間（秒）
 const CAPACITY := 8    # 定員
 
+# 群管理で乗り場呼びを割り当てるときの手間（コスト）の見積もり。単位は「階数」
+const STOP_COST := 1.5     # 停まる予定1つあたり（扉の開け閉めの時間）
+const LOAD_COST := 0.3     # 乗っている人1人あたり（混んでいるカゴはなるべく避ける）
+const FULL_COST := 100.0   # 満員のカゴ（停まっても乗れない）
+
 var world: Node2D  # main.gd
 var column: int    # シャフトのx座標
 var top_y: int     # シャフトの最上階
@@ -109,6 +114,45 @@ func board(resident, dest_y: int) -> void:
 	request_floor(dest_y)
 	if direction == Direction.NONE:
 		direction = Direction.UP if dest_y < floor_y else Direction.DOWN
+
+# y階で dir 方向へ行きたい人を拾いに行く手間の見積もり（群管理でカゴを選ぶのに使う。小さいほど早く着く）
+#   止まっているカゴ:                         今の階からの距離
+#   同じ方向に進んでいて、その階がまだ先にある: 今の階からの距離（途中で拾える）
+#   それ以外（逆方向・通り過ぎた）:            今の方向の一番先の呼び出しまで行って、折り返してくる距離
+#   ＋ 停まる予定の数・乗っている人数・満員かどうか
+func estimate_cost(y: int, dir: Direction) -> float:
+	var cur := current_floor()
+	var cost := 0.0
+	if direction == Direction.NONE:
+		cost = absi(cur - y)
+	else:
+		var ahead: bool = (direction == Direction.UP and y <= cur) or (direction == Direction.DOWN and y >= cur)
+		if ahead and direction == dir:
+			cost = absi(cur - y)
+		else:
+			var end := farthest_call(direction, cur)
+			cost = absi(cur - end) + absi(end - y)
+	cost += STOP_COST * (car_calls.size() + up_calls.size() + down_calls.size())
+	cost += LOAD_COST * passengers.size()
+	if is_full():
+		cost += FULL_COST
+	return cost
+
+# dir 方向に進んだとき、一番先にある呼び出しの階（なければ from）
+func farthest_call(dir: Direction, from: int) -> int:
+	var result := from
+	for calls in [car_calls, up_calls, down_calls]:
+		for c in calls:
+			if (dir == Direction.UP and c < result) or (dir == Direction.DOWN and c > result):
+				result = c
+	return result
+
+# 乗り場呼びを取り消す（群管理で別のカゴに割り当て直したとき）
+func cancel_hall_call(y: int, dir: Direction) -> void:
+	if dir == Direction.UP:
+		up_calls.erase(y)
+	else:
+		down_calls.erase(y)
 
 # ---------------------------------------------------
 # 動かし方
