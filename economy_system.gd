@@ -53,7 +53,7 @@ func settle(day: int) -> void:
 		maintenance += MAINTENANCE[type] * world.find_cells_of_type(type).size()
 	var hotel: int = world.hotel_system.revenue_by_day.get(day, 0)
 	var food: int = world.commerce_system.revenue_by_day.get(day, 0)
-	var checkouts: int = hotel / world.hotel_system.ROOM_RATE
+	var checkouts: int = world.hotel_system.checkouts_by_day.get(day, 0)
 	var meals: int = food / world.commerce_system.MEAL_PRICE
 	var housing: int = world.housing_system.revenue_by_day.get(day, 0)
 	var garbage: int = active_offices + checkouts + meals / MEALS_PER_GARBAGE + world.housing_system.count_moved_in()

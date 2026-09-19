@@ -3,13 +3,15 @@ extends Node2D
 # ---------------------------------------------------
 # ホテルとハウスキーパー（清掃員）
 #
-# 客室（"hotel" 1マス = 1室）の状態:
+# 客室（1マス = 1室）の種類は ROOM_TYPES（シングル・ツイン・スイート）。
+# 種類ごとに、泊まる人数（guests）・1泊の宿泊料（rate）・清掃にかかる分数（cleaning）が違う。
+# 客室の状態:
 #   CLEAN     … きれいな空室。CHECKIN_START〜CHECKIN_END の間に宿泊客が入口から来る
 #   OCCUPIED  … 宿泊中。翌朝 CHECKOUT_START〜CHECKOUT_END にチェックアウトして入口から帰る
-#               （チェックアウト時に宿泊料 ROOM_RATE が入る）
+#               （チェックアウト時に、その部屋の宿泊料が入る）
 #   DIRTY     … 清掃待ち。清掃が済むまで次の客は泊まれない
 # 清掃員（"housekeeping" 1マス = 1人）:
-#   清掃待ちの部屋のうち一番近い部屋へ行き、CLEANING_MINUTES 分かけて掃除する。
+#   清掃待ちの部屋のうち一番近い部屋へ行き、その部屋の清掃時間をかけて掃除する。
 #   仕事がなければハウスキーパー室に戻って待つ。
 #
 # TileMapLayerの子として追加し、部屋の状態（明かり・汚れ）を描く。
@@ -22,15 +24,19 @@ const CHECKIN_START := 17 * 60
 const CHECKIN_END := 21 * 60
 const CHECKOUT_START := 7 * 60
 const CHECKOUT_END := 10 * 60
-const ROOM_RATE := 20000      # 1泊の宿泊料
-const CLEANING_MINUTES := 20.0 # 1室の清掃にかかるゲーム内の分数
+const ROOM_TYPES := {
+	"hotel": {"guests": 1, "rate": 20000, "cleaning": 20.0},       # シングル
+	"hotel_twin": {"guests": 2, "rate": 35000, "cleaning": 30.0},  # ツイン
+	"hotel_suite": {"guests": 2, "rate": 80000, "cleaning": 45.0}, # スイート
+}
 const GUEST_COLOR := Color(0.85, 0.75, 1.0)
 const HOUSEKEEPER_COLOR := Color(0.5, 0.9, 1.0)
 
 var world: Node2D # main.gd
 
-# 客室のマス -> {state, guest, checkin_day, cleaner}
-#   guest:       宿泊客の住人ノード（いなければnull）
+# 客室のマス -> {type, state, guests, checkin_day, cleaner}
+#   type:        客室の種類（ROOM_TYPES のキー）
+#   guests:      宿泊客の住人ノードの配列
 #   checkin_day: 最後に客が来た日（同じ日に2人来ないため）
 #   cleaner:     この部屋の清掃を担当している清掃員の情報（いなければnull）
 var rooms: Dictionary = {}
@@ -40,6 +46,7 @@ var rooms: Dictionary = {}
 var housekeepers: Dictionary = {}
 var leaving_guests: Array = [] # チェックアウトして入口へ向かっている宿泊客
 var revenue_by_day: Dictionary = {} # 日 -> その日の宿泊料の合計
+var checkouts_by_day: Dictionary = {} # 日 -> その日にチェックアウトした部屋の数
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -50,15 +57,18 @@ func setup(p_world: Node2D) -> void:
 # ---------------------------------------------------
 
 func rebuild() -> void:
-	var room_cells: Array[Vector2i] = world.find_cells_of_type("hotel")
-	for cell in room_cells:
-		if not rooms.has(cell):
-			rooms[cell] = {"state": RoomState.CLEAN, "guest": null, "checkin_day": 0, "cleaner": null}
+	var room_cells: Array[Vector2i] = []
+	for type in ROOM_TYPES:
+		for cell in world.find_cells_of_type(type):
+			room_cells.append(cell)
+			if not rooms.has(cell):
+				rooms[cell] = {"type": type, "state": RoomState.CLEAN, "guests": [], "checkin_day": 0, "cleaner": null}
 	for cell in rooms.keys():
 		if not room_cells.has(cell):
 			var room = rooms[cell]
-			if is_instance_valid(room.guest):
-				room.guest.queue_free() # 部屋がなくなった客は帰る
+			for guest in room.guests:
+				if is_instance_valid(guest):
+					guest.queue_free() # 部屋がなくなった客は帰る
 			if room.cleaner:
 				room.cleaner.room = null
 			rooms.erase(cell)
@@ -96,20 +106,24 @@ func process_rooms() -> void:
 		var room = rooms[cell]
 		match room.state:
 			RoomState.CLEAN:
-				# チェックインの時刻になったら、入口から客が来る（時刻は部屋と日ごとに決まった乱数）
+				# チェックインの時刻になったら、入口から客（部屋の定員の人数）が来る（時刻は部屋と日ごとに決まった乱数）
 				if room.checkin_day != day and now >= checkin_minute(cell, day) and now < CHECKIN_END:
 					room.checkin_day = day
-					var guest = spawn_guest(cell)
-					if guest:
-						room.guest = guest
+					var count: int = ROOM_TYPES[room.type].guests
+					for i in count:
+						var guest = spawn_guest(cell)
+						if guest:
+							# 2人以上なら左右に少しずらして描く（重なって1人に見えないように）
+							if count > 1:
+								guest.sprite_offset = Vector2(-3 + 6 * i, 0)
+							room.guests.append(guest)
+					if not room.guests.is_empty():
 						room.state = RoomState.OCCUPIED
 			RoomState.OCCUPIED:
-				var guest = room.guest
-				if not is_instance_valid(guest):
-					room.guest = null
+				room.guests = room.guests.filter(is_instance_valid)
+				if room.guests.is_empty():
 					room.state = RoomState.DIRTY # 客がいなくなった（撤去など）。宿泊料はなし
-				elif day > room.checkin_day and now >= checkout_minute(cell, day) \
-						and guest.state != guest.State.RIDING:
+				elif day > room.checkin_day and now >= checkout_minute(cell, day) and not is_any_guest_riding(room):
 					checkout(cell, room)
 
 func checkin_minute(cell: Vector2i, day: int) -> int:
@@ -124,6 +138,12 @@ func random_minute(cell: Vector2i, salt: int, from: int, to: int) -> int:
 	rng.seed = hash([cell, salt])
 	return rng.randi_range(from, to - 1)
 
+func is_any_guest_riding(room: Dictionary) -> bool:
+	for guest in room.guests:
+		if guest.state == guest.State.RIDING:
+			return true
+	return false
+
 # 入口に客を出して部屋へ向かわせる。たどり着けなければnull
 func spawn_guest(cell: Vector2i):
 	var entrance = world.get_entrance()
@@ -135,15 +155,17 @@ func spawn_guest(cell: Vector2i):
 	return guest
 
 # チェックアウト: 宿泊料を受け取り、客を入口へ向かわせ、部屋を清掃待ちにする
-func checkout(cell: Vector2i, room: Dictionary) -> void:
+func checkout(_cell: Vector2i, room: Dictionary) -> void:
 	var day: int = world.clock.day
-	revenue_by_day[day] = revenue_by_day.get(day, 0) + ROOM_RATE
+	revenue_by_day[day] = revenue_by_day.get(day, 0) + ROOM_TYPES[room.type].rate
+	checkouts_by_day[day] = checkouts_by_day.get(day, 0) + 1
 	var entrance = world.get_entrance()
-	if entrance != null and room.guest.go_to(entrance):
-		leaving_guests.append(room.guest)
-	else:
-		room.guest.queue_free()
-	room.guest = null
+	for guest in room.guests:
+		if entrance != null and guest.go_to(entrance):
+			leaving_guests.append(guest)
+		else:
+			guest.queue_free()
+	room.guests = []
 	room.state = RoomState.DIRTY
 
 # 入口に着いた客は帰る（消える）
@@ -195,7 +217,7 @@ func assign_nearest_dirty_room(keeper: Dictionary) -> bool:
 	if best == null:
 		return false
 	keeper.room = best
-	keeper.clean_left = CLEANING_MINUTES
+	keeper.clean_left = ROOM_TYPES[rooms[best].type].cleaning
 	rooms[best].cleaner = keeper
 	if keeper.resident.cell != best:
 		keeper.resident.go_to(best)
@@ -209,6 +231,16 @@ func release_room(keeper: Dictionary) -> void:
 # ---------------------------------------------------
 # 集計・表示
 # ---------------------------------------------------
+
+func is_room_type(type: String) -> bool:
+	return ROOM_TYPES.has(type)
+
+# 全客室の定員の合計（人口に数える）
+func total_capacity() -> int:
+	var n := 0
+	for cell in rooms:
+		n += ROOM_TYPES[rooms[cell].type].guests
+	return n
 
 func count_rooms(state: RoomState) -> int:
 	var n := 0

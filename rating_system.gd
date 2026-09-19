@@ -4,7 +4,7 @@ extends Node
 # ビルの評価（★）：毎日の決算のときに条件を確かめ、満たしていれば★が1つ上がる（下がらない）。
 # ★が高いほど、賃料と宿泊料に評価ボーナス（★1つにつき BONUS_PER_STAR）が上乗せされる。
 #
-# 人口 = 通勤できる社員の数 + 客室の数 + 住宅の入居者の数
+# 人口 = 通勤できる社員の数 + 客室の定員の合計 + 住宅の入居者の数
 # 昇格の条件（REQUIREMENTS[次の★]）:
 #   population: 必要な人口
 #   buildings:  少なくとも1マス必要な建物
@@ -25,7 +25,7 @@ func setup(p_world: Node2D) -> void:
 
 func population() -> int:
 	var commute = world.commute_system
-	return commute.workers.size() - commute.count_unreachable() + world.hotel_system.rooms.size() \
+	return commute.workers.size() - commute.count_unreachable() + world.hotel_system.total_capacity() \
 		+ world.housing_system.count_moved_in()
 
 # 賃料・宿泊料に上乗せする割合（★1なら0）

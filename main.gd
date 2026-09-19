@@ -23,7 +23,9 @@ const BUILDINGS := {
 	"office": {"name": "オフィス", "cost": 100000, "source_id": 0},
 	"stairs": {"name": "階段", "cost": 50000, "source_id": 1},
 	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2},
-	"hotel": {"name": "ホテル客室", "cost": 150000, "source_id": 3},
+	"hotel": {"name": "シングル", "cost": 150000, "source_id": 3},
+	"hotel_twin": {"name": "ツイン", "cost": 200000, "source_id": 10},
+	"hotel_suite": {"name": "スイート", "cost": 500000, "source_id": 11},
 	"housekeeping": {"name": "ハウスキーパー室", "cost": 100000, "source_id": 4},
 	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5},
 	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6},
@@ -217,13 +219,14 @@ func create_ui():
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"社員: オフィス1マスに1人。8〜9時に入口（1階の左端）から出勤し、17〜18時に帰る",
 		"速度: 1x / 4x / 16x で時間の進みを早送り",
-		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料2万円を払って帰る。清掃が済むまで次の客は泊まれない",
+		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料を払って帰る。清掃が済むまで次の客は泊まれない",
+		"　シングル: 1人・2万円・清掃20分 / ツイン: 2人・3.5万円・清掃30分 / スイート: 2人・8万円・清掃45分",
 		"ハウスキーパー室: 清掃員が1人。清掃待ちの部屋を近い順に掃除する",
 		"飲食店: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1千円の売上）",
 		"住宅: 17〜20時に入居者が来て入居（販売収入25万円、1回だけ）。毎朝7〜9時に出かけ、17〜20時に帰る",
 		"ゴミ処理場: 1マスで1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
-		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室数 + 入居者）",
+		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
 		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
 		"ズーム: マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
@@ -343,7 +346,7 @@ func update_hover_label():
 	var cell: Vector2i = grid_overlay.hover_cell
 	var type = get_building_type(cell)
 	var text = "マス %s: %s" % [cell, BUILDINGS[type].name if type != "" else "空き"]
-	if type == "hotel":
+	if hotel_system.is_room_type(type):
 		text += "（%s）" % hotel_system.get_room_state_text(cell)
 	elif type == "restaurant":
 		text += "（客 %d人）" % commerce_system.count_eating_at(cell)

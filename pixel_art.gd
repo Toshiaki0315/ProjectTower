@@ -51,6 +51,8 @@ const PALETTE := {
 	"o": Color("#7a4a2a"), # ドア
 	"p": Color("#3c9a4a"), # 観葉植物
 	"y": Color("#c0504d"), # ソファ
+	"J": Color("#d8c08a"), # スイートの壁
+	"j": Color("#8a2a3a"), # スイートの掛け布団
 }
 
 const TILES := {
@@ -123,6 +125,42 @@ const TILES := {
 		"ePPPPPEEEEEEEEeH",
 		"eeeeeeeeeeeeeeeH",
 		"eHHHHHHHHHHHHHeH",
+		"FFFFFFFFFFFFFFFF",
+		"KKKKKKKKKKKKKKKK",
+	],
+	"hotel_twin": [
+		"KKKKKKKKKKKKKKKK",
+		"HHHHHHHHHHHHHHHH",
+		"HHHBBBBBBBBBBHHH",
+		"HHUBwwwwwwwwBUHH",
+		"HHUBwwwwwwwwBUHH",
+		"HHUBwwwwwwwwBUHH",
+		"HHUBBBBBBBBBBUHH",
+		"HHUHHHHHHHHHHUHH",
+		"HHHHHHHHHHHHHHHH",
+		"HHHHHHHLHHHHHHHH",
+		"ePPEEEeLePPEEEeH",
+		"ePEEEEeeePEEEEeH",
+		"eeeeeeeHeeeeeeeH",
+		"eHHHHHeHeHHHHHeH",
+		"FFFFFFFFFFFFFFFF",
+		"KKKKKKKKKKKKKKKK",
+	],
+	"hotel_suite": [
+		"KKKKKKKKKKKKKKKK",
+		"JJJJJJJLLJJJJJJJ",
+		"JJJBBBBLLBBBBJJJ",
+		"JJUBwwwLLwwwBUJJ",
+		"JJUBwwLLLLwwBUJJ",
+		"JJUBwwLvvLwwBUJJ",
+		"JJUBBBBBBBBBBUJJ",
+		"JJUJJJJJJJJJJUJJ",
+		"JLJJJJJJJJJJJJJJ",
+		"eLeJJJJJJJJJJLLJ",
+		"ePPPPPjjjjjjeyyy",
+		"ePPPPjjjjjjjeyyy",
+		"eeeeeeeeeeeeeyJy",
+		"eJJJJJJJJJJJeJJJ",
 		"FFFFFFFFFFFFFFFF",
 		"KKKKKKKKKKKKKKKK",
 	],

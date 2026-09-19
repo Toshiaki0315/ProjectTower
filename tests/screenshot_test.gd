@@ -22,7 +22,7 @@ func _init() -> void:
 	root.mouse_passthrough = true
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -611,12 +611,12 @@ func run_hotel_scenario() -> bool:
 	check(hotel.count_rooms(hotel.RoomState.OCCUPIED) == 3, "21時半には3室とも宿泊中になる")
 	var guests_in_room := 0
 	for cell in room_cells:
-		var guest = hotel.rooms[cell].guest
+		var guest = hotel.rooms[cell].guests[0]
 		if is_instance_valid(guest) and guest.cell == cell and guest.base_color == hotel.GUEST_COLOR:
 			guests_in_room += 1
 	check(guests_in_room == 3, "薄紫の宿泊客がそれぞれの部屋に着いている")
 	await hover_cell(room_cells[0])
-	check(main.hover_label.text.contains("ホテル客室（宿泊中）"), "カーソルを合わせると部屋の状態が出る")
+	check(main.hover_label.text.contains("シングル（宿泊中）"), "カーソルを合わせると部屋の状態が出る")
 	check(main.stats_label.text.contains("客室: 宿泊 3"), "下部バーに客室の状況が出る")
 	var viewport_width: float = main.get_viewport_rect().size.x
 	var help_button_right := 0.0
@@ -827,7 +827,7 @@ func run_housing_scenario() -> bool:
 	check(housing.count_moved_in() == 2 and housing.count_at_home() == 2, "夕方に2戸とも入居者が来て家にいる")
 	check(housing.revenue_by_day.get(1, 0) == 500000, "入居で販売収入25万円×2が入る")
 	check(housing.homes[homes[0]].resident.base_color == housing.RESIDENT_COLOR, "入居者は緑の服")
-	var others: int = main.commute_system.workers.size() - main.commute_system.count_unreachable() + main.hotel_system.rooms.size()
+	var others: int = main.commute_system.workers.size() - main.commute_system.count_unreachable() + main.hotel_system.total_capacity()
 	check(main.rating_system.population() == others + 2, "入居者の分だけ人口が増える")
 	await hover_cell(homes[0])
 	check(main.hover_label.text.contains("住宅（在宅）"), "入居後は「在宅」と出る")
@@ -851,6 +851,67 @@ func run_housing_scenario() -> bool:
 	main.clock.set_process(false)
 	check(housing.count_at_home() == 2, "夕方には2人とも帰ってくる")
 	check(housing.revenue_by_day.get(2, 0) == 0, "販売収入は入居したときの1回だけ")
+	return true
+
+# ---------------------------------------------------
+# シナリオ16: ホテルのツイン・スイート
+# ブロック最下段(y=18)の右隣に、ツイン(8)・スイート(9)・ハウスキーパー室(10)を並べる。
+# ---------------------------------------------------
+func run_room_types_scenario() -> bool:
+	print("[シナリオ] ツイン・スイート")
+	main.funds = 10000000
+	var hotel = main.hotel_system
+	var twin := Vector2i(8, 18)
+	var suite := Vector2i(9, 18)
+	await click_button(main.mode_buttons["hotel_twin"])
+	await click_cell(twin, MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["hotel_suite"])
+	await click_cell(suite, MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["housekeeping"])
+	await click_cell(Vector2i(10, 18), MOUSE_BUTTON_LEFT)
+	check(main.funds == 10000000 - 200000 - 500000 - 100000, "ツイン20万円・スイート50万円がかかる")
+	check(hotel.total_capacity() == 4, "ツインとスイートは2人ずつ、定員の合計は4人")
+	var others: int = main.commute_system.workers.size() - main.commute_system.count_unreachable()
+	check(main.rating_system.population() == others + 4, "人口には客室の定員が入る")
+	
+	# 夕方: それぞれ2人ずつ泊まりに来る
+	main.clock.set_time(1, 16, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 21 * 60 + 30, 30.0)
+	check(hotel.rooms[twin].guests.size() == 2 and hotel.rooms[suite].guests.size() == 2, "ツインとスイートにそれぞれ2人ずつ泊まる")
+	var arrived := 0
+	for cell in [twin, suite]:
+		for guest in hotel.rooms[cell].guests:
+			if guest.cell == cell and not guest.is_moving():
+				arrived += 1
+	check(arrived == 4, "4人とも部屋に着いている")
+	await hover_cell(suite)
+	check(main.hover_label.text.contains("スイート（宿泊中）"), "カーソルを合わせると客室の種類と状態が出る")
+	await capture("room_types_01_night")
+	
+	# 翌朝: チェックアウトで宿泊料 3.5万 + 8万、清掃時間は部屋の種類で違う
+	main.clock.set_time(2, 6, 59)
+	var clean_start := {}
+	var clean_end := {}
+	await wait_until(func():
+		var now: float = main.clock.day * 1440 + main.clock.minute
+		for cell in [twin, suite]:
+			if hotel.get_room_state_text(cell) == "清掃中" and not clean_start.has(cell):
+				clean_start[cell] = now
+			if clean_start.has(cell) and hotel.rooms[cell].state == hotel.RoomState.CLEAN and not clean_end.has(cell):
+				clean_end[cell] = now
+		return clean_end.size() == 2, 40.0)
+	check(hotel.revenue_by_day.get(2, 0) == 35000 + 80000, "チェックアウトでツイン3.5万円＋スイート8万円が入る")
+	check(hotel.checkouts_by_day.get(2, 0) == 2, "チェックアウトした部屋は2室と数える")
+	check(clean_end.size() == 2, "ツインもスイートも清掃されてきれいな空室に戻る")
+	if clean_end.size() == 2:
+		var twin_minutes: float = clean_end[twin] - clean_start[twin]
+		var suite_minutes: float = clean_end[suite] - clean_start[suite]
+		check(absf(twin_minutes - 30.0) <= 2.0, "ツインの清掃は約30分（%.1f分）" % twin_minutes)
+		check(absf(suite_minutes - 45.0) <= 2.0, "スイートの清掃は約45分（%.1f分）" % suite_minutes)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

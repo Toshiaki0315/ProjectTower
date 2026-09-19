@@ -60,6 +60,7 @@ var car = null                 # 待っている／乗っているカゴ
 var ride_dir := 0              # 乗りたい方向（カゴのDirection.UP / DOWN）
 var stress := 0.0
 var base_color := Color.WHITE  # 平常時の体の色（社員: 白 / 宿泊客: 薄紫 / 清掃員: 水色）
+var sprite_offset := Vector2.ZERO # 体を描く位置のずれ（同じマスにいる連れ同士が重ならないように）
 var selected := false:
 	set(value):
 		selected = value
@@ -211,9 +212,9 @@ func _draw() -> void:
 			if ch == ".":
 				continue
 			var color: Color = clothes if ch == "c" else BODY_COLORS[ch]
-			draw_rect(Rect2(BODY_ORIGIN + Vector2(x, y), Vector2.ONE), color)
+			draw_rect(Rect2(BODY_ORIGIN + sprite_offset + Vector2(x, y), Vector2.ONE), color)
 
 	# カゴを待っている間は頭の上に「…」を出す
 	if state == State.WAITING:
 		for i in 3:
-			draw_rect(Rect2(-3 + i * 2, -8, 1, 1), Color.WHITE)
+			draw_rect(Rect2(sprite_offset + Vector2(-3 + i * 2, -8), Vector2.ONE), Color.WHITE)
