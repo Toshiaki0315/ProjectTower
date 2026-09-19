@@ -9,6 +9,7 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 # 実行方法（ウィンドウ付きで起動する。--headless ではGUIのクリックやカーソル位置の判定が働かないので不可）:
 #   godot --path . -s res://tests/screenshot_test.gd -- <保存先ディレクトリ>
 # 保存先を省略すると user://screenshots に保存する。
+# 一部のシナリオだけ流すときは、環境変数 TEST_ONLY にシナリオの関数名の一部を入れる（例: TEST_ONLY=express）。
 # ※ 実行中にウィンドウが他のウィンドウの裏に隠れると、macOSに処理を間引かれて止まることがある。
 # ---------------------------------------------------
 
@@ -29,7 +30,9 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario]:
+		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
+			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
 		await start_main(scenario != run_empty_start_scenario)
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
@@ -1213,7 +1216,7 @@ func run_capacity_scenario() -> bool:
 	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
 	var car = main.elevator_system.cars[0]
-	check(car.CAPACITY == 8, "カゴの定員は8人")
+	check(car.capacity == 8, "カゴの定員は8人")
 	
 	var goal := Vector2i(5, 13)
 	var people := []
@@ -1826,6 +1829,82 @@ func run_sky_lobby_scenario() -> bool:
 	await hover_cell(Vector2i(2, 4))
 	check(main.hover_label.text.begins_with("15階 マス (2, 4): スカイロビー"), "カーソル下の情報の先頭に何階かが出る")
 	await capture("sky_lobby_01")
+	return true
+
+# ---------------------------------------------------
+# シナリオ32: 急行エレベーター（1階とスカイロビーの階だけに停まる）
+#   x=8 の急行シャフト（1階〜15階。y=18〜4）で15階のスカイロビー（x=3〜7）へ上がり、
+#   x=2 の標準シャフト（15階〜18階。y=4〜1）に乗り換えて、17階のオフィス（y=2、x=-2〜1）へ行く。
+# ---------------------------------------------------
+func run_express_elevator_scenario() -> bool:
+	print("[シナリオ] 急行エレベーター")
+	main.funds = 10000000
+	await choose_mode("express_elevator")
+	check(main.mode_info_label.text == "建設費 120,000円・横1マス（1階とスカイロビーの階だけに停まる）", "建設メニューに停まる階の説明が出る")
+	for y in range(18, 3, -1):
+		main.build_at(Vector2i(8, y))
+	check(main.funds == 10000000 - 15 * 120000, "急行エレベーターは1マス12万円")
+	main.select_mode("sky_lobby")
+	for x in range(3, 8):
+		main.build_at(Vector2i(x, 4))
+	main.select_mode("elevator")
+	for y in range(4, 0, -1):
+		main.build_at(Vector2i(2, y))
+	main.select_mode("office")
+	main.build_at(Vector2i(-2, 2))
+	main.build_at(Vector2i(9, 10)) # 急行のシャフトの途中の階（9階）の隣のオフィス
+	
+	# 急行のカゴは速く、定員が多い
+	var express = main.elevator_system.get_car_at(Vector2i(8, 18))
+	var standard = main.elevator_system.get_car_at(Vector2i(2, 4))
+	check(express.shaft_type == "express_elevator" and express.top_y == 4 and express.bottom_y == 18, "急行のシャフトは1階〜15階")
+	check(express.speed == standard.speed * 3 and express.capacity == 20 and standard.capacity == 8, "急行は標準の3倍の速さで、定員は20人")
+	check(main.elevator_system.get_cars_at(Vector2i(2, 4)) == [standard], "急行と標準のシャフトは別々にカゴを持つ")
+	
+	# 乗り降りできるのは1階とスカイロビーの階だけ
+	check(main.can_move(Vector2i(8, 18), Vector2i(8, 4)) and main.can_move(Vector2i(8, 4), Vector2i(8, 18)), "急行は1階と15階の間を行き来できる")
+	check(not main.can_move(Vector2i(8, 18), Vector2i(8, 10)), "急行は途中の階（9階）には停まらない")
+	check(not main.can_move(Vector2i(8, 10), Vector2i(8, 4)), "途中の階からは急行に乗れない")
+	check(main.find_path(Vector2i(-8, 18), Vector2i(9, 10)).is_empty(), "急行のシャフトの途中の階にあるオフィスには行けない")
+	check(not express.request_floor(10), "急行のカゴは途中の階の行き先ボタンを受け付けない")
+	
+	focus_camera(Vector2i(8, 10))
+	await wait_frames(1)
+	await hover_cell(Vector2i(8, 10))
+	check(main.hover_label.text.contains("急行エレベーター（この階には停まりません）"), "途中の階のシャフトには、停まらないことが出る")
+	await choose_mode("express_elevator")
+	check(not main.can_click_cell(Vector2i(8, 10)), "急行モードで途中の階のシャフトは赤く表示される")
+	check(main.can_click_cell(Vector2i(8, 18)), "1階のシャフトはクリックでカゴを呼べる")
+	await click_cell(Vector2i(8, 10), MOUSE_BUTTON_LEFT)
+	check(main.message_label.text == "急行エレベーターは1階とスカイロビーの階にしか停まりません", "途中の階ではカゴを呼べない")
+	check(main.get_building_type(Vector2i(8, 10)) == "express_elevator", "シャフトをクリックしても建て直さない")
+	
+	# 1階の入口から、急行 → 15階で標準に乗り換え → 17階のオフィスへ
+	var goal := Vector2i(0, 2)
+	var route: Array[Vector2i] = main.find_path(Vector2i(-8, 18), goal)
+	check(count_rides(route) == 2 and route.has(Vector2i(8, 4)) and route.has(Vector2i(2, 4)), "経路は急行で15階へ上がり、スカイロビーで標準に乗り換える")
+	var r = main.spawn_resident(Vector2i(-8, 18))
+	r.go_to(goal)
+	Engine.time_scale = 4.0
+	var rode_express := false
+	var captured := false
+	var limit := Time.get_ticks_msec() + 30000
+	while Time.get_ticks_msec() < limit and not (r.cell == goal and r.path.is_empty()):
+		if r.state == r.State.RIDING and r.car == express:
+			rode_express = true
+			if not captured and express.position.y < main.tile_map.map_to_local(Vector2i(8, 12)).y:
+				focus_camera(Vector2i(6, 7))
+				Engine.time_scale = 1.0
+				await capture("express_01_riding")
+				Engine.time_scale = 4.0
+				captured = true
+		await wait_frames(1)
+	Engine.time_scale = 1.0
+	check(rode_express, "住人は急行に乗った")
+	check(r.cell == goal and r.path.is_empty(), "住人は乗り換えて17階のオフィスに着いた")
+	focus_camera(Vector2i(4, 6))
+	await wait_frames(2)
+	await capture("express_02_arrived")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

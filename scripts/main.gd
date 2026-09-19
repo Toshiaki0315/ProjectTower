@@ -48,6 +48,7 @@ const BUILDINGS := {
 	"lobby2": {"name": "吹き抜けロビー（2階分）", "cost": 60000, "source_id": 16, "floors": "ground", "height": 2, "lobby": true},
 	"lobby3": {"name": "吹き抜けロビー（3階分）", "cost": 90000, "source_id": 17, "floors": "ground", "height": 3, "lobby": true},
 	"sky_lobby": {"name": "スカイロビー", "cost": 50000, "source_id": 18, "floors": "sky_lobby"},
+	"express_elevator": {"name": "急行エレベーター", "cost": 120000, "source_id": 19, "floors": "any"},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -56,7 +57,7 @@ const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴ�
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
-	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "elevator", "add_car"]},
+	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "elevator", "express_elevator", "add_car"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway"]},
 	{"name": "その他", "modes": ["resident"]},
 ]
@@ -395,6 +396,8 @@ func get_mode_info(mode: String) -> String:
 	var info := "建設費 %s円・横%dマス" % [format_money(BUILDINGS[mode].cost), get_width(mode)]
 	if get_height(mode) > 1:
 		info += "・高さ%d階分" % get_height(mode)
+	if mode == "express_elevator":
+		info += "（1階とスカイロビーの階だけに停まる）"
 	return info
 
 # 建設メニューの選択と説明を、今のモードに合わせる
@@ -463,12 +466,14 @@ func update_hover_label():
 		text += "（客 %d人）" % commerce_system.count_eating_at(cell)
 	elif event_system.is_hall_type(type):
 		text += "（来客 %d人）" % event_system.count_at_hall(cell)
-	elif type == "elevator":
+	elif elevator_system.is_shaft_type(type):
 		var cars: Array = elevator_system.get_cars_at(cell)
-		if not cars.is_empty():
+		if type == "express_elevator" and not is_express_stop_floor(cell.y):
+			text += "（この階には停まりません）"
+		elif not cars.is_empty():
 			var loads: Array[String] = []
 			for car in cars:
-				loads.append("%d/%d" % [car.passengers.size(), car.CAPACITY])
+				loads.append("%d/%d" % [car.passengers.size(), car.capacity])
 			text += "（カゴ%d台: %s人）" % [cars.size(), "・".join(loads)]
 	elif type == "housing":
 		var home_rating: String = tenant_system.get_home_rating_text(cell)
@@ -587,6 +592,9 @@ func get_floor_name(y: int) -> String:
 	return "%d階" % (ground_y - y + 1)
 
 # スカイロビーを建てられる階か（15階・30階・45階…）
+func is_express_stop_floor(y: int) -> bool:
+	return y == ground_y or is_sky_lobby_floor(y)
+
 func is_sky_lobby_floor(y: int) -> bool:
 	var floor_number := ground_y - y + 1
 	return floor_number > 1 and floor_number % SKY_LOBBY_INTERVAL == 0
@@ -652,6 +660,7 @@ const ELEVATOR_FLOOR_COST := 0.5 # エレベーターで1階分移動する
 # - 横移動:       隣のマスに建物があれば歩ける（エレベーターの扉の前も通り抜けられる）
 # - 階段:         階段マスは、そのマスと1つ上の階をつなぐ
 # - エレベーター: シャフトのマスから、同じシャフトの別の階へ乗って移動できる
+#                 （急行は1階とスカイロビーの階の間だけ。速いので1階分のコストは標準の1/3）
 # 戻り値: [{"to": Vector2i, "cost": float}, ...]
 func get_moves(cell: Vector2i) -> Array:
 	var result: Array = []
@@ -664,12 +673,13 @@ func get_moves(cell: Vector2i) -> Array:
 		result.append({"to": cell + Vector2i.UP, "cost": STAIRS_COST})
 	if get_building_type(cell + Vector2i.DOWN) == "stairs":
 		result.append({"to": cell + Vector2i.DOWN, "cost": STAIRS_COST})
-	if get_building_type(cell) == "elevator":
+	if elevator_system.is_shaft_type(get_building_type(cell)):
 		var car = elevator_system.get_car_at(cell)
-		if car:
+		if car and car.is_stop_floor(cell.y):
+			var floor_cost: float = ELEVATOR_FLOOR_COST * car.SPEED / car.speed
 			for y in range(car.top_y, car.bottom_y + 1):
-				if y != cell.y:
-					var cost := ELEVATOR_WAIT_COST + ELEVATOR_FLOOR_COST * absi(y - cell.y)
+				if y != cell.y and car.is_stop_floor(y):
+					var cost := ELEVATOR_WAIT_COST + floor_cost * absi(y - cell.y)
 					result.append({"to": Vector2i(cell.x, y), "cost": cost})
 	return result
 
@@ -682,8 +692,8 @@ func can_move(from: Vector2i, to: Vector2i) -> bool:
 
 # fromからtoへの移動がエレベーターに乗る移動か（同じシャフト内の別の階への移動）
 func is_elevator_ride(from: Vector2i, to: Vector2i) -> bool:
-	return from.x == to.x and from.y != to.y \
-		and get_building_type(from) == "elevator" and get_building_type(to) == "elevator"
+	return from.x == to.x and from.y != to.y and elevator_system.is_shaft_type(get_building_type(from)) \
+		and get_building_type(from) == get_building_type(to)
 
 # ダイクストラ法でコストが最小の経路を求める
 # 戻り値: [from, ..., to] のマス配列。経路がなければ空配列。
@@ -733,13 +743,13 @@ func can_click_cell(cell: Vector2i) -> bool:
 		return not is_cell_empty(cell)
 	if current_mode == MODE_ADD_CAR:
 		return elevator_system.get_add_car_problem(cell) == ""
-	if current_mode == "elevator" and get_building_type(cell) == "elevator":
-		return true # シャフトをクリックするとカゴを呼べる
+	if elevator_system.is_shaft_type(current_mode) and get_building_type(cell) == current_mode:
+		return elevator_system.get_car_at(cell) != null and elevator_system.get_car_at(cell).is_stop_floor(cell.y) # シャフトをクリックするとカゴを呼べる
 	return get_build_problem(cell, current_mode) == ""
 
 # カーソル下で強調表示するマス（建設モードなら、建てたときに使うマス全部）
 func get_hover_footprint(cell: Vector2i) -> Array[Vector2i]:
-	if current_mode == MODE_RESIDENT or current_mode == MODE_ADD_CAR or get_building_type(cell) == "elevator":
+	if current_mode == MODE_RESIDENT or current_mode == MODE_ADD_CAR or elevator_system.is_shaft_type(get_building_type(cell)):
 		return [cell]
 	return get_footprint(cell, current_mode)
 
@@ -839,7 +849,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			handle_resident_click(map_pos)
 		elif current_mode == MODE_ADD_CAR:
 			add_elevator_car(map_pos)
-		elif current_mode == "elevator" and get_building_type(map_pos) == "elevator":
+		elif elevator_system.is_shaft_type(current_mode) and get_building_type(map_pos) == current_mode:
 			call_elevator(map_pos)
 		else:
 			build_at(map_pos)
@@ -860,6 +870,8 @@ func add_elevator_car(cell: Vector2i):
 func call_elevator(cell: Vector2i):
 	if elevator_system.call_car(cell):
 		show_message("エレベーターを %s に呼びました" % cell)
+	elif get_building_type(cell) == "express_elevator":
+		show_message("急行エレベーターは1階とスカイロビーの階にしか停まりません")
 
 # 建物が増減したときに、建物に対応する仕組み（エレベーター・社員・客室・住宅・会場）を更新する
 func rebuild_systems():

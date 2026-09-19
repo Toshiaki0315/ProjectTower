@@ -19,9 +19,13 @@ signal arrived(floor_y: int) # 階に停まって扉を開けたとき
 enum State { IDLE, MOVING, DOORS_OPEN }
 enum Direction { NONE, UP, DOWN }
 
-const SPEED := 48.0    # 昇降の速さ（px/秒）
+const SPEED := 48.0    # 昇降の速さ（px/秒。標準エレベーター）
 const DOOR_TIME := 1.0 # 停車して扉を開けている時間（秒）
-const CAPACITY := 8    # 定員
+const CAPACITY := 8    # 定員（標準エレベーター）
+const EXPRESS_SPEED := 144.0 # 急行エレベーターの速さ（標準の3倍）
+const EXPRESS_CAPACITY := 20 # 急行エレベーターの定員
+const STANDARD_COLOR := Color(0.75, 0.78, 0.85) # 標準のカゴの扉（銀）
+const EXPRESS_COLOR := Color(0.95, 0.78, 0.3)   # 急行のカゴの扉（金）
 
 # 群管理で乗り場呼びを割り当てるときの手間（コスト）の見積もり。単位は「階数」
 const STOP_COST := 1.5     # 停まる予定1つあたり（扉の開け閉めの時間）
@@ -30,6 +34,10 @@ const FULL_COST := 100.0   # 満員のカゴ（停まっても乗れない）
 
 var world: Node2D  # main.gd
 var column: int    # シャフトのx座標
+var shaft_type := "elevator" # シャフトの種類（"elevator" = 標準 / "express_elevator" = 急行）
+var speed := SPEED       # 昇降の速さ（急行は速い）
+var capacity := CAPACITY # 定員（急行は大きい）
+var body_color := STANDARD_COLOR # 扉の色（標準は銀、急行は金）
 var top_y: int     # シャフトの最上階
 var bottom_y: int  # シャフトの最下階
 var floor_y: int   # 最後に通過・停車した階
@@ -53,19 +61,34 @@ func setup(p_world: Node2D, x: int, top: int, bottom: int, start_y: int) -> void
 	position = floor_position(floor_y)
 	z_index = 8 # マス目の表示より手前、住人より奥
 
+# シャフトの種類を決める（急行は速く、定員が多く、金色）
+func set_shaft_type(type: String) -> void:
+	shaft_type = type
+	var express := type == "express_elevator"
+	speed = EXPRESS_SPEED if express else SPEED
+	capacity = EXPRESS_CAPACITY if express else CAPACITY
+	body_color = EXPRESS_COLOR if express else STANDARD_COLOR
+	queue_redraw()
+
 # シャフトの範囲が変わったときに呼ぶ。範囲外になった呼び出しは取り消す
 func set_shaft(top: int, bottom: int) -> void:
 	top_y = top
 	bottom_y = bottom
 	for calls in [car_calls, up_calls, down_calls]:
 		for y in calls.keys():
-			if not has_floor(y):
+			if not is_stop_floor(y):
 				calls.erase(y)
 	if not has_floor(target_y):
 		target_y = floor_y # 向かっていた階がなくなったら、元の階に戻る
 
 func has_floor(y: int) -> bool:
 	return y >= top_y and y <= bottom_y
+
+# 停まれる階か（標準はシャフトの全部の階、急行は1階とスカイロビーの階だけ）
+func is_stop_floor(y: int) -> bool:
+	if not has_floor(y):
+		return false
+	return shaft_type != "express_elevator" or world.is_express_stop_floor(y)
 
 # 今いる階（移動中は、カゴの中心があるマスの階）
 func current_floor() -> int:
@@ -78,16 +101,16 @@ func floor_position(y: int) -> Vector2:
 # 呼び出しの受け付け
 # ---------------------------------------------------
 
-# カゴ呼び（行き先ボタン）。シャフトの範囲外ならfalse
+# カゴ呼び（行き先ボタン）。停まれない階（シャフトの範囲外・急行の途中の階）ならfalse
 func request_floor(y: int) -> bool:
-	if not has_floor(y):
+	if not is_stop_floor(y):
 		return false
 	car_calls[y] = true
 	return true
 
 # 乗り場呼び。dirはその人が行きたい方向
 func call_from_hall(y: int, dir: Direction) -> bool:
-	if not has_floor(y):
+	if not is_stop_floor(y):
 		return false
 	if dir == Direction.UP:
 		up_calls[y] = true
@@ -102,7 +125,7 @@ func is_doors_open_at(y: int) -> bool:
 # 定員に達しているか
 func is_full() -> bool:
 	passengers = passengers.filter(is_instance_valid) # いなくなった住人を除く
-	return passengers.size() >= CAPACITY
+	return passengers.size() >= capacity
 
 # dir方向へ行きたい人が、この階で乗れるか（扉が開いていて、同じ方向へ進むか行き先が未定で、満員でない）
 func can_board(y: int, dir: Direction) -> bool:
@@ -167,7 +190,7 @@ func _process(delta: float) -> void:
 		State.IDLE:
 			decide_next_action()
 		State.MOVING:
-			position = position.move_toward(floor_position(target_y), SPEED * delta)
+			position = position.move_toward(floor_position(target_y), speed * delta)
 			if position == floor_position(target_y):
 				floor_y = target_y
 				if should_stop_at(floor_y):
@@ -275,16 +298,16 @@ func _draw() -> void:
 	if state == State.DOORS_OPEN:
 		# 扉が開いている：明るい室内と、左右に寄せた扉
 		draw_rect(body, Color(1.0, 0.95, 0.7))
-		draw_rect(Rect2(-6, -7, 2, 14), Color(0.75, 0.78, 0.85))
-		draw_rect(Rect2(4, -7, 2, 14), Color(0.75, 0.78, 0.85))
+		draw_rect(Rect2(-6, -7, 2, 14), body_color)
+		draw_rect(Rect2(4, -7, 2, 14), body_color)
 	else:
-		# 扉が閉まっている：銀色の扉と中央の合わせ目
-		draw_rect(body, Color(0.75, 0.78, 0.85))
+		# 扉が閉まっている：銀色（急行は金色）の扉と中央の合わせ目
+		draw_rect(body, body_color)
 		draw_line(Vector2(0, -7), Vector2(0, 7), Color(0.3, 0.3, 0.35), 1.0)
 	# 乗っている人数のゲージ（満員なら赤）
-	var load_ratio := float(passengers.size()) / CAPACITY
+	var load_ratio := float(passengers.size()) / capacity
 	if load_ratio > 0.0:
-		var gauge_color := Color(1.0, 0.3, 0.3) if passengers.size() >= CAPACITY else Color(0.3, 1.0, 0.4)
+		var gauge_color := Color(1.0, 0.3, 0.3) if passengers.size() >= capacity else Color(0.3, 1.0, 0.4)
 		draw_rect(Rect2(-6, 5, 12.0 * minf(load_ratio, 1.0), 2), gauge_color)
 	# 進行方向の表示（▲ 上へ / ▼ 下へ）
 	var arrow_color := Color(0.3, 1.0, 0.4)

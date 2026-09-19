@@ -10,7 +10,7 @@ extends SceneTree
 #   buildings/<種類>.png   … 建物のドット絵（4倍）
 #   people/<名前>.png      … 人のドット絵（種類ごと・ストレスの段階ごと、8倍）
 #   elevator/<名前>.png    … エレベーターのカゴ（8倍）
-#   screenshots/*.png      … サンプルのビルのゲーム画面（昼・夜）
+#   screenshots/*.png      … サンプルのビルのゲーム画面（昼・夜）と、急行エレベーターの乗り換え
 # ---------------------------------------------------
 
 const PixelArt := preload("res://scripts/view/pixel_art.gd")
@@ -18,6 +18,7 @@ const Resident := preload("res://scripts/actors/resident.gd")
 const HotelSystem := preload("res://scripts/systems/hotel_system.gd")
 const HousingSystem := preload("res://scripts/systems/housing_system.gd")
 const EventSystem := preload("res://scripts/systems/event_system.gd")
+const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 
 const OUT := "res://docs/images"
 const BUILDING_SCALE := 4
@@ -76,6 +77,13 @@ func save_people_images() -> void:
 
 # エレベーターのカゴ（elevator_car.gd の描き方と同じ色・形）
 func save_elevator_images() -> void:
+	# 急行のカゴ（金色の扉）
+	var express := Image.create(16, 18, false, Image.FORMAT_RGBA8)
+	express.fill_rect(Rect2i(1, 4, 14, 14), Color.BLACK)
+	express.fill_rect(Rect2i(2, 5, 12, 12), ElevatorCar.EXPRESS_COLOR)
+	express.fill_rect(Rect2i(8, 5, 1, 12), Color(0.3, 0.3, 0.35))
+	express.fill_rect(Rect2i(2, 15, 3, 2), Color(0.3, 1.0, 0.4))
+	save_scaled(express, PERSON_SCALE, OUT.path_join("elevator/express_closed.png"))
 	for open in [false, true]:
 		var image := Image.create(16, 18, false, Image.FORMAT_RGBA8)
 		# 進行方向の▲
