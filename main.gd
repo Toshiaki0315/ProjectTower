@@ -5,6 +5,7 @@ const GridOverlay := preload("res://grid_overlay.gd")
 const ElevatorSystem := preload("res://elevator_system.gd")
 const GameClock := preload("res://game_clock.gd")
 const CommuteSystem := preload("res://commute_system.gd")
+const EconomySystem := preload("res://economy_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
@@ -32,6 +33,7 @@ var grid_overlay # マス目の表示
 var elevator_system # エレベーターのシャフトとカゴの管理
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
+var economy_system # 毎日の決算（賃料収入と維持費）
 var clock_label: Label # 日付と時刻の表示
 var stats_label: Label # 社員の人数の表示
 
@@ -60,6 +62,9 @@ func _ready() -> void:
 	commute_system.setup(self)
 	add_child(commute_system)
 	commute_system.rebuild()
+	economy_system = EconomySystem.new()
+	economy_system.setup(self)
+	add_child(economy_system)
 	tile_map.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST # 拡大してもタイルをぼかさない
 	focus_camera_on_building()
 	grid_overlay = GridOverlay.new()
@@ -125,7 +130,7 @@ func create_ui():
 	
 	funds_label = Label.new()
 	funds_label.add_theme_font_size_override("font_size", 20)
-	funds_label.custom_minimum_size.x = 240 # 金額の桁が変わっても時刻の位置がずれないように
+	funds_label.custom_minimum_size.x = 420 # 金額の桁が変わっても時刻の位置がずれないように
 	status_row.add_child(funds_label)
 	
 	clock_label = Label.new()
@@ -173,6 +178,7 @@ func create_ui():
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"社員: オフィス1マスに1人。8〜9時に入口（1階の左端）から出勤し、17〜18時に帰る",
 		"速度: 1x / 4x / 16x で時間の進みを早送り",
+		"収支: 毎日0時に決算。出勤があったオフィスから賃料1万円/マス、エレベーターの維持費2千円/マス",
 		"ズーム: マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 	])
@@ -253,8 +259,23 @@ func update_mode_buttons():
 
 # 資金の表示を更新する関数
 func update_funds_display():
-	if funds_label:
-		funds_label.text = "現在の資金: " + str(funds) + "円"
+	if not funds_label:
+		return
+	funds_label.text = "現在の資金: %s円" % format_money(funds)
+	if economy_system and not economy_system.last_report.is_empty():
+		funds_label.text += "（前日 %s円）" % format_money(economy_system.last_report.total, true)
+
+# 金額を3桁ごとのカンマ区切りにする（signedならプラスにも+を付ける）
+func format_money(amount: int, signed := false) -> String:
+	var digits := str(absi(amount))
+	var result := ""
+	for i in digits.length():
+		if i > 0 and (digits.length() - i) % 3 == 0:
+			result += ","
+		result += digits[i]
+	if amount < 0:
+		return "-" + result
+	return ("+" + result) if signed else result
 
 # 下部バーにカーソル下のマスの座標と建物を表示する
 func update_hover_label():

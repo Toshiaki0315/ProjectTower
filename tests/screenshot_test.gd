@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -533,6 +533,47 @@ func run_commute_scenario() -> bool:
 	check(commute.count_in_building() == 0, "19時には全員が入口から帰っている")
 	await capture("commute_03_evening")
 	main.clock.set_process(false)
+	return true
+
+# ---------------------------------------------------
+# シナリオ10: 毎日の決算（賃料収入と維持費）
+# シナリオ9と同じ建物で1日目を過ごし、0:00の決算を確かめる。
+# 出勤できるオフィス67マス × 1万円 − エレベーター6マス × 2千円 = +658,000円
+# ---------------------------------------------------
+func run_economy_scenario() -> bool:
+	print("[シナリオ] 決算")
+	check(main.format_money(1000000) == "1,000,000", "金額は3桁ごとにカンマで区切る")
+	check(main.format_money(-1234) == "-1,234" and main.format_money(999) == "999", "マイナスや3桁以下も正しく表示する")
+	check(main.format_money(658000, true) == "+658,000", "収支にはプラス記号を付ける")
+	
+	main.funds = 10000000
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(-10, 12), MOUSE_BUTTON_LEFT) # 孤立したオフィス（賃料は入らない）
+	check(main.funds_label.text.contains("現在の資金: 9,000,000円"), "資金の表示もカンマ区切りになる")
+	
+	# 1日目の朝に全員出勤させてから、夜中まで時計を進める
+	main.clock.set_time(1, 7, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 8.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
+	main.clock.set_time(1, 23, 58)
+	var funds_before: int = main.funds
+	await wait_until(func(): return not main.economy_system.last_report.is_empty(), 10.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	var report = main.economy_system.last_report
+	check(report.get("day") == 1, "日付が変わると1日目の決算をする")
+	check(report.get("rent") == 670000, "出勤したオフィス67マス分の賃料67万円が入る（孤立したオフィスは0）")
+	check(report.get("maintenance") == 12000, "エレベーター6マス分の維持費1.2万円がかかる")
+	check(main.funds == funds_before + 658000, "資金が差し引き65.8万円増える")
+	check(main.funds_label.text.contains("（前日 +658,000円）"), "資金の横に前日の収支が出る")
+	check(main.message_label.text.contains("1日目の決算"), "決算の内容がメッセージに出る")
+	await capture("economy_01_settled")
 	return true
 
 func count_rides(path: Array[Vector2i]) -> int:
