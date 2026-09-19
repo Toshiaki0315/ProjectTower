@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario]:
 		await start_main()
 		await scenario.call()
 	Engine.time_scale = 1.0
@@ -205,7 +205,9 @@ func run_ui_scenario() -> void:
 	var overlay = main.grid_overlay
 	
 	# 上部バーの上をクリックしても、その下のマスには建設されない
-	var bar_pos := Vector2(850, 15) # ボタンのない位置
+	# 最後のモードボタンの右隣（ボタンのない位置）
+	var last_button: Button = main.mode_buttons.values().back()
+	var bar_pos := Vector2(last_button.get_global_rect().end.x + 40, 15)
 	var cell_under_bar: Vector2i = main.tile_map.local_to_map(main.camera.screen_to_world(bar_pos))
 	await click_at(bar_pos, MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(cell_under_bar) and main.funds == 1000000, "上部バーの上をクリックしても建設されない")
@@ -236,6 +238,59 @@ func run_ui_scenario() -> void:
 	await capture("ui_02_help_open")
 	await click_button(help_button)
 	check(not main.help_panel.visible, "もう一度押すと説明が閉じる")
+
+# ---------------------------------------------------
+# シナリオ5: エレベーター（1本のシャフトで1台のカゴが指定階に停まる）
+# 事前配置のブロック（x=-8〜7, y=15〜18）の右隣 x=8 に、y=14〜18 のシャフトを建てる。
+# ---------------------------------------------------
+func run_elevator_scenario() -> void:
+	print("[シナリオ] エレベーター")
+	var elevators = main.elevator_system
+	var x := 8
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 13, -1):
+		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
+	check(main.funds == 500000, "シャフト5マスで50万円かかる")
+	check(elevators.cars.size() == 1, "縦につながったシャフトにカゴが1台できる")
+	var car = elevators.cars[0]
+	check(car.top_y == 14 and car.bottom_y == 18, "シャフトの範囲がy=14〜18になる")
+	check(car.current_floor() == 18, "カゴは最下階からスタートする")
+	
+	# 階を指定して呼ぶ → その階に停まる
+	var arrivals: Array[int] = []
+	car.arrived.connect(func(y): arrivals.append(y))
+	Engine.time_scale = 4.0
+	await click_cell(Vector2i(x, 15), MOUSE_BUTTON_LEFT)
+	check(main.funds == 500000, "シャフトのクリックでは建設されない（お金も減らない）")
+	await wait_until(func(): return car.state == car.State.MOVING, 5.0)
+	await capture("elevator_01_moving")
+	await wait_until(func(): return arrivals.size() >= 1, 10.0)
+	check(arrivals == [15], "呼んだ階(y=15)に停まる")
+	check(car.position == main.tile_map.map_to_local(Vector2i(x, 15)), "カゴが階の位置にぴったり停まる")
+	check(car.state == car.State.DOORS_OPEN, "停まったら扉が開く")
+	check(main.message_label.text.contains("到着"), "到着メッセージが出る")
+	await capture("elevator_02_arrived")
+	
+	# 続けて2つの階を呼ぶ → 呼んだ順に停まる
+	await click_cell(Vector2i(x, 18), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(x, 14), MOUSE_BUTTON_LEFT)
+	await wait_until(func(): return arrivals.size() >= 3, 15.0)
+	check(arrivals == [15, 18, 14], "呼んだ順(y=18→14)に停まる")
+	Engine.time_scale = 1.0
+	
+	# シャフトの最下段を撤去 → 同じカゴのまま範囲が縮む
+	await click_cell(Vector2i(x, 18), MOUSE_BUTTON_RIGHT)
+	check(elevators.cars.size() == 1 and elevators.cars[0] == car, "シャフトを縮めても同じカゴが残る")
+	check(car.bottom_y == 17, "シャフトの範囲がy=14〜17になる")
+	
+	# 途中を撤去 → シャフトが2本に分かれ、カゴも2台になる
+	await click_cell(Vector2i(x, 16), MOUSE_BUTTON_RIGHT)
+	check(elevators.cars.size() == 2, "途中を撤去するとシャフトが2本になりカゴも2台になる")
+	check(elevators.cars.has(car), "元のカゴは今いる階のシャフトに残る")
+	
+	# 範囲外の階は呼べない
+	check(not car.request_floor(17), "シャフトの範囲外の階には呼べない")
+	await capture("elevator_03_split")
 
 func hover_cell(cell: Vector2i) -> void:
 	var tile_map: TileMapLayer = main.tile_map

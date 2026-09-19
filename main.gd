@@ -2,16 +2,19 @@ extends Node2D
 
 const Resident := preload("res://resident.gd")
 const GridOverlay := preload("res://grid_overlay.gd")
+const ElevatorSystem := preload("res://elevator_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
 
 # ---------------------------------------------------
 # 建物の定義（種類を増やすときはここに追記する）
+# "color" があるものは、TileSetに画像がなくてもコードでタイルを生成する
 # ---------------------------------------------------
 const BUILDINGS := {
 	"office": {"name": "オフィス", "cost": 100000, "source_id": 0},
 	"stairs": {"name": "階段", "cost": 50000, "source_id": 1},
+	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2, "color": Color(0.33, 0.35, 0.4)},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -24,6 +27,7 @@ var hover_label: Label # カーソル下のマスの情報表示用
 var help_panel: Control # 操作説明（ボタンで表示/非表示）
 var mode_buttons: Dictionary = {} # モード名 -> Button
 var grid_overlay # マス目の表示
+var elevator_system # エレベーターのシャフトとカゴの管理
 
 var residents: Array = [] # 配置済みの住人
 var selected_resident = null # 行き先の指示を待っている住人
@@ -37,8 +41,13 @@ var selected_resident = null # 行き先の指示を待っている住人
 var building_grid: Dictionary = {}
 
 func _ready() -> void:
+	create_generated_tile_sources()
 	apply_tile_types()
 	load_grid_from_tilemap()
+	elevator_system = ElevatorSystem.new()
+	elevator_system.setup(self)
+	add_child(elevator_system)
+	elevator_system.rebuild()
 	tile_map.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST # 拡大してもタイルをぼかさない
 	focus_camera_on_building()
 	grid_overlay = GridOverlay.new()
@@ -120,6 +129,7 @@ func create_ui():
 	help_label.text = "\n".join([
 		"左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
+		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"ズーム: マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 	])
@@ -217,6 +227,27 @@ func show_message(text: String):
 # ---------------------------------------------------
 # グリッド情報の管理
 # ---------------------------------------------------
+
+# BUILDINGSで "color" を指定した建物のうち、TileSetにまだないものはタイルを生成して追加する
+# （エレベーターなど。見た目: 指定色の塗りつぶし＋左右のレール）
+func create_generated_tile_sources():
+	var tile_set: TileSet = tile_map.tile_set
+	var size: Vector2i = tile_set.tile_size
+	for type in BUILDINGS:
+		var data = BUILDINGS[type]
+		if not data.has("color") or tile_set.has_source(data.source_id):
+			continue
+		var image := Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
+		image.fill(data.color)
+		var rail_color: Color = data.color.darkened(0.4)
+		for y in size.y:
+			image.set_pixel(2, y, rail_color)
+			image.set_pixel(size.x - 3, y, rail_color)
+		var source := TileSetAtlasSource.new()
+		source.texture = ImageTexture.create_from_image(image)
+		source.texture_region_size = size
+		source.create_tile(Vector2i.ZERO)
+		tile_set.add_source(source, data.source_id)
 
 # BUILDINGSの定義をもとに、TileSetのカスタムデータ「type」を設定する
 # （メモリ上のみ。.tscnには保存されないため、エディタ上では空のまま見える）
@@ -318,6 +349,8 @@ func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 func can_click_cell(cell: Vector2i) -> bool:
 	if current_mode == MODE_RESIDENT:
 		return not is_cell_empty(cell)
+	if current_mode == "elevator" and get_building_type(cell) == "elevator":
+		return true # シャフトをクリックするとカゴを呼べる
 	return is_cell_empty(cell) and funds >= BUILDINGS[current_mode].cost
 
 # ---------------------------------------------------
@@ -375,10 +408,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if current_mode == MODE_RESIDENT:
 			handle_resident_click(map_pos)
+		elif current_mode == "elevator" and get_building_type(map_pos) == "elevator":
+			call_elevator(map_pos)
 		else:
 			build_at(map_pos)
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
 		demolish_at(map_pos)
+
+# シャフトのマスをクリックしたとき、その階にカゴを呼ぶ
+func call_elevator(cell: Vector2i):
+	if elevator_system.call_car(cell):
+		show_message("エレベーターを %s に呼びました" % cell)
 
 # 建設処理
 func build_at(map_pos: Vector2i):
@@ -393,6 +433,7 @@ func build_at(map_pos: Vector2i):
 	funds -= data.cost
 	tile_map.set_cell(map_pos, data.source_id, Vector2i(0, 0))
 	building_grid[map_pos] = {"type": current_mode}
+	elevator_system.rebuild()
 	update_funds_display()
 	show_message("%sを建設しました %s" % [data.name, map_pos])
 
@@ -407,5 +448,6 @@ func demolish_at(map_pos: Vector2i):
 	funds += refund
 	tile_map.erase_cell(map_pos)
 	building_grid.erase(map_pos)
+	elevator_system.rebuild()
 	update_funds_display()
 	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, map_pos, refund])
