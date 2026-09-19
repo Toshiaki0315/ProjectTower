@@ -291,6 +291,7 @@ func create_ui():
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
 		"オフィスの評価: 毎日の決算で、社員のその日の最大ストレスの平均から 良い（緑）・普通（黄）・悪い（赤）を付ける",
 		"　悪い日が3日続くとテナントが退去して空室（賃料なし）。2日後に新しいテナントが入居する",
+		"ホテル・住宅の評価: 客室は泊まった客のストレスで決まり、悪いと客が来にくい。住宅は悪い日が3日続くと家族が退去（販売収入を返金）",
 		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
 		"スクロール: マウスホイールで上下、Shift+ホイールで左右、右端のスクロールバー",
 		"ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ",
@@ -444,7 +445,8 @@ func update_hover_label():
 	if type == "office" and tenant_system.get_rating_text(cell) != "":
 		text += "（%s）" % tenant_system.get_rating_text(cell)
 	if hotel_system.is_room_type(type):
-		text += "（%s）" % hotel_system.get_room_state_text(cell)
+		var room_rating: String = tenant_system.get_room_rating_text(cell)
+		text += "（%s%s）" % [hotel_system.get_room_state_text(cell), "・" + room_rating if room_rating != "" else ""]
 	elif type == "restaurant":
 		text += "（客 %d人）" % commerce_system.count_eating_at(cell)
 	elif event_system.is_hall_type(type):
@@ -457,7 +459,8 @@ func update_hover_label():
 				loads.append("%d/%d" % [car.passengers.size(), car.CAPACITY])
 			text += "（カゴ%d台: %s人）" % [cars.size(), "・".join(loads)]
 	elif type == "housing":
-		text += "（%s）" % housing_system.get_home_state_text(cell)
+		var home_rating: String = tenant_system.get_home_rating_text(cell)
+		text += "（%s%s）" % [housing_system.get_home_state_text(cell), "・" + home_rating if home_rating != "" else ""]
 	elif type == "recycling":
 		text += "（ビル全体の処理能力 %d/日）" % economy_system.recycling_capacity()
 	var resident = get_resident_at(cell)

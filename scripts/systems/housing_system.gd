@@ -61,6 +61,8 @@ func _process(_delta: float) -> void:
 	var day: int = world.clock.day
 	var now: int = world.clock.minute_of_day()
 	for cell in homes:
+		if world.tenant_system.is_home_vacant(cell):
+			continue # 家族が退去した後、次の入居者を募集するまでは誰も来ない
 		for m in homes[cell].members:
 			process_member(cell, homes[cell], m, day, now)
 
@@ -97,6 +99,18 @@ func process_member(cell: Vector2i, home: Dictionary, m: Dictionary, day: int, n
 		var entrance = world.nearest_entrance(resident.cell)
 		if entrance != null and resident.go_to(entrance):
 			m.leaving = true
+
+# 家族が退去する（評価の悪い日が続いたとき）。家族はビルから出ていき、住宅は入居前の状態に戻る。
+# 戻り値: 返金する販売収入
+func move_out(origin: Vector2i) -> int:
+	var home = homes[origin]
+	for m in home.members:
+		if is_instance_valid(m.resident):
+			m.resident.queue_free()
+		m.resident = null
+		m.leaving = false
+	home.moved_in = false
+	return SALE_PRICE
 
 func spawn_at_entrance(m: Dictionary) -> void:
 	var entrance = world.nearest_entrance(m.room)

@@ -9,6 +9,7 @@ extends Node
 #   宿泊料:   その日にチェックアウトした客の宿泊料（hotel_system が記録する）
 #   飲食売上: その日に飲食店で食事をした客の代金（commerce_system が記録する）
 #   住宅販売: その日に入居が決まった住宅の販売収入（housing_system が記録する）
+#   住宅の返金: 評価の悪い日が続いて家族が退去した住宅の販売収入を返す（tenant_system が決める）
 #   イベント: その日に結婚式場・イベントホールに来た客の料金（event_system が記録する）
 #   評価ボーナス: 賃料と宿泊料に、ビルの評価（★）に応じた割合を上乗せ（rating_system）
 #   維持費:   建物ごとの MAINTENANCE × 建物（ユニット）の数
@@ -33,7 +34,7 @@ const OUTSOURCE_COST := 1000    # 処理しきれないゴミ1あたりの外部
 
 var world: Node2D # main.gd
 var last_day := 1 # 最後に決算した日の翌日（= 今日）
-var last_report := {} # 最後の決算: {"day", "rent", "hotel", "food", "housing", "event", "bonus", "maintenance", "garbage", "garbage_cost", "total"}
+var last_report := {} # 最後の決算: {"day", "rent", "hotel", "food", "housing", "event", "bonus", "maintenance", "garbage", "garbage_cost", "refund", "total"}
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -70,9 +71,12 @@ func settle(day: int) -> void:
 		+ event_visitors / MEALS_PER_GARBAGE
 	var garbage_cost := maxi(garbage - recycling_capacity(), 0) * OUTSOURCE_COST
 	var bonus := int((rent + hotel) * world.rating_system.bonus_rate())
-	var total := rent + hotel + food + housing + event + bonus - maintenance - garbage_cost
+	# テナントの評価（人のストレスから）と、オフィス・住宅の退去・入居。住宅の退去では販売収入を返金する
+	var tenants: Dictionary = world.tenant_system.evaluate_day(day)
+	var refund: int = tenants.refund
+	var total := rent + hotel + food + housing + event + bonus - maintenance - garbage_cost - refund
 	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "housing": housing, "event": event, "bonus": bonus, "maintenance": maintenance,
-		"garbage": garbage, "garbage_cost": garbage_cost, "total": total}
+		"garbage": garbage, "garbage_cost": garbage_cost, "refund": refund, "total": total}
 	world.funds += total
 	world.update_funds_display() # last_reportを更新してから表示する（前日の収支も表示されるため）
 	# 0円の項目は省いて短くする
@@ -84,10 +88,10 @@ func settle(day: int) -> void:
 		items.append("維持費 -%s円" % world.format_money(maintenance))
 	if garbage_cost > 0:
 		items.append("ゴミ処理 -%s円（ゴミ%d・処理能力%d）" % [world.format_money(garbage_cost), garbage, recycling_capacity()])
+	if refund > 0:
+		items.append("住宅の返金 -%s円（%d戸退去）" % [world.format_money(refund), tenants.homes_left])
 	items.append("合計 %s円" % world.format_money(total, true))
 	var message := "%d日目の決算: %s" % [day, " / ".join(items)]
-	# オフィスごとの評価（社員のストレスから）と、退去・入居
-	var tenants: Dictionary = world.tenant_system.evaluate_day(day)
 	if tenants.left > 0 or tenants.moved_in > 0:
 		message += " / オフィス退去 %d棟・入居 %d棟" % [tenants.left, tenants.moved_in]
 	# 評価（★）の判定。昇格したら、メッセージの先頭で知らせる（ボーナスは翌日の決算から）

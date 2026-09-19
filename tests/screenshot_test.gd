@@ -29,7 +29,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario]:
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
 		await start_main(scenario != run_empty_start_scenario)
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
@@ -935,7 +935,7 @@ func run_housing_scenario() -> bool:
 			inside += 1
 	check(inside == 0, "出かけた入居者はビルの外にいる")
 	await hover_cell(homes[0])
-	check(main.hover_label.text.contains("住宅（在宅 0/3人）"), "外出中は在宅0人と出る")
+	check(main.hover_label.text.contains("住宅（在宅 0/3人"), "外出中は在宅0人と出る（決算の後なので評価も続けて出る）")
 	
 	# 2日目の夕方: 帰ってくる（販売収入は2回目は入らない）
 	main.clock.set_time(2, 16, 59)
@@ -1658,6 +1658,109 @@ func run_vacancy_scenario() -> bool:
 	check(tenants.offices[vacant[0]].rating == tenants.Rating.GOOD and tenants.offices[vacant[0]].bad_days == 0, "新しいテナントの評価は「良い」から始まる")
 	check(main.message_label.text.contains("入居 %d棟" % vacant.size()), "決算のメッセージに入居した数が出る")
 	return true
+
+# ---------------------------------------------------
+# シナリオ28: ホテルの客室の評価
+# 2階(y=17)のブロックの右隣にシングル（x=8〜9）とハウスキーパー室（x=10〜11）。(8,18)の階段で上がる。
+# 泊まった客のストレスが高いと、チェックアウトで部屋の評価が悪くなり、客が来にくくなる。
+# ---------------------------------------------------
+func run_hotel_rating_scenario() -> bool:
+	print("[シナリオ] ホテルの客室の評価")
+	main.funds = 10000000
+	main.select_mode("stairs")
+	main.build_at(Vector2i(8, 18))
+	var tenants = main.tenant_system
+	var hotel = main.hotel_system
+	var room := Vector2i(8, 17)
+	main.select_mode("hotel")
+	main.build_at(room)
+	main.select_mode("housekeeping")
+	main.build_at(Vector2i(10, 17))
+	check(tenants.hotel_checkin_chance(room) == 1.0, "まだ評価のない部屋には、客が必ず来る")
+	
+	# 1日目の夜: 客が泊まりに来る。客をイライラさせておく（エレベーター待ちでストレスがたまった想定）
+	main.clock.set_time(1, 16, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 21 * 60 + 30, 30.0)
+	check(hotel.rooms[room].state == hotel.RoomState.OCCUPIED, "客が泊まっている")
+	for guest in hotel.rooms[room].guests:
+		guest.stress = 90.0
+	await wait_frames(2)
+	# 2日目の朝: チェックアウトで部屋の評価が決まる
+	main.clock.set_time(2, 6, 59)
+	await wait_until(func(): return hotel.rooms[room].state != hotel.RoomState.OCCUPIED, 30.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(tenants.rooms.has(room) and tenants.rooms[room].rating == tenants.Rating.BAD, "ストレスの高い客が泊まった部屋は、評価が悪くなる")
+	await hover_cell(room + Vector2i(1, 0))
+	check(main.hover_label.text.contains("評価: 悪い"), "客室にカーソルを合わせると評価が出る")
+	check(is_equal_approx(tenants.hotel_checkin_chance(room), 0.2), "評価の悪い部屋に客が来る確率は20%")
+	var nights := 0
+	for day in range(1, 101):
+		if hotel.checkin_roll(room, day) < tenants.hotel_checkin_chance(room):
+			nights += 1
+	check(nights > 5 and nights < 40, "評価の悪い部屋には、100日のうち2割くらいしか客が来ない（%d日）" % nights)
+	tenants.rate_hotel_stay(room, 10.0)
+	check(tenants.rooms[room].rating == tenants.Rating.GOOD and tenants.hotel_checkin_chance(room) == 1.0, "次の客が快適に泊まれば評価は良くなり、また毎晩客が来る")
+	await capture("hotel_rating_01")
+	return true
+
+# ---------------------------------------------------
+# シナリオ29: 住宅の評価と退去
+# 2階(y=17)のブロックの右隣に住宅（x=8〜10）。(8,18)の階段で上がる。
+# 家族のストレスが高い日が3日続くと退去して販売収入を返金し、2日後にまた入居者を募集する。
+# ---------------------------------------------------
+func run_home_rating_scenario() -> bool:
+	print("[シナリオ] 住宅の評価と退去")
+	main.funds = 10000000
+	main.select_mode("stairs")
+	main.build_at(Vector2i(8, 18))
+	var tenants = main.tenant_system
+	var housing = main.housing_system
+	var home := Vector2i(8, 17)
+	main.select_mode("housing")
+	main.build_at(home)
+	
+	# 1〜3日目（平日）: 夕方に家族が帰ってくる。家族をイライラさせておき、その日の決算まで進める
+	for day in [1, 2, 3]:
+		await run_home_evening(day, true)
+	check(tenants.homes[home].vacant, "家族のストレスが高い日が3日続くと、家族が退去する")
+	check(not housing.homes[home].moved_in and housing.count_at_home() == 0, "退去すると住宅は空になる")
+	check(main.economy_system.last_report.get("refund") == 700000, "退去した住宅の販売収入70万円を返金する")
+	check(main.message_label.text.contains("住宅の返金 -700,000円（1戸退去）"), "決算のメッセージに返金が出る")
+	await hover_cell(home)
+	check(main.hover_label.text.contains("退去・2日後に入居者を募集"), "カーソルを合わせると、入居者の募集までの日数が出る")
+	await capture("home_rating_01_moved_out")
+	
+	# 4日目: 退去した後は、次の入居者を募集するまで誰も来ない
+	await run_home_evening(4, false)
+	check(not housing.homes[home].moved_in, "退去した後の2日間は、新しい家族は来ない")
+	# 5日目の決算で募集を再開し、6日目（土・休日）の夕方に新しい家族が入居する
+	await run_home_evening(5, false)
+	check(not tenants.homes[home].vacant, "退去して2日たつと、また入居者を募集する")
+	await run_home_evening(6, false)
+	check(housing.homes[home].moved_in, "新しい家族が入居する")
+	check(main.economy_system.last_report.get("housing") == 700000, "新しい家族の入居で、また販売収入70万円が入る")
+	return true
+
+# 指定した日の夕方に住宅の家族を帰らせ（stressed なら全員のストレスを高くする）、その日の決算まで進める
+func run_home_evening(day: int, stressed: bool) -> void:
+	var start := 14 * 60 + 59 if main.clock.is_holiday(day) else 16 * 60 + 59
+	main.clock.set_time(day, start / 60, start % 60)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 20 * 60 + 30, 30.0)
+	if stressed:
+		for home in main.housing_system.homes.values():
+			for m in home.members:
+				if is_instance_valid(m.resident):
+					m.resident.stress = 90.0
+		await wait_frames(2)
+	main.clock.set_time(day, 23, 58)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == day, 10.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
 func run_day(day: int) -> void:

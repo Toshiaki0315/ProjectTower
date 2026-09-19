@@ -65,7 +65,7 @@ func rebuild() -> void:
 				continue # 部屋は左端のマスで表す
 			room_cells.append(cell)
 			if not rooms.has(cell):
-				rooms[cell] = {"type": type, "state": RoomState.CLEAN, "guests": [], "checkin_day": 0, "cleaner": null}
+				rooms[cell] = {"type": type, "state": RoomState.CLEAN, "guests": [], "checkin_day": 0, "cleaner": null, "stay_peak": 0.0}
 	for cell in rooms.keys():
 		if not room_cells.has(cell):
 			var room = rooms[cell]
@@ -112,6 +112,10 @@ func process_rooms() -> void:
 				# チェックインの時刻になったら、入口から客（部屋の定員の人数）が来る（時刻は部屋と日ごとに決まった乱数）
 				if room.checkin_day != day and now >= checkin_minute(cell, day) and now < CHECKIN_END:
 					room.checkin_day = day
+					# 評価の悪い部屋ほど客が来にくい（来るかどうかは部屋と日ごとに決まった乱数で決める）
+					if checkin_roll(cell, day) >= world.tenant_system.hotel_checkin_chance(cell):
+						continue
+					room.stay_peak = 0.0
 					var count: int = ROOM_TYPES[room.type].guests
 					var unit_cells: Array[Vector2i] = world.get_unit_cells(cell)
 					for i in count:
@@ -124,10 +128,19 @@ func process_rooms() -> void:
 						room.state = RoomState.OCCUPIED
 			RoomState.OCCUPIED:
 				room.guests = room.guests.filter(is_instance_valid)
+				# 泊まっている間（来るときを含む）のストレスの一番高い値を記録する
+				for guest in room.guests:
+					room.stay_peak = maxf(room.stay_peak, guest.stress)
 				if room.guests.is_empty():
 					room.state = RoomState.DIRTY # 客がいなくなった（撤去など）。宿泊料はなし
 				elif day > room.checkin_day and now >= checkout_minute(cell, day) and not is_any_guest_riding(room):
 					checkout(cell, room)
+
+# その夜に客が来るかどうかを決める乱数（0〜1）。客室の評価で決まる確率より小さければ来る
+func checkin_roll(cell: Vector2i, day: int) -> float:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([cell, day, "checkin"])
+	return rng.randf()
 
 func checkin_minute(cell: Vector2i, day: int) -> int:
 	return random_minute(cell, day, CHECKIN_START, CHECKIN_END)
@@ -158,8 +171,9 @@ func spawn_guest(cell: Vector2i):
 	return guest
 
 # チェックアウト: 宿泊料を受け取り、客を入口へ向かわせ、部屋を清掃待ちにする
-func checkout(_cell: Vector2i, room: Dictionary) -> void:
+func checkout(cell: Vector2i, room: Dictionary) -> void:
 	var day: int = world.clock.day
+	world.tenant_system.rate_hotel_stay(cell, room.stay_peak) # 泊まった客のストレスで部屋の評価が決まる
 	revenue_by_day[day] = revenue_by_day.get(day, 0) + ROOM_TYPES[room.type].rate
 	checkouts_by_day[day] = checkouts_by_day.get(day, 0) + 1
 	for guest in room.guests:
