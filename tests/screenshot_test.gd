@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario]:
 		await start_main()
 		await scenario.call()
 	Engine.time_scale = 1.0
@@ -196,6 +196,54 @@ func run_camera_scenario() -> void:
 	await hold_key(KEY_W, 0.2)
 	check(cam.position.y < pos_before.y, "Wキーで上に移動する")
 	await capture("camera_03_moved")
+
+# ---------------------------------------------------
+# シナリオ4: UIバーとマス目の表示
+# ---------------------------------------------------
+func run_ui_scenario() -> void:
+	print("[シナリオ] UIバーとマス目")
+	var overlay = main.grid_overlay
+	
+	# 上部バーの上をクリックしても、その下のマスには建設されない
+	var bar_pos := Vector2(850, 15) # ボタンのない位置
+	var cell_under_bar: Vector2i = main.tile_map.local_to_map(main.camera.screen_to_world(bar_pos))
+	await click_at(bar_pos, MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(cell_under_bar) and main.funds == 1000000, "上部バーの上をクリックしても建設されない")
+	check(main.current_mode == "office", "バーの余白をクリックしてもモードは変わらない")
+	check(not overlay.hover_visible, "上部バーの上ではマスを強調表示しない")
+	
+	# カーソル下のマスの強調表示と情報
+	var empty_cell := Vector2i(3, 13)
+	await hover_cell(empty_cell)
+	check(overlay.hover_visible and overlay.hover_cell == empty_cell, "カーソル下のマスを強調表示する")
+	check(main.can_click_cell(empty_cell), "空きマスは建設可能（緑）と判定される")
+	check(main.hover_label.text.contains(str(empty_cell)) and main.hover_label.text.contains("空き"), "下部バーにマスの座標と「空き」が出る")
+	await capture("ui_01_hover_empty")
+	
+	var office_cell := Vector2i(0, 16)
+	await hover_cell(office_cell)
+	check(not main.can_click_cell(office_cell), "建物のあるマスは建設不可（赤）と判定される")
+	check(main.hover_label.text.contains("オフィス"), "下部バーに建物の種類が出る")
+	
+	# 操作説明の開閉
+	var help_button: Button = null
+	for node in main.find_children("*", "Button", true, false):
+		if node.text == "操作説明":
+			help_button = node
+	check(help_button != null and not main.help_panel.visible, "操作説明は最初は閉じている")
+	await click_button(help_button)
+	check(main.help_panel.visible, "操作説明ボタンで説明が開く")
+	await capture("ui_02_help_open")
+	await click_button(help_button)
+	check(not main.help_panel.visible, "もう一度押すと説明が閉じる")
+
+func hover_cell(cell: Vector2i) -> void:
+	var tile_map: TileMapLayer = main.tile_map
+	var motion := InputEventMouseMotion.new()
+	motion.position = tile_map.get_global_transform_with_canvas() * tile_map.map_to_local(cell)
+	motion.global_position = motion.position
+	root.push_input(motion)
+	await wait_frames(2)
 
 # ---------------------------------------------------
 # 操作・撮影のヘルパー

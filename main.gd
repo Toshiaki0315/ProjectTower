@@ -1,6 +1,7 @@
 extends Node2D
 
 const Resident := preload("res://resident.gd")
+const GridOverlay := preload("res://grid_overlay.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
@@ -19,7 +20,10 @@ var funds: int = 1000000
 var current_mode: String = "office"
 var funds_label: Label # 資金表示用のUIラベル
 var message_label: Label # 操作結果のメッセージ表示用
+var hover_label: Label # カーソル下のマスの情報表示用
+var help_panel: Control # 操作説明（ボタンで表示/非表示）
 var mode_buttons: Dictionary = {} # モード名 -> Button
+var grid_overlay # マス目の表示
 
 var residents: Array = [] # 配置済みの住人
 var selected_resident = null # 行き先の指示を待っている住人
@@ -37,8 +41,20 @@ func _ready() -> void:
 	load_grid_from_tilemap()
 	tile_map.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST # 拡大してもタイルをぼかさない
 	focus_camera_on_building()
+	grid_overlay = GridOverlay.new()
+	grid_overlay.setup(self)
+	tile_map.add_child(grid_overlay)
 	create_ui()
 	update_funds_display()
+
+func _process(_delta: float) -> void:
+	grid_overlay.update_hover()
+	update_hover_label()
+
+func _notification(what: int) -> void:
+	# マウスがウィンドウの外に出たらマスの強調表示を消す
+	if what == NOTIFICATION_WM_MOUSE_EXIT and grid_overlay:
+		grid_overlay.hover_enabled = false
 
 # 建物全体が画面中央に来るようにカメラを合わせる
 func focus_camera_on_building():
@@ -51,26 +67,32 @@ func focus_camera_on_building():
 # ---------------------------------------------------
 # UIの自動生成ロジック
 # ---------------------------------------------------
+# 画面構成:
+#   上部バー    … 資金 / モード切り替えボタン / 操作説明ボタン
+#   操作説明    … 上部バーの下に表示（ボタンで開閉）
+#   （マップ）  … クリックはそのままマップに届く
+#   下部バー    … 操作結果のメッセージ / カーソル下のマスの情報
+# バーの上のクリックはバーが受け止めるので、下のマスに建設されることはない。
 func create_ui():
 	var canvas = CanvasLayer.new()
 	add_child(canvas)
-
-	# 縦に並べるコンテナ（資金表示とボタン群を縦に分ける）
-	var vbox = VBoxContainer.new()
-	vbox.position = Vector2(20, 20)
-	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE # ボタン以外の余白のクリックはマップに通す
-	canvas.add_child(vbox)
-
-	# 資金表示ラベルの作成
+	
+	var layout = VBoxContainer.new()
+	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_theme_constant_override("separation", 0)
+	canvas.add_child(layout)
+	
+	# --- 上部バー ---
+	var top_row = HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 8)
+	layout.add_child(make_bar(top_row))
+	
 	funds_label = Label.new()
-	funds_label.add_theme_font_size_override("font_size", 24) # 少し文字を大きく
-	vbox.add_child(funds_label)
-
-	# ボタンを横に並べるコンテナ
-	var hbox = HBoxContainer.new()
-	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(hbox)
-
+	funds_label.add_theme_font_size_override("font_size", 20)
+	funds_label.custom_minimum_size.x = 260 # 金額の桁が変わってもボタンの位置がずれないように
+	top_row.add_child(funds_label)
+	
 	# 同じグループのボタンは1つだけ押下状態になる（ラジオボタン的な挙動）
 	var group = ButtonGroup.new()
 	for mode in BUILDINGS.keys() + [MODE_RESIDENT]:
@@ -78,20 +100,70 @@ func create_ui():
 		btn.toggle_mode = true
 		btn.button_group = group
 		btn.pressed.connect(func(): select_mode(mode))
-		hbox.add_child(btn)
+		top_row.add_child(btn)
 		mode_buttons[mode] = btn
-
-	# 操作説明
+	
+	top_row.add_child(make_spacer())
+	
+	var help_button = Button.new()
+	help_button.text = "操作説明"
+	help_button.toggle_mode = true
+	help_button.toggled.connect(func(on): help_panel.visible = on)
+	top_row.add_child(help_button)
+	
+	# --- 操作説明（上部バーの下、右寄せ） ---
+	var help_row = HBoxContainer.new()
+	help_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(help_row)
+	help_row.add_child(make_spacer())
 	var help_label = Label.new()
-	help_label.text = "左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）\n住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動\nカメラ: ホイール/ピンチでズーム、2本指スクロール/中ボタンドラッグ/WASDで移動"
-	vbox.add_child(help_label)
-
-	# 操作結果のメッセージ
+	help_label.text = "\n".join([
+		"左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）",
+		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
+		"ズーム: マウスホイール / トラックパッドのピンチ",
+		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
+	])
+	help_panel = make_bar(help_label)
+	help_panel.visible = false
+	help_row.add_child(help_panel)
+	
+	# --- マップ部分（何も置かず、クリックを通す） ---
+	var map_space = make_spacer()
+	map_space.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(map_space)
+	
+	# --- 下部バー ---
+	var bottom_row = HBoxContainer.new()
+	layout.add_child(make_bar(bottom_row))
+	
 	message_label = Label.new()
 	message_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
-	vbox.add_child(message_label)
-
+	message_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bottom_row.add_child(message_label)
+	
+	hover_label = Label.new()
+	bottom_row.add_child(hover_label)
+	
 	update_mode_buttons()
+
+# 半透明の背景を持つバーを作る（中身をcontentとして入れる）
+func make_bar(content: Control) -> PanelContainer:
+	var panel = PanelContainer.new()
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.13, 0.9)
+	style.set_content_margin_all(6)
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	panel.add_theme_stylebox_override("panel", style)
+	panel.add_child(content)
+	return panel
+
+# 余白を埋めるだけの透明なControl（クリックは通す）
+func make_spacer() -> Control:
+	var spacer = Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return spacer
 
 # モードを切り替える
 func select_mode(mode: String):
@@ -124,6 +196,17 @@ func update_mode_buttons():
 func update_funds_display():
 	if funds_label:
 		funds_label.text = "現在の資金: " + str(funds) + "円"
+
+# 下部バーにカーソル下のマスの座標と建物を表示する
+func update_hover_label():
+	if not hover_label:
+		return
+	if not grid_overlay.hover_visible:
+		hover_label.text = ""
+		return
+	var cell: Vector2i = grid_overlay.hover_cell
+	var type = get_building_type(cell)
+	hover_label.text = "マス %s: %s" % [cell, BUILDINGS[type].name if type != "" else "空き"]
 
 # 画面とログにメッセージを出す
 func show_message(text: String):
@@ -231,6 +314,12 @@ func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 				queue.append(next)
 	return result
 
+# 今のモードでそのマスを左クリックしたときに操作が成立するか（強調表示の色分けに使う）
+func can_click_cell(cell: Vector2i) -> bool:
+	if current_mode == MODE_RESIDENT:
+		return not is_cell_empty(cell)
+	return is_cell_empty(cell) and funds >= BUILDINGS[current_mode].cost
+
 # ---------------------------------------------------
 # 住人の管理
 # ---------------------------------------------------
@@ -272,6 +361,11 @@ func handle_resident_click(cell: Vector2i):
 # クリックして建設・撤去するロジック
 # ---------------------------------------------------
 func _unhandled_input(event: InputEvent) -> void:
+	# UIの上以外でマウスが動いたら、カーソル下のマスの強調表示を更新する
+	if event is InputEventMouseMotion:
+		grid_overlay.hover_screen_pos = event.position
+		grid_overlay.hover_enabled = true
+		return
 	if not (event is InputEventMouseButton and event.pressed):
 		return
 
