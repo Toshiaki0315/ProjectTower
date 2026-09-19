@@ -110,11 +110,14 @@ func save_screenshots() -> void:
 		await process_frame
 	m.funds = 100000000
 	# 更地から建てる: 1階はロビー（入口は左端）、2階から上にテナント、x=8 のシャフトでつなぐ
+	# 建物は下の階に建物がないと建てられないので、1階から上へ（地下は1階から下へ）順に建てる
 	build(m, "lobby", range(-12, 8).map(func(x): return Vector2i(x, 18)))
-	build(m, "elevator", range(11, 20).map(func(y): return Vector2i(8, y)))
+	build(m, "lobby", range(9, 19).map(func(x): return Vector2i(x, 18)))
+	build(m, "elevator", range(18, 10, -1).map(func(y): return Vector2i(8, y)))
+	build(m, "elevator", [Vector2i(8, 19)])
 	m.elevator_system.add_car(Vector2i(8, 12))
 	m.elevator_system.add_car(Vector2i(8, 15))
-	for y in [15, 16, 17]:
+	for y in [17, 16, 15]:
 		build(m, "office", [Vector2i(-12, y), Vector2i(-8, y), Vector2i(-4, y), Vector2i(0, y), Vector2i(4, y)])
 	build(m, "office", [Vector2i(0, 14), Vector2i(4, 14)])
 	build(m, "event_hall", [Vector2i(2, 13)])

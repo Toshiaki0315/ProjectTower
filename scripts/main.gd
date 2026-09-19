@@ -74,6 +74,9 @@ var mode_select: OptionButton # 建設メニュー（リストから建物など
 var mode_info_label: Label # 選んだものの費用・大きさの表示
 var v_scroll: VScrollBar # マップの上下スクロールバー
 var grid_overlay # マス目の表示
+# 建物の支えのルール（get_support_problem）を使うか。ゲームでは常に true。
+# テストで、支えと関係のない仕組みを好きな配置で確かめるときだけ false にする
+var require_support := true
 var elevator_system # エレベーターのシャフトとカゴの管理
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
@@ -625,8 +628,38 @@ func get_build_problem(origin: Vector2i, type: String) -> String:
 			SKY_LOBBY_INTERVAL, SKY_LOBBY_INTERVAL * 2, SKY_LOBBY_INTERVAL * 3, get_floor_name(origin.y)]
 	if floors == "" and origin.y == ground_y:
 		return "1階はロビー専用です（1階に建てられるのはロビー・階段・エレベーターだけ）"
+	var support := get_support_problem(origin, type)
+	if support != "":
+		return support
 	if funds < BUILDINGS[type].cost:
 		return "資金不足です！"
+	return ""
+
+# 建物の支え: 地上の建物は、一番下の階の全部のマスの真下に建物がないと建てられない（空中に浮かせない）。
+# 地下の建物は、一番上の階の全部のマスの真上に建物がないと建てられない（上の階から掘り進める）。
+# 1階の建物は地面が支えるので、条件なし。支えられているなら "" を返す
+func get_support_problem(origin: Vector2i, type: String) -> String:
+	if not require_support or origin.y == ground_y:
+		return ""
+	for i in get_width(type):
+		if origin.y < ground_y and is_cell_empty(origin + Vector2i(i, 1)):
+			return "下の階に建物がないと建てられません（建物の下は全部埋まっている必要があります）"
+		if origin.y > ground_y and is_cell_empty(origin + Vector2i(i, -get_height(type))):
+			return "地下は、上の階に建物がある場所にしか建てられません"
+	return ""
+
+# 撤去すると支えを失う建物があるか。地上の建物は真上、地下の建物は真下に、別の建物があると撤去できない
+#（撤去できるなら "" を返す）
+func get_demolish_problem(cell: Vector2i) -> String:
+	if not require_support:
+		return ""
+	var unit := get_unit_cells(cell)
+	for c in unit:
+		var neighbor: Vector2i = c + (Vector2i.DOWN if c.y > ground_y else Vector2i.UP)
+		if not is_cell_empty(neighbor) and not unit.has(neighbor):
+			if c.y > ground_y:
+				return "下の階の建物を支えているため撤去できません（下の階から撤去してください）"
+			return "上の階の建物を支えているため撤去できません（上の階から撤去してください）"
 	return ""
 
 # 指定した種類の建物の左端のマス（= 建物1つにつき1マス）をすべて返す
@@ -907,6 +940,10 @@ func demolish_at(map_pos: Vector2i):
 	if is_cell_empty(map_pos):
 		return
 	
+	var problem := get_demolish_problem(map_pos)
+	if problem != "":
+		show_message(problem)
+		return
 	var type = get_building_type(map_pos)
 	var origin: Vector2i = building_grid[map_pos].origin
 	var refund = int(BUILDINGS[type].cost * REFUND_RATE)

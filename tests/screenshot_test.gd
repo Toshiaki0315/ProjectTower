@@ -30,11 +30,14 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
 		await start_main(scenario != run_empty_start_scenario)
+		# 建物の支えのルールは、ルールを確かめるシナリオでだけ使う。
+		# ほかのシナリオは、エレベーターや収支などを確かめやすいよう、空中にも建てられる配置で組んである
+		main.require_support = scenario in [run_empty_start_scenario, run_atrium_scenario, run_express_elevator_scenario, run_support_scenario]
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
 		if finished != true:
@@ -73,7 +76,7 @@ func build_standard_block() -> void:
 	for x in range(-8, 8):
 		main.build_at(Vector2i(x, 18))
 	main.select_mode("office")
-	for y in [15, 16, 17]:
+	for y in [17, 16, 15]: # 建物は下の階から積み上げる
 		for x in [-8, -4, 0, 4]:
 			main.build_at(Vector2i(x, y))
 	main.funds = 1000000
@@ -1833,11 +1836,17 @@ func run_sky_lobby_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ32: 急行エレベーター（1階とスカイロビーの階だけに停まる）
-#   x=8 の急行シャフト（1階〜15階。y=18〜4）で15階のスカイロビー（x=3〜7）へ上がり、
-#   x=2 の標準シャフト（15階〜18階。y=4〜1）に乗り換えて、17階のオフィス（y=2、x=-2〜1）へ行く。
+#   共通のビルの上に14階（y=5）までオフィスを積み、x=8 の急行シャフト（1階〜15階。y=18〜4）で
+#   15階のスカイロビー（x=3〜7）へ上がり、x=2 の標準シャフト（15階〜18階。y=4〜1）に乗り換えて、
+#   17階のオフィス（y=2、x=-2〜1）へ行く。建物の支えのルールを守って、下の階から建てる。
 # ---------------------------------------------------
 func run_express_elevator_scenario() -> bool:
 	print("[シナリオ] 急行エレベーター")
+	main.funds = 100000000
+	main.select_mode("office")
+	for y in range(14, 4, -1):
+		for x in [-8, -4, 0, 4]:
+			main.build_at(Vector2i(x, y))
 	main.funds = 10000000
 	await choose_mode("express_elevator")
 	check(main.mode_info_label.text == "建設費 120,000円・横1マス（1階とスカイロビーの階だけに停まる）", "建設メニューに停まる階の説明が出る")
@@ -1851,8 +1860,9 @@ func run_express_elevator_scenario() -> bool:
 	for y in range(4, 0, -1):
 		main.build_at(Vector2i(2, y))
 	main.select_mode("office")
-	main.build_at(Vector2i(-2, 2))
-	main.build_at(Vector2i(9, 10)) # 急行のシャフトの途中の階（9階）の隣のオフィス
+	for y in [4, 3, 2]:
+		main.build_at(Vector2i(-2, y))
+	check(main.get_building_type(Vector2i(0, 2)) == "office" and main.get_building_type(Vector2i(2, 1)) == "elevator", "15階から上も、下の階から積み上げて建てられる")
 	
 	# 急行のカゴは速く、定員が多い
 	var express = main.elevator_system.get_car_at(Vector2i(8, 18))
@@ -1865,7 +1875,7 @@ func run_express_elevator_scenario() -> bool:
 	check(main.can_move(Vector2i(8, 18), Vector2i(8, 4)) and main.can_move(Vector2i(8, 4), Vector2i(8, 18)), "急行は1階と15階の間を行き来できる")
 	check(not main.can_move(Vector2i(8, 18), Vector2i(8, 10)), "急行は途中の階（9階）には停まらない")
 	check(not main.can_move(Vector2i(8, 10), Vector2i(8, 4)), "途中の階からは急行に乗れない")
-	check(main.find_path(Vector2i(-8, 18), Vector2i(9, 10)).is_empty(), "急行のシャフトの途中の階にあるオフィスには行けない")
+	check(main.find_path(Vector2i(-8, 18), Vector2i(4, 10)).is_empty(), "急行のシャフトの途中の階（9階）の隣のオフィスには、急行では行けない")
 	check(not express.request_floor(10), "急行のカゴは途中の階の行き先ボタンを受け付けない")
 	
 	focus_camera(Vector2i(8, 10))
@@ -1905,6 +1915,67 @@ func run_express_elevator_scenario() -> bool:
 	focus_camera(Vector2i(4, 6))
 	await wait_frames(2)
 	await capture("express_02_arrived")
+	return true
+
+# ---------------------------------------------------
+# シナリオ33: 建物の支え（下の階に建物がないと建てられない）
+#   共通のビルは 1階（y=18）が x=-8〜7 のロビー、2〜4階（y=17〜15）が x=-8〜7 のオフィス。
+# ---------------------------------------------------
+func run_support_scenario() -> bool:
+	print("[シナリオ] 建物の支え")
+	main.funds = 10000000
+	focus_camera(Vector2i(2, 16))
+	await wait_frames(1)
+	await choose_mode("office")
+	# 5階（y=14）: 下の4階のオフィスの上なら建てられる
+	await click_cell(Vector2i(0, 14), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(0, 14)) == "office", "下の階が全部埋まっていれば建てられる")
+	# 右にはみ出す（x=8・9 の下が空いている）と建てられない
+	await click_cell(Vector2i(6, 14), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(6, 14)), "一部でも下が空いていると建てられない")
+	check(main.message_label.text.begins_with("下の階に建物がないと建てられません"), "建てられない理由（支えがない）がメッセージで出る")
+	await hover_cell(Vector2i(6, 14))
+	check(not main.can_click_cell(Vector2i(6, 14)), "支えがない場所は赤く表示される")
+	await click_cell(Vector2i(0, 12), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(0, 12)), "空中（下の階が空き）には建てられない")
+	await choose_mode("elevator")
+	await click_cell(Vector2i(-9, 17), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(-9, 17)), "エレベーターも下から積み上げる（ロビーの外の2階には建てられない）")
+	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(8, 17)) == "elevator", "1階から上へ積み上げれば建てられる")
+	
+	# 地下は上の階から掘り進める
+	await choose_mode("office")
+	await click_cell(Vector2i(0, 19), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(0, 19)) == "office", "ロビーの真下のB1階には建てられる")
+	await click_cell(Vector2i(0, 20), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(0, 20)) == "office", "B1階の真下のB2階にも建てられる")
+	await click_cell(Vector2i(10, 19), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(10, 19)), "上の階に建物がない地下には建てられない")
+	check(main.message_label.text == "地下は、上の階に建物がある場所にしか建てられません", "建てられない理由（地下）がメッセージで出る")
+	await capture("support_01")
+	
+	# 支えている建物は撤去できない（上の階から＝地下は下の階から撤去する）
+	var funds_before: int = main.funds
+	await click_cell(Vector2i(2, 15), MOUSE_BUTTON_RIGHT)
+	check(main.get_building_type(Vector2i(2, 15)) == "office", "上の階の建物を支えているオフィスは撤去できない")
+	check(main.message_label.text.begins_with("上の階の建物を支えているため撤去できません"), "撤去できない理由がメッセージで出る")
+	check(main.funds == funds_before, "撤去できないときは払い戻しもない")
+	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_RIGHT)
+	check(main.get_building_type(Vector2i(0, 18)) == "lobby", "上にオフィスが乗っているロビーは撤去できない")
+	await click_cell(Vector2i(0, 19), MOUSE_BUTTON_RIGHT)
+	check(main.get_building_type(Vector2i(0, 19)) == "office", "下にB2階があるB1階は撤去できない")
+	check(main.message_label.text.begins_with("下の階の建物を支えているため撤去できません"), "地下は下の階から撤去する")
+	await click_cell(Vector2i(0, 14), MOUSE_BUTTON_RIGHT)
+	check(main.is_cell_empty(Vector2i(0, 14)), "一番上の建物は撤去できる")
+	await click_cell(Vector2i(2, 15), MOUSE_BUTTON_RIGHT)
+	check(main.is_cell_empty(Vector2i(2, 15)), "上が空けば、下の建物も撤去できる")
+	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_RIGHT)
+	check(main.get_building_type(Vector2i(8, 18)) == "elevator", "シャフトの途中のマスも撤去できない（上のマスから撤去する）")
+	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_RIGHT)
+	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_RIGHT)
+	check(main.is_cell_empty(Vector2i(8, 18)), "シャフトは上のマスから順に撤去できる")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
