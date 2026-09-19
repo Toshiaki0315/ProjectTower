@@ -226,6 +226,10 @@ godot --path . -s res://tools/generate_readme_images.gd
 | ![警備室](docs/images/buildings/security.png) | 警備室 | 横2マス | 10万円 | 5,000円 | ★2に必要 |
 | ![メディカルセンター](docs/images/buildings/medical.png) | メディカルセンター | 横3マス | 20万円 | 1万円 | ★3に必要 |
 | ![地下鉄駅](docs/images/buildings/subway.png) | 地下鉄駅 | 横4マス | 100万円 | 1万円 | 地下にだけ建てられる。2つ目の入口になる。★4に必要 |
+| ![スロープ](docs/images/buildings/ramp.png) | スロープ | 横2マス | 20万円 | 2,000円 | 地下1階にだけ建てられる、車が下りてくる道 |
+| ![地下駐車場](docs/images/buildings/parking.png) | 地下駐車場 | 横4マス | 30万円 | 5,000円 | 1棟に4台。スロープまで車で行ける駐車場だけが使える |
+
+**車で来るお客さん:** 使える駐車場があると、昼（11〜14時）に1台につき2人がやって来て、一番近い飲食店で食事をして帰ります（1人1,000円）。駐車場から飲食店まで歩ける道（階段やエレベーター）がないと、誰も来ません。飲食店が1つもない日も来ません。
 
 ### 人の種類
 
@@ -239,6 +243,7 @@ godot --path . -s res://tools/generate_readme_images.gd
 | ![入居者](docs/images/people/housing.png) | 住宅の入居者（緑） | 住宅に住み、毎日出かけて帰ってくる |
 | ![結婚式の来客](docs/images/people/wedding.png) | 結婚式の来客（クリーム色） | 休日に結婚式場に来る |
 | ![イベントの来客](docs/images/people/event.png) | イベントの来客（オレンジ） | 休日にイベントホールに来る |
+| ![車で来た客](docs/images/people/parking.png) | 車で来たお客さん（緑） | 昼に地下駐車場に来て、飲食店で食事をして帰る |
 | ![選択中](docs/images/people/selected.png) | 選択中（黄色） | 「住人（テスト）」で置いて、行き先を待っている人 |
 
 ### 人の気持ち（ストレス）

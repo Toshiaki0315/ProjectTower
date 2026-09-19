@@ -4,6 +4,7 @@ const Resident := preload("res://scripts/actors/resident.gd")
 const PixelArt := preload("res://scripts/view/pixel_art.gd")
 const GridOverlay := preload("res://scripts/view/grid_overlay.gd")
 const ElevatorSystem := preload("res://scripts/systems/elevator_system.gd")
+const ParkingSystem := preload("res://scripts/systems/parking_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -25,7 +26,8 @@ const TenantSystem := preload("res://scripts/systems/tenant_system.gd")
 # height: 縦の階数（省略時は1）。左下のマスを基準に、上の階へ伸びる。人が歩けるのは一番下の階だけ
 # lobby: true ならロビー（1階の入口になる）
 # floors: 建てられる階。"ground" = 1階だけ / "basement" = 地下だけ / "any" = どこでも /
-#         "sky_lobby" = 15階・30階・45階…だけ（SKY_LOBBY_INTERVAL 階ごと） / 省略 = 1階以外
+#         "sky_lobby" = 15階・30階・45階…だけ（SKY_LOBBY_INTERVAL 階ごと） /
+#         "basement1" = 地下1階だけ（1階から車で下りられる深さ） / 省略 = 1階以外
 #         （1階はロビー専用のフロアなので、テナントや設備は1階に建てられない）
 # ---------------------------------------------------
 const BUILDINGS := {
@@ -44,6 +46,8 @@ const BUILDINGS := {
 	"wedding": {"name": "結婚式場", "cost": 1000000, "source_id": 12, "width": 6},
 	"event_hall": {"name": "イベントホール", "cost": 800000, "source_id": 13, "width": 6},
 	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14, "width": 4, "floors": "basement"},
+	"parking": {"name": "地下駐車場", "cost": 300000, "source_id": 22, "width": 4, "floors": "basement"},
+	"ramp": {"name": "スロープ", "cost": 200000, "source_id": 23, "width": 2, "floors": "basement1"},
 	"lobby": {"name": "ロビー", "cost": 30000, "source_id": 15, "floors": "ground", "lobby": true},
 	"lobby2": {"name": "吹き抜けロビー（2階分）", "cost": 60000, "source_id": 16, "floors": "ground", "height": 2, "lobby": true},
 	"lobby3": {"name": "吹き抜けロビー（3階分）", "cost": 90000, "source_id": 17, "floors": "ground", "height": 3, "lobby": true},
@@ -62,7 +66,7 @@ const MODE_SERVICE := "service"   # エレベーターの稼働時間帯を切�
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
 	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "service_elevator", "add_car", "set_home", "service"]},
-	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway"]},
+	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking"]},
 	{"name": "その他", "modes": ["resident"]},
 ]
 const SKY_LOBBY_INTERVAL := 15 # スカイロビーを建てられる階の間隔（15階・30階・45階…）
@@ -79,6 +83,7 @@ var mode_info_label: Label # 選んだものの費用・大きさの表示
 var v_scroll: VScrollBar # マップの上下スクロールバー
 var grid_overlay # マス目の表示
 var elevator_system # エレベーターのシャフトとカゴの管理
+var parking_system  # 地下駐車場とスロープ（車で来るお客さん）
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -115,6 +120,9 @@ func _ready() -> void:
 	elevator_system.setup(self)
 	add_child(elevator_system)
 	elevator_system.rebuild()
+	parking_system = ParkingSystem.new()
+	parking_system.setup(self)
+	add_child(parking_system)
 	clock = GameClock.new()
 	add_child(clock)
 	commute_system = CommuteSystem.new()
@@ -495,6 +503,8 @@ func update_hover_label():
 	elif type == "housing":
 		var home_rating: String = tenant_system.get_home_rating_text(cell)
 		text += "（%s%s）" % [housing_system.get_home_state_text(cell), "・" + home_rating if home_rating != "" else ""]
+	elif type == "parking":
+		text += "（%s）" % parking_system.get_parking_text(cell)
 	elif type == "recycling":
 		text += "（ビル全体の処理能力 %d/日）" % economy_system.recycling_capacity()
 	var resident = get_resident_at(cell)
@@ -637,6 +647,8 @@ func get_build_problem(origin: Vector2i, type: String) -> String:
 		return "%sは1階にしか建てられません" % BUILDINGS[type].name
 	if floors == "basement" and origin.y <= ground_y:
 		return "%sは地下（1階より下）にしか建てられません" % BUILDINGS[type].name
+	if floors == "basement1" and origin.y != ground_y + 1:
+		return "%sは地下1階にしか建てられません（1階から車で下りる道なので）" % BUILDINGS[type].name
 	if floors == "sky_lobby" and not is_sky_lobby_floor(origin.y):
 		return "%sは%d階・%d階・%d階…にしか建てられません（ここは%s）" % [BUILDINGS[type].name,
 			SKY_LOBBY_INTERVAL, SKY_LOBBY_INTERVAL * 2, SKY_LOBBY_INTERVAL * 3, get_floor_name(origin.y)]
@@ -947,6 +959,7 @@ func call_elevator(cell: Vector2i):
 # 建物が増減したときに、建物に対応する仕組み（エレベーター・社員・客室・住宅・会場）を更新する
 func rebuild_systems():
 	elevator_system.rebuild()
+	parking_system.rebuild()
 	commute_system.rebuild()
 	hotel_system.rebuild()
 	housing_system.rebuild()

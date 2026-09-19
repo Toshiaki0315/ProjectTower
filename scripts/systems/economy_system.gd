@@ -30,6 +30,8 @@ const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーター�
 	"security": 5000,
 	"medical": 10000,
 	"subway": 10000,
+	"parking": 5000,
+	"ramp": 2000,
 }
 const MEALS_PER_GARBAGE := 10   # 飲食店の客・会場の来客の何人分でゴミ1になるか
 const RECYCLING_CAPACITY := 20  # ゴミ処理場1施設が1日に処理できるゴミの量

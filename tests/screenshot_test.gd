@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2244,6 +2244,65 @@ func run_service_elevator_scenario() -> bool:
 	check(rode, "清掃員はサービスエレベーターに乗って上の階へ行く")
 	check(hotel.rooms[Vector2i(9, 16)].state == hotel.RoomState.CLEAN, "3階の客室が掃除されてきれいになる")
 	check(main.economy_system.MAINTENANCE["service_elevator"] == 1500, "サービスエレベーターの維持費は1マス1,500円/日")
+	return true
+
+# ---------------------------------------------------
+# シナリオ38: 地下駐車場とスロープ（車で来るお客さん）
+#   地下1階（y=19）に スロープ(x=9〜10)・階段(x=11)・駐車場(x=12〜15)、
+#   2階（y=17）に飲食店(x=9〜11)。車で来た客は階段で1階へ上がり、飲食店で食事して帰る。
+# ---------------------------------------------------
+func run_parking_scenario() -> bool:
+	print("[シナリオ] 地下駐車場とスロープ")
+	main.funds = 10000000
+	var parking = main.parking_system
+	focus_camera(Vector2i(10, 18))
+	await wait_frames(1)
+	# 足場: 地下を掘るため1階にロビーを足し、(9,18)は2階へ、(11,19)は1階へ上がる階段にする
+	build_support([Vector2i(8, 18)] + cells_row(18, 10, 15), "lobby")
+	build_support([Vector2i(9, 18), Vector2i(11, 19)])
+	main.select_mode("restaurant")
+	main.build_at(Vector2i(9, 17))
+	
+	# スロープは地下1階にだけ建てられる
+	await choose_mode("ramp")
+	check(main.mode_info_label.text == "建設費 200,000円・横2マス", "スロープは横2マス・20万円")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 17)) == "restaurant", "スロープは地上には建てられない")
+	await click_cell(Vector2i(9, 19), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 19)) == "ramp", "地下1階にはスロープを建てられる")
+	await click_cell(Vector2i(13, 20), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(13, 20)), "地下2階にはスロープを建てられない")
+	check(main.message_label.text.contains("スロープは地下1階にしか建てられません"), "建てられない理由がメッセージで出る")
+	
+	# 駐車場は、スロープまで車で行けるときだけ使える
+	await choose_mode("parking")
+	await click_cell(Vector2i(12, 19), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(15, 19)) == "parking", "地下駐車場は横4マス")
+	check(main.funds == 10000000 - 200000 - 300000 - 200000, "スロープ20万円・駐車場30万円がかかる（飲食店20万円を含む）")
+	check(parking.usable_units == [Vector2i(12, 19)] and parking.car_capacity() == 4, "スロープにつながった駐車場は4台使える")
+	await hover_cell(Vector2i(14, 19))
+	check(main.hover_label.text.contains("地下駐車場（4台）"), "カーソルを合わせると停められる台数が出る")
+	await click_cell(Vector2i(12, 20), MOUSE_BUTTON_LEFT) # 地下2階の、どこにもつながらない駐車場
+	check(parking.usable_units == [Vector2i(12, 19)] and parking.car_capacity() == 4, "スロープにつながらない駐車場は使えない")
+	await hover_cell(Vector2i(12, 20))
+	check(main.hover_label.text.contains("スロープにつながっていないので使えません"), "使えない理由がカーソルで出る")
+	await capture("parking_01_built")
+	
+	# 昼に車で来て、飲食店で食事をして帰る
+	main.clock.set_time(1, 10, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return parking.count_visitors() > 0, 30.0)
+	check(parking.count_visitors() > 0, "昼になると、車で来たお客さんが駐車場に現れる")
+	await wait_until(func(): return parking.visitors_by_day.get(1, 0) > 0, 30.0)
+	await capture("parking_02_visitors")
+	await wait_until(func(): return main.clock.minute_of_day() >= 16 * 60, 60.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(parking.visitors_by_day.get(1, 0) == 8, "4台×2人＝8人が飲食店で食事をする")
+	check(main.commerce_system.revenue_by_day.get(1, 0) >= 8000, "食事の代金8,000円が飲食店の売上になる")
+	check(parking.count_visitors() == 0, "食事が済んだお客さんは車で帰る")
+	check(main.economy_system.MAINTENANCE["parking"] == 5000 and main.economy_system.MAINTENANCE["ramp"] == 2000, "維持費は駐車場5,000円・スロープ2,000円")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

@@ -18,6 +18,7 @@ const Resident := preload("res://scripts/actors/resident.gd")
 const HotelSystem := preload("res://scripts/systems/hotel_system.gd")
 const HousingSystem := preload("res://scripts/systems/housing_system.gd")
 const EventSystem := preload("res://scripts/systems/event_system.gd")
+const ParkingSystem := preload("res://scripts/systems/parking_system.gd")
 const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 
 const OUT := "res://docs/images"
@@ -70,6 +71,7 @@ func save_people_images() -> void:
 		"housing": HousingSystem.RESIDENT_COLOR,             # 住宅の入居者
 		"wedding": EventSystem.EVENT_TYPES.wedding.color,    # 結婚式の来客
 		"event": EventSystem.EVENT_TYPES.event_hall.color,   # イベントの来客
+		"parking": ParkingSystem.VISITOR_COLOR,              # 車で来たお客さん
 		"selected": Color(1.0, 0.85, 0.1),                   # 選択中（住人モード）
 		"stress_low": Color.WHITE,                           # ストレス 0〜39
 		"stress_mid": Resident.PINK_COLOR,                   # ストレス 40〜69
