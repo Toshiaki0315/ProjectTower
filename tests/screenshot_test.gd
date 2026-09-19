@@ -6,9 +6,10 @@ const ElevatorCar := preload("res://elevator_car.gd")
 # 画面確認用テスト
 # main.tscnを起動し、実際のクリック操作を再現して各段階のスクリーンショットを保存する。
 #
-# 実行方法（ウィンドウ付きで起動する。--headlessでは描画されないので不可）:
+# 実行方法（ウィンドウ付きで起動する。--headless ではGUIのクリックやカーソル位置の判定が働かないので不可）:
 #   godot --path . -s res://tests/screenshot_test.gd -- <保存先ディレクトリ>
 # 保存先を省略すると user://screenshots に保存する。
+# ※ 実行中にウィンドウが他のウィンドウの裏に隠れると、macOSに処理を間引かれて止まることがある。
 # ---------------------------------------------------
 
 var main: Node2D
@@ -28,8 +29,9 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario]:
-		await start_main()
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario]:
+		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
+		await start_main(scenario != run_empty_start_scenario)
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
 		if finished != true:
@@ -44,7 +46,7 @@ func _init() -> void:
 			print("  - ", f)
 	quit(0 if failures.is_empty() else 1)
 
-func start_main() -> void:
+func start_main(standard_block := true) -> void:
 	if main:
 		main.queue_free()
 		await wait_frames(1)
@@ -53,6 +55,77 @@ func start_main() -> void:
 	Engine.time_scale = 1.0
 	await wait_frames(3) # _ready()が済むまで待つ
 	main.clock.set_process(false) # 社員の出勤で他のシナリオが乱れないよう、時計は止めておく
+	if standard_block:
+		build_standard_block()
+		await wait_frames(1)
+
+# 多くのシナリオで使う共通のビル（ゲームは更地から始まるので、テストで建てておく）
+#   1階（y=18）: ロビー（x=-8〜7。入口は左端の (-8,18)）
+#   2〜4階（y=17〜15）: 横4マスのオフィスを4棟ずつ（x=-8・-4・0・4 から。社員48人）
+# 上の階へ行く階段・エレベーターはないので、上の階の社員は各シナリオで建てる階段やエレベーターを使う。
+# 建て終わったら、資金は100万円にしておく（各シナリオの金額の計算の基準）。
+func build_standard_block() -> void:
+	main.funds = 100000000
+	main.select_mode("lobby")
+	for x in range(-8, 8):
+		main.build_at(Vector2i(x, 18))
+	main.select_mode("office")
+	for y in [15, 16, 17]:
+		for x in [-8, -4, 0, 4]:
+			main.build_at(Vector2i(x, y))
+	main.funds = 1000000
+	main.update_funds_display()
+	main.show_message("")
+
+# ---------------------------------------------------
+# シナリオ0: 更地からのスタートと、1階はロビー専用のルール
+# ---------------------------------------------------
+func run_empty_start_scenario() -> bool:
+	print("[シナリオ] 更地スタートと1階のルール")
+	check(main.building_grid.is_empty(), "ゲームは更地（建物なし）から始まる")
+	check(main.funds == 2000000, "最初の資金は200万円")
+	check(main.ground_y == main.GROUND_FLOOR_Y, "1階の高さは決まっている（y=%d）" % main.GROUND_FLOOR_Y)
+	check(main.get_entrance() == null, "ロビーがないうちは入口もない")
+	check(main.current_mode == "lobby" and main.mode_select.text == "ロビー", "最初は建設メニューでロビーが選ばれている")
+	check(main.camera.position.is_equal_approx(Vector2(0, 272)), "カメラは地面の線が見える位置にある")
+	await capture("empty_01_start")
+	
+	# 1階にはテナントを建てられない
+	await choose_mode("office")
+	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(0, 18)), "1階にはオフィスを建てられない")
+	check(main.message_label.text.contains("1階はロビー専用"), "建てられない理由（1階はロビー専用）がメッセージで出る")
+	await hover_cell(Vector2i(0, 18))
+	check(not main.can_click_cell(Vector2i(0, 18)), "1階にオフィスを建てようとすると赤く表示される")
+	await choose_mode("hotel")
+	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(0, 18)), "1階にはホテルも建てられない")
+	
+	# ロビーは1階にだけ建てられ、1マスずつ横に伸ばせる
+	await choose_mode("lobby")
+	await click_cell(Vector2i(0, 17), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(0, 17)), "ロビーは2階には建てられない")
+	check(main.message_label.text.contains("ロビーは1階にしか建てられません"), "建てられない理由（ロビーは1階だけ）がメッセージで出る")
+	for x in range(-3, 4):
+		await click_cell(Vector2i(x, 18), MOUSE_BUTTON_LEFT)
+	check(main.find_cells_of_type("lobby").size() == 7, "ロビーは1マスずつ横に伸ばせる（7マス）")
+	check(main.funds == 2000000 - 7 * 30000, "ロビーは1マス3万円")
+	check(main.get_entrance() == Vector2i(-3, 18), "ロビーの左端が入口になる")
+	
+	# 1階に置けるのはロビーのほか、階段・エレベーター
+	await choose_mode("elevator")
+	await click_cell(Vector2i(4, 18), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(4, 18)) == "elevator", "1階にエレベーターを建てられる")
+	await choose_mode("stairs")
+	await click_cell(Vector2i(-4, 18), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(-4, 18)) == "stairs", "1階に階段を建てられる")
+	
+	# 2階から上には、今までどおりテナントを建てられる
+	await choose_mode("office")
+	await click_cell(Vector2i(-3, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(-3, 17)) == "office", "2階にはオフィスを建てられる")
+	await capture("empty_02_lobby")
+	return true
 
 # ---------------------------------------------------
 # シナリオ1: 建設・撤去とモード表示
@@ -501,7 +574,7 @@ func run_commute_scenario() -> bool:
 	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_RIGHT)
 	await click_cell(Vector2i(-10, 14), MOUSE_BUTTON_LEFT) # 上の方に置き直す
 	check(main.get_entrance() == Vector2i(-8, 18), "入口はブロック最下段の左端(-8,18)")
-	check(commute.workers.size() == 72, "オフィス72マス（18棟）に社員72人が登録される")
+	check(commute.workers.size() == 56, "オフィス56マス（14棟）に社員56人が登録される")
 	
 	# 7:59 → 時計を進めて朝のラッシュを見る
 	var car = main.elevator_system.cars[0]
@@ -522,7 +595,7 @@ func run_commute_scenario() -> bool:
 				max_stress = maxf(max_stress, r.stress)
 		await process_frame
 	print("    at_office=", commute.count_at_office(), " in_building=", commute.count_in_building(), " unreachable=", commute.count_unreachable())
-	check(commute.count_at_office() == 68, "10時45分には通勤できる68人全員が自分のオフィスに着いている")
+	check(commute.count_at_office() == 52, "10時45分には通勤できる52人全員が自分のオフィスに着いている")
 	check(commute.count_unreachable() == 4, "孤立したオフィスの4人は通勤できない")
 	check(main.stats_label.text.contains("通勤できない 4人"), "下部バーに通勤できない人数が出る")
 	check(elevator_stops[0] > 0, "上の階の社員はエレベーターで出勤する")
@@ -543,8 +616,8 @@ func run_commute_scenario() -> bool:
 # ---------------------------------------------------
 # シナリオ10: 毎日の決算（賃料収入と維持費）
 # シナリオ9と同じ建物で1日目を過ごし、0:00の決算を確かめる。
-# 出勤できるオフィス68マス × 1万円 − エレベーター6マス × 2千円
-#   − ゴミ68の外部委託（ゴミ処理場なし）× 1千円 = +600,000円
+# 出勤できるオフィス52マス × 1万円 − エレベーター6マス × 2千円
+#   − ゴミ52の外部委託（ゴミ処理場なし）× 1千円 = +456,000円
 # ---------------------------------------------------
 func run_economy_scenario() -> bool:
 	print("[シナリオ] 決算")
@@ -573,33 +646,37 @@ func run_economy_scenario() -> bool:
 	main.clock.set_process(false)
 	var report = main.economy_system.last_report
 	check(report.get("day") == 1, "日付が変わると1日目の決算をする")
-	check(report.get("rent") == 680000, "出勤したオフィス68マス分の賃料68万円が入る（孤立したオフィスは0）")
+	check(report.get("rent") == 520000, "出勤したオフィス52マス分の賃料52万円が入る（孤立したオフィスは0）")
 	check(report.get("maintenance") == 12000, "エレベーター6マス分の維持費1.2万円がかかる")
-	check(report.get("garbage") == 68 and report.get("garbage_cost") == 68000, "ゴミ処理場がないとゴミ68を外部委託して6.8万円かかる")
-	check(main.funds == funds_before + 600000, "資金が差し引き60万円増える")
-	check(main.funds_label.text.contains("（前日 +600,000円）"), "資金の横に前日の収支が出る")
+	check(report.get("garbage") == 52 and report.get("garbage_cost") == 52000, "ゴミ処理場がないとゴミ52を外部委託して5.2万円かかる")
+	check(main.funds == funds_before + 456000, "資金が差し引き45.6万円増える")
+	check(main.funds_label.text.contains("（前日 +456,000円）"), "資金の横に前日の収支が出る")
 	check(main.message_label.text.contains("1日目の決算"), "決算の内容がメッセージに出る")
 	await capture("economy_01_settled")
 	return true
 
 # ---------------------------------------------------
 # シナリオ11: ホテルとハウスキーパー
-# ブロック最下段(y=18)の右隣に、シングル3室（横2マスずつ、x=8・10・12から）とハウスキーパー室（横2マス、x=14〜15）を並べる。
-# 入口(-8,18)から同じ階を歩いて行き来できる。右側が画面に入るようにカメラを動かしておく。
+# 2階(y=17)のブロックの右隣に、シングル3室（横2マスずつ、x=8・10・12から）とハウスキーパー室（横2マス、x=14〜15）を並べる。
+# 入口(-8,18)からロビーを歩き、(8,18)の階段で2階へ上がる。右側が画面に入るようにカメラを動かしておく。
 # ---------------------------------------------------
 func run_hotel_scenario() -> bool:
 	print("[シナリオ] ホテルとハウスキーパー")
 	main.funds = 10000000
+	# 1階はロビー専用なので、ロビーの右隣(8,18)に階段を置いて2階(y=17)へ上がれるようにする
+	main.select_mode("stairs")
+	main.build_at(Vector2i(8, 18))
+	main.funds = 10000000
 	var hotel = main.hotel_system
-	var room_cells: Array[Vector2i] = [Vector2i(8, 18), Vector2i(10, 18), Vector2i(12, 18)]
+	var room_cells: Array[Vector2i] = [Vector2i(8, 17), Vector2i(10, 17), Vector2i(12, 17)]
 	focus_camera(Vector2i(10, 17))
 	await choose_mode("hotel")
 	for cell in room_cells:
 		await click_cell(cell, MOUSE_BUTTON_LEFT)
 	await choose_mode("housekeeping")
-	await click_cell(Vector2i(14, 18), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(14, 17), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 3 * 150000 - 200000, "客室15万円×3とハウスキーパー室20万円がかかる")
-	check(main.get_unit_cells(Vector2i(9, 18)) == [Vector2i(8, 18), Vector2i(9, 18)], "シングルは横2マスの部屋")
+	check(main.get_unit_cells(Vector2i(9, 17)) == [Vector2i(8, 17), Vector2i(9, 17)], "シングルは横2マスの部屋")
 	check(hotel.rooms.size() == 3 and hotel.count_rooms(hotel.RoomState.CLEAN) == 3, "客室が3室でき、最初はきれいな空室")
 	check(hotel.housekeepers.size() == 2, "ハウスキーパー室（横2マス）に清掃員が2人いる")
 	var keeper = hotel.housekeepers.values()[0].resident
@@ -643,8 +720,8 @@ func run_hotel_scenario() -> bool:
 	check(saw_dirty[0], "チェックアウトした部屋は清掃待ちになる")
 	check(saw_cleaning[0], "清掃員が部屋に来て清掃する")
 	check(hotel.count_rooms(hotel.RoomState.CLEAN) == 3, "清掃が済むと3室ともきれいな空室に戻る")
-	await wait_until(func(): return keeper.cell == Vector2i(14, 18) and not keeper.is_moving(), 20.0)
-	check(keeper.cell == Vector2i(14, 18), "仕事が終わると清掃員はハウスキーパー室に戻る")
+	await wait_until(func(): return keeper.cell == Vector2i(14, 17) and not keeper.is_moving(), 20.0)
+	check(keeper.cell == Vector2i(14, 17), "仕事が終わると清掃員はハウスキーパー室に戻る")
 	
 	# 2日目の決算に宿泊料と維持費が入る
 	main.clock.set_time(2, 23, 59)
@@ -671,7 +748,7 @@ func run_lunch_scenario() -> bool:
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
-	var restaurant := Vector2i(9, 18)
+	var restaurant := Vector2i(9, 17) # 1階はロビー専用なので、2階のシャフトの右隣
 	await choose_mode("restaurant")
 	await click_cell(restaurant, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(restaurant) == "restaurant", "飲食店を建てられる（20万円）")
@@ -682,7 +759,7 @@ func run_lunch_scenario() -> bool:
 	main.clock.set_process(true)
 	Engine.time_scale = 8.0
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60 + 45, 30.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
-	check(commute.count_at_office() == 68, "10時45分には68人全員がオフィスにいる")
+	check(commute.count_at_office() == 52, "10時45分には52人全員がオフィスにいる")
 	
 	# 昼休み
 	var car = main.elevator_system.cars[0]
@@ -704,22 +781,22 @@ func run_lunch_scenario() -> bool:
 		return main.clock.minute_of_day() >= 15 * 60 + 45, 30.0) # 店の奥の席まで歩く人・エレベーターの定員待ちがあるので余裕をもつ
 	check(max_eating[0] > 0, "昼に社員が飲食店で食事をする")
 	check(lunch_stops[0] > 0, "上の階の社員はエレベーターで飲食店へ行き来する")
-	check(commerce.revenue_by_day.get(1, 0) == 68000, "68人が食事をして売上6.8万円になる")
-	check(commute.count_at_office() == 68, "15時45分には全員がオフィスに戻っている")
+	check(commerce.revenue_by_day.get(1, 0) == 52000, "52人が食事をして売上5.2万円になる")
+	check(commute.count_at_office() == 52, "15時45分には全員がオフィスに戻っている")
 	
 	# 1日目の決算に飲食店の売上が入る
 	main.clock.set_time(1, 23, 59)
 	await wait_until(func(): return main.economy_system.last_report.get("day") == 1, 10.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
-	check(main.economy_system.last_report.get("food") == 68000, "決算に飲食店の売上6.8万円が入る")
-	check(main.message_label.text.contains("飲食 +68,000円"), "決算のメッセージに飲食の売上が出る")
+	check(main.economy_system.last_report.get("food") == 52000, "決算に飲食店の売上5.2万円が入る")
+	check(main.message_label.text.contains("飲食 +52,000円"), "決算のメッセージに飲食の売上が出る")
 	return true
 
 # ---------------------------------------------------
 # シナリオ13: ゴミ処理場
 # シナリオ10と同じ建物＋1階のシャフトの右隣にゴミ処理場2施設（横3マスずつ、x=9・12から。処理能力40）。
-# ゴミ68のうち40を処理し、残り28を外部委託（2.8万円）。維持費はエレベーター1.2万＋ゴミ処理場1万。
+# ゴミ52のうち40を処理し、残り12を外部委託（1.2万円）。維持費はエレベーター1.2万＋ゴミ処理場1万。
 # ---------------------------------------------------
 func run_recycling_scenario() -> bool:
 	print("[シナリオ] ゴミ処理場")
@@ -732,10 +809,10 @@ func run_recycling_scenario() -> bool:
 	focus_camera(Vector2i(8, 16))
 	await choose_mode("recycling")
 	for rx in [9, 12]:
-		await click_cell(Vector2i(rx, 18), MOUSE_BUTTON_LEFT)
+		await click_cell(Vector2i(rx, 17), MOUSE_BUTTON_LEFT) # 1階はロビー専用なので2階に
 	check(main.funds == 10000000 - 6 * 100000 - 400000 - 2 * 150000, "ゴミ処理場の建設費15万円×2がかかる")
 	check(main.economy_system.recycling_capacity() == 40, "ゴミ処理場2施設で処理能力40/日になる")
-	await hover_cell(Vector2i(9, 18))
+	await hover_cell(Vector2i(9, 17))
 	check(main.hover_label.text.contains("処理能力 40/日"), "カーソルを合わせると処理能力が出る")
 	await capture("recycling_01_built")
 	
@@ -748,16 +825,16 @@ func run_recycling_scenario() -> bool:
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
 	var report = main.economy_system.last_report
-	check(report.get("garbage") == 68, "出勤したオフィス68マスからゴミ68が出る")
-	check(report.get("garbage_cost") == 28000, "処理しきれない28を外部委託して2.8万円かかる")
+	check(report.get("garbage") == 52, "出勤したオフィス52マスからゴミ52が出る")
+	check(report.get("garbage_cost") == 12000, "処理しきれない12を外部委託して1.2万円かかる")
 	check(report.get("maintenance") == 22000, "維持費はエレベーター1.2万円＋ゴミ処理場1万円")
-	check(report.get("total") == 680000 - 22000 - 28000, "合計は+63万円（ゴミ処理場なしより3万円得）")
-	check(main.message_label.text.contains("ゴミ処理 -28,000円（ゴミ68・処理能力40）"), "決算のメッセージにゴミの量と処理能力が出る")
+	check(report.get("total") == 520000 - 22000 - 12000, "合計は+48.6万円（ゴミ処理場なしより3万円得）")
+	check(main.message_label.text.contains("ゴミ処理 -12,000円（ゴミ52・処理能力40）"), "決算のメッセージにゴミの量と処理能力が出る")
 	return true
 
 # ---------------------------------------------------
 # シナリオ14: ビルの評価（★）
-# シナリオ10と同じ建物（人口68）に警備室を置くと、1日目の決算で★2に上がり、
+# シナリオ10と同じ建物（人口52）に警備室を置くと、1日目の決算で★2に上がり、
 # 2日目の決算から賃料に25%の評価ボーナスが付く。
 # ---------------------------------------------------
 func run_rating_scenario() -> bool:
@@ -769,13 +846,13 @@ func run_rating_scenario() -> bool:
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
-	check(rating.stars == 1 and rating.population() == 68, "最初は★1、人口68（社員68人）")
+	check(rating.stars == 1 and rating.population() == 52, "最初は★1、人口52（社員52人）")
 	check(rating.missing_for_next() == ["警備室"], "★2に足りないのは警備室だけ")
 	await wait_frames(2)
-	check(main.stats_label.text.begins_with("★1 人口68（★2まで: 警備室）"), "下部バーに評価と次の★に足りないものが出る")
+	check(main.stats_label.text.begins_with("★1 人口52（★2まで: 警備室）"), "下部バーに評価と次の★に足りないものが出る")
 	
 	await choose_mode("security")
-	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT) # 1階はロビー専用なので2階に
 	check(rating.missing_for_next().is_empty(), "警備室を置くと★2の条件を満たす")
 	check(rating.stars == 1, "★が上がるのは決算のとき")
 	
@@ -788,29 +865,33 @@ func run_rating_scenario() -> bool:
 	check(report.get("maintenance") == 12000 + 5000, "警備室の維持費5千円がかかる")
 	await capture("rating_01_star2")
 	
-	# 2日目: 賃料68万円の25% = 17万円のボーナス
+	# 2日目: 賃料52万円の25% = 13万円のボーナス
 	await run_day(2)
 	report = main.economy_system.last_report
-	check(report.get("bonus") == 170000, "★2では賃料に25%（17万円）の評価ボーナスが付く")
-	check(main.message_label.text.contains("評価ボーナス +170,000円"), "決算のメッセージに評価ボーナスが出る")
+	check(report.get("bonus") == 130000, "★2では賃料に25%（13万円）の評価ボーナスが付く")
+	check(main.message_label.text.contains("評価ボーナス +130,000円"), "決算のメッセージに評価ボーナスが出る")
 	
 	# ★3の条件
 	check(rating.missing_for_next() == ["人口120", "メディカルセンター", "ゴミ処理場"], "★3には人口120・メディカルセンター・ゴミ処理場が必要")
 	await choose_mode("medical")
-	await click_cell(Vector2i(11, 18), MOUSE_BUTTON_LEFT) # 警備室（x=9〜10）の右隣
-	check(main.get_building_type(Vector2i(11, 18)) == "medical", "メディカルセンターを建てられる")
+	await click_cell(Vector2i(11, 17), MOUSE_BUTTON_LEFT) # 警備室（x=9〜10）の右隣
+	check(main.get_building_type(Vector2i(11, 17)) == "medical", "メディカルセンターを建てられる")
 	check(rating.missing_for_next() == ["人口120", "ゴミ処理場"], "メディカルセンターを置くと★3の条件から外れる")
 	return true
 
 # ---------------------------------------------------
 # シナリオ15: 住宅
-# ブロック最下段(y=18)の右隣に住宅2戸(x=8,9)。入口(-8,18)から同じ階を歩いて行き来できる。
+# 2階(y=17)のブロックの右隣に住宅2戸（横3マスずつ、x=8・11から）。(8,18)の階段で2階へ上がる。
 # ---------------------------------------------------
 func run_housing_scenario() -> bool:
 	print("[シナリオ] 住宅")
 	main.funds = 10000000
+	# 1階はロビー専用なので、ロビーの右隣(8,18)に階段を置いて2階(y=17)へ上がれるようにする
+	main.select_mode("stairs")
+	main.build_at(Vector2i(8, 18))
+	main.funds = 10000000
 	var housing = main.housing_system
-	var homes: Array[Vector2i] = [Vector2i(8, 18), Vector2i(11, 18)] # 横3マスずつ（x=8〜10、11〜13）
+	var homes: Array[Vector2i] = [Vector2i(8, 17), Vector2i(11, 17)] # 横3マスずつ（x=8〜10、11〜13）
 	focus_camera(Vector2i(8, 17))
 	await choose_mode("housing")
 	for cell in homes:
@@ -867,22 +948,26 @@ func run_housing_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ16: ホテルのツイン・スイート
-# ブロック最下段(y=18)の右隣に、ツイン（横3マス、x=8〜10）・スイート（横4マス、x=11〜14）・
+# 2階(y=17)のブロックの右隣に、ツイン（横3マス、x=8〜10）・スイート（横4マス、x=11〜14）・
 # ハウスキーパー室（横2マス、x=15〜16）を並べる。
 # ---------------------------------------------------
 func run_room_types_scenario() -> bool:
 	print("[シナリオ] ツイン・スイート")
 	main.funds = 10000000
+	# 1階はロビー専用なので、ロビーの右隣(8,18)に階段を置いて2階(y=17)へ上がれるようにする
+	main.select_mode("stairs")
+	main.build_at(Vector2i(8, 18))
+	main.funds = 10000000
 	var hotel = main.hotel_system
-	var twin := Vector2i(8, 18)
-	var suite := Vector2i(11, 18)
+	var twin := Vector2i(8, 17)
+	var suite := Vector2i(11, 17)
 	focus_camera(Vector2i(11, 17))
 	await choose_mode("hotel_twin")
 	await click_cell(twin, MOUSE_BUTTON_LEFT)
 	await choose_mode("hotel_suite")
 	await click_cell(suite, MOUSE_BUTTON_LEFT)
 	await choose_mode("housekeeping")
-	await click_cell(Vector2i(15, 18), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(15, 17), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 200000 - 500000 - 200000, "ツイン20万円・スイート50万円がかかる")
 	check(main.get_unit_cells(twin).size() == 3 and main.get_unit_cells(suite).size() == 4, "ツインは横3マス、スイートは横4マス")
 	check(hotel.total_capacity() == 4, "ツインとスイートは2人ずつ、定員の合計は4人")
@@ -934,7 +1019,7 @@ func run_room_types_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ17: 平日・休日のサイクル
-# シナリオ10と同じ建物（社員68人）＋ 1階の右隣に住宅1戸（横3マス、x=9〜11）。
+# シナリオ10と同じ建物（社員52人）＋ 2階のシャフトの右隣に住宅1戸（横3マス、x=9〜11）。
 # 5日目（金）→ 6日目（土・休日）→ 8日目（月）と進めて違いを確かめる。
 # ---------------------------------------------------
 func run_weekday_scenario() -> bool:
@@ -948,7 +1033,7 @@ func run_weekday_scenario() -> bool:
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
-	var home := Vector2i(9, 18)
+	var home := Vector2i(9, 17) # 1階はロビー専用なので、2階のシャフトの右隣
 	await choose_mode("housing")
 	await click_cell(home, MOUSE_BUTTON_LEFT)
 	
@@ -957,7 +1042,7 @@ func run_weekday_scenario() -> bool:
 	clock.set_process(true)
 	Engine.time_scale = 8.0
 	await wait_until(func(): return clock.minute_of_day() >= 10 * 60 + 45, 30.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
-	check(main.commute_system.count_at_office() == 68, "金曜日は68人が出勤する（10時45分）")
+	check(main.commute_system.count_at_office() == 52, "金曜日は52人が出勤する（10時45分）")
 	clock.set_time(5, 16, 59)
 	Engine.time_scale = 16.0
 	await wait_until(func(): return main.housing_system.count_at_home() == 3 and clock.minute_of_day() >= 20 * 60, 30.0)
@@ -974,7 +1059,7 @@ func run_weekday_scenario() -> bool:
 	clock.set_time(6, 23, 58)
 	await wait_until(func(): return main.economy_system.last_report.get("day") == 6, 10.0)
 	var report = main.economy_system.last_report
-	check(report.get("rent") == 680000, "休日もたどり着けるオフィス68マスの賃料は入る")
+	check(report.get("rent") == 520000, "休日もたどり着けるオフィス52マスの賃料は入る")
 	check(report.get("garbage") == 1, "休日はオフィスからゴミが出ない（住宅の1だけ）")
 	
 	# 8日目（月）: また出勤する
@@ -983,7 +1068,7 @@ func run_weekday_scenario() -> bool:
 	await wait_until(func(): return clock.minute_of_day() >= 10 * 60 + 45, 30.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 	Engine.time_scale = 1.0
 	clock.set_process(false)
-	check(main.commute_system.count_at_office() == 68, "月曜日はまた68人が出勤する（10時45分）")
+	check(main.commute_system.count_at_office() == 52, "月曜日はまた52人が出勤する（10時45分）")
 	return true
 
 # ---------------------------------------------------
@@ -999,7 +1084,7 @@ func run_event_scenario() -> bool:
 	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	var wedding := Vector2i(9, 18)
+	var wedding := Vector2i(9, 17) # 1階はロビー専用なので、2階のシャフトの右隣
 	var hall := Vector2i(2, 13)
 	focus_camera(Vector2i(6, 16))
 	await choose_mode("wedding")
@@ -1058,12 +1143,18 @@ func run_event_scenario() -> bool:
 func run_subway_scenario() -> bool:
 	print("[シナリオ] 地下鉄駅")
 	main.funds = 100000000
-	check(main.ground_y == 18, "起動時の一番下の階(y=18)が1階になる")
+	check(main.ground_y == 18, "1階の高さは y=18")
 	await choose_mode("elevator")
 	for y in range(19, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
+	# 左側: 1階の入口の左隣(-9,18)の階段で2階へ上がれるようにする（上に x=-12〜-9 のオフィス）
+	main.select_mode("office")
+	main.build_at(Vector2i(-12, 17))
+	main.select_mode("stairs")
+	main.build_at(Vector2i(-9, 18))
+	check(main.get_entrance() == Vector2i(-8, 18), "ロビーの左に階段を置いても、入口はロビーの左端のまま")
 	
 	# 地下鉄駅は地下にしか建てられない
 	await choose_mode("subway")
@@ -1076,7 +1167,7 @@ func run_subway_scenario() -> bool:
 	check(main.get_entrance() == Vector2i(-8, 18), "地下に建物ができても、1階の入口は変わらない")
 	check(main.get_entrances() == [Vector2i(-8, 18), station], "入口は1階の入口と地下鉄駅の2つ")
 	check(main.nearest_entrance(Vector2i(6, 13)) == station, "上の階のオフィスからは地下鉄駅の方が近い")
-	check(main.nearest_entrance(Vector2i(-6, 18)) == Vector2i(-8, 18), "1階の左寄りのオフィスからは1階の入口の方が近い")
+	check(main.nearest_entrance(Vector2i(-6, 17)) == Vector2i(-8, 18), "左寄りのオフィスからは、階段で上がれる1階の入口の方が近い")
 	await capture("subway_01_built")
 	
 	# 平日の朝: それぞれ近い入口から出勤してくる
@@ -1099,8 +1190,8 @@ func run_subway_scenario() -> bool:
 		elif first_cells[r] == Vector2i(-8, 18):
 			from_main += 1
 	check(from_station > 0 and from_main > 0, "地下鉄駅と1階の入口の両方から社員が来る（駅 %d人・1階 %d人）" % [from_station, from_main])
-	check(from_station + from_main == 68, "68人全員がどちらかの入口から来る")
-	check(main.commute_system.count_at_office() == 68, "10時45分には68人全員がオフィスに着いている")
+	check(from_station + from_main == 56, "56人全員がどちらかの入口から来る")
+	check(main.commute_system.count_at_office() == 56, "10時45分には56人全員がオフィスに着いている")
 	
 	# ★4の条件に地下鉄駅がある
 	main.rating_system.stars = 3
@@ -1244,12 +1335,12 @@ func run_multi_car_scenario() -> bool:
 		if not captured and main.clock.minute_of_day() >= 8 * 60 + 40:
 			await capture("multi_car_01_rush")
 			captured = true
-		if done_time == "" and main.commute_system.count_at_office() == 68:
+		if done_time == "" and main.commute_system.count_at_office() == 52:
 			done_time = main.clock.get_time_text()
 			done_minute = main.clock.minute_of_day()
 		await process_frame
 	print("    rush done at ", done_time)
-	check(done_time != "" and done_minute <= 9 * 60 + 45, "4台の群管理なら9時45分までに68人全員がオフィスに着く（全員着いた時刻: %s）" % done_time)
+	check(done_time != "" and done_minute <= 9 * 60 + 45, "4台の群管理なら9時45分までに52人全員がオフィスに着く（全員着いた時刻: %s）" % done_time)
 	
 	# 追加したカゴの維持費: 3台 × 3千円
 	main.clock.set_time(1, 23, 58)
@@ -1273,7 +1364,7 @@ func run_scroll_sky_scenario() -> bool:
 	for i in select.item_count:
 		if select.is_item_separator(i):
 			headers.append(select.get_item_text(i))
-	check(headers == ["テナント", "移動", "設備", "その他"], "建設メニューは見出し（テナント・移動・設備・その他）ごとに並ぶ")
+	check(headers == ["テナント", "ロビー・移動", "設備", "その他"], "建設メニューは見出し（テナント・ロビー・移動・設備・その他）ごとに並ぶ")
 	await click_at(select.get_global_rect().get_center(), MOUSE_BUTTON_LEFT)
 	check(select.get_popup().visible, "建設メニューをクリックするとリストが開く")
 	select.get_popup().hide()
@@ -1332,16 +1423,20 @@ func run_scroll_sky_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ23: 夜の明かり
-# 1階の右隣に、シングル（x=8〜9）・住宅（x=10〜12）・警備室（x=13〜14）。
+# 2階(y=17)のブロックの右隣に、シングル（x=8〜9）・住宅（x=10〜12）・警備室（x=13〜14）。(8,18)の階段で上がる。
 # 昼は明かりの重ね描きなし。夜は建物が暗くなり、人がいる部屋・設備にだけ明かりが灯る。
 # ---------------------------------------------------
 func run_night_light_scenario() -> bool:
 	print("[シナリオ] 夜の明かり")
 	main.funds = 100000000
+	# 1階はロビー専用なので、ロビーの右隣(8,18)に階段を置いて2階(y=17)へ上がれるようにする
+	main.select_mode("stairs")
+	main.build_at(Vector2i(8, 18))
+	main.funds = 100000000
 	var lighting = main.lighting
-	var room := Vector2i(8, 18)
-	var home := Vector2i(10, 18)
-	var security := Vector2i(13, 18)
+	var room := Vector2i(8, 17)
+	var home := Vector2i(10, 17)
+	var security := Vector2i(13, 17)
 	focus_camera(Vector2i(8, 16))
 	await choose_mode("hotel")
 	await click_cell(room, MOUSE_BUTTON_LEFT)
@@ -1357,7 +1452,7 @@ func run_night_light_scenario() -> bool:
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60 + 45, 30.0)
 	check(main.tile_map.self_modulate == Color.WHITE, "昼は建物が暗くならない")
 	var lit: Dictionary = lighting.get_lit_cells()
-	check(lit.has(Vector2i(0, 18)) and lit.has(security), "社員がいるオフィス・設備は明かりが灯る扱いになる")
+	check(lit.has(Vector2i(0, 17)) and lit.has(security), "社員がいるオフィス・設備は明かりが灯る扱いになる")
 	check(not lit.has(room) and not lit.has(home), "客や住人がいない客室・住宅は明かりが灯らない")
 	
 	# 夜: 宿泊客・住人が帰ってくる。オフィスは誰もいない
@@ -1372,7 +1467,7 @@ func run_night_light_scenario() -> bool:
 	check(lit.has(room) and lit.has(room + Vector2i(1, 0)), "宿泊客がいる客室は部屋全体に明かりが灯る")
 	check(lit.has(home) and lit.has(home + Vector2i(2, 0)), "家にいる人の部屋に明かりが灯る")
 	check(lit.has(security), "警備室は一晩中明かりが灯る")
-	check(not lit.has(Vector2i(0, 18)), "社員が帰ったオフィスは暗いまま")
+	check(not lit.has(Vector2i(0, 17)), "社員が帰ったオフィスは暗いまま")
 	await capture("night_01_lights")
 	return true
 
@@ -1434,8 +1529,8 @@ func run_street_lamp_scenario() -> bool:
 	main.funds = 10000000
 	var lamp_x := 12 # 4の倍数なので街灯が立つ位置
 	check(lighting.get_street_lamps(view).any(func(p): return int(floor(p.x / 16.0)) == lamp_x), "x=12 に街灯がある")
-	main.select_mode("security")
-	main.build_at(Vector2i(11, main.ground_y))
+	main.select_mode("lobby")
+	main.build_at(Vector2i(12, main.ground_y))
 	check(not lighting.get_street_lamps(view).any(func(p): return int(floor(p.x / 16.0)) == lamp_x), "建物を建てるとそのマスの街灯はなくなる")
 	
 	# 入口の照明: 入口の数だけ
@@ -1471,20 +1566,20 @@ func run_tenant_rating_scenario() -> bool:
 	await run_day(1)
 	for origin in tenants.offices:
 		print("    ", origin, " ", tenants.get_rating_text(origin))
-	check(tenants.offices.size() == 17, "決算で17棟すべてのオフィスに評価が付く")
-	var ground_good := true
+	check(tenants.offices.size() == 13, "決算で13棟すべてのオフィスに評価が付く")
+	# エレベーターで1階分だけ上がる2階（y=17）は、一番上の階（y=13）より待ち時間が短く、ストレスが低い
+	var second_floor := 0.0
 	for x in [-8, -4, 0, 4]:
-		if tenants.offices[Vector2i(x, 18)].rating != tenants.Rating.GOOD:
-			ground_good = false
-	check(ground_good, "歩いて通勤できる1階のオフィスは評価が良い")
+		second_floor += tenants.offices[Vector2i(x, 17)].average / 4.0
+	check(second_floor < tenants.offices[Vector2i(4, 13)].average, "2階のオフィスの平均ストレス（%d）は一番上の階（%d）より低い" % [int(second_floor), int(tenants.offices[Vector2i(4, 13)].average)])
 	var upper_bad := 0
 	for origin in tenants.offices:
-		if origin.y < 18 and tenants.offices[origin].rating == tenants.Rating.BAD:
+		if tenants.offices[origin].rating == tenants.Rating.BAD:
 			upper_bad += 1
-	check(upper_bad > 0, "カゴ1台でエレベーター待ちが長い上の階には、評価が悪いオフィスがある（%d棟）" % upper_bad)
-	await hover_cell(Vector2i(-6, 18))
-	check(main.hover_label.text.contains("オフィス（評価: 良い・平均ストレス0）"), "カーソルを合わせるとオフィスの評価と平均ストレスが出る")
-	check(main.stats_label.text.contains("オフィス評価: 良い"), "下部バーに評価ごとのオフィスの数が出る")
+	check(upper_bad > 0, "カゴ1台でエレベーター待ちが長いので、評価が悪いオフィスがある（%d棟）" % upper_bad)
+	await hover_cell(Vector2i(6, 13))
+	check(main.hover_label.text.contains("オフィス（評価: "), "カーソルを合わせるとオフィスの評価と平均ストレスが出る")
+	check(main.stats_label.text.contains("オフィス: 良い"), "下部バーに評価ごとのオフィスの数が出る")
 	await capture("tenant_rating_01")
 	
 	# 休日は出勤がないので評価は変わらない
@@ -1497,6 +1592,71 @@ func run_tenant_rating_scenario() -> bool:
 		if tenants.offices[origin].rating != before[origin]:
 			unchanged = false
 	check(unchanged, "休日は出勤がないので、オフィスの評価はそのまま")
+	return true
+
+# ---------------------------------------------------
+# シナリオ27: オフィスの退去と新しいテナントの入居
+# シナリオ26と同じ建物（カゴ1台）で平日を3日続けると、評価の悪いオフィスは3日目の決算で退去して空室になる。
+# 空室の間は社員が出勤せず賃料も入らない。空室になって2日後の決算で新しいテナントが入居する。
+# ---------------------------------------------------
+func run_vacancy_scenario() -> bool:
+	print("[シナリオ] オフィスの退去と入居")
+	main.funds = 10000000
+	var tenants = main.tenant_system
+	await choose_mode("elevator")
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await choose_mode("office")
+	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
+	
+	await run_day(1)
+	await run_day(2)
+	var bad_twice := []
+	for origin in tenants.offices:
+		if tenants.offices[origin].bad_days == 2:
+			bad_twice.append(origin)
+	check(not bad_twice.is_empty() and tenants.count_vacant() == 0, "悪い日が2日続いても、まだ退去しない（悪い2日目: %d棟）" % bad_twice.size())
+	await hover_cell(Vector2i(4, 13))
+	check(main.hover_label.text.contains("悪い日が2日続いている"), "悪い日が続いている日数がカーソルで出る")
+	
+	# 3日目の決算: 悪い日が3日続いたオフィスは退去
+	await run_day(3)
+	var vacant := []
+	for origin in tenants.offices:
+		if tenants.offices[origin].vacant:
+			vacant.append(origin)
+	check(vacant.size() == bad_twice.size(), "悪い日が3日続いたオフィスはすべて退去して空室になる（%d棟）" % vacant.size())
+	check(main.message_label.text.contains("オフィス退去 %d棟" % vacant.size()), "決算のメッセージに退去した数が出る")
+	check(main.rating_system.population() == 52 - 4 * vacant.size(), "空室のオフィスの社員は人口に数えない")
+	await hover_cell(vacant[0])
+	check(main.hover_label.text.contains("空室・2日後に新しいテナントが入居"), "空室にカーソルを合わせると入居までの日数が出る")
+	check(main.stats_label.text.contains("空室%d" % vacant.size()), "下部バーに空室の数が出る")
+	await capture("vacancy_01_vacant")
+	
+	# 4日目: 空室の社員は出勤せず、賃料も入らない
+	await run_day(4)
+	var came := 0
+	for origin in vacant:
+		for cell in main.get_unit_cells(origin):
+			if main.commute_system.workers[cell].arrived_day == 4:
+				came += 1
+	check(came == 0, "空室のオフィスには社員が出勤しない")
+	check(main.economy_system.last_report.get("rent") < 520000, "空室のオフィスからは賃料が入らない（賃料 %d円）" % main.economy_system.last_report.get("rent"))
+	check(tenants.offices[vacant[0]].vacant, "空室になって1日目はまだ空室")
+	# 4日目の決算では、2日目から悪い日が続いていたオフィスも退去する
+	var second_wave: int = tenants.count_vacant() - vacant.size()
+	print("    4日目に退去: %d棟" % second_wave)
+	
+	# 5日目の決算: 3日目に空室になったオフィスは2日たったので、新しいテナントが入居する
+	await run_day(5)
+	var moved_in := true
+	for origin in vacant:
+		if tenants.offices[origin].vacant:
+			moved_in = false
+	check(moved_in, "空室になって2日たつと、新しいテナントが入居する（%d棟）" % vacant.size())
+	check(tenants.count_vacant() == second_wave, "4日目に空室になったオフィスは、まだ空室のまま（%d棟）" % second_wave)
+	check(tenants.offices[vacant[0]].rating == tenants.Rating.GOOD and tenants.offices[vacant[0]].bad_days == 0, "新しいテナントの評価は「良い」から始まる")
+	check(main.message_label.text.contains("入居 %d棟" % vacant.size()), "決算のメッセージに入居した数が出る")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

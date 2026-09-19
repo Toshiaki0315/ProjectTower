@@ -101,28 +101,29 @@ func save_screenshots() -> void:
 	for i in 3:
 		await process_frame
 	m.funds = 100000000
-	build(m, "elevator", [Vector2i(8, 12), Vector2i(8, 13), Vector2i(8, 14), Vector2i(8, 15),
-		Vector2i(8, 16), Vector2i(8, 17), Vector2i(8, 18), Vector2i(8, 19)])
+	# 更地から建てる: 1階はロビー（入口は左端）、2階から上にテナント、x=8 のシャフトでつなぐ
+	build(m, "lobby", range(-12, 8).map(func(x): return Vector2i(x, 18)))
+	build(m, "elevator", range(11, 20).map(func(y): return Vector2i(8, y)))
 	m.elevator_system.add_car(Vector2i(8, 12))
 	m.elevator_system.add_car(Vector2i(8, 15))
-	build(m, "restaurant", [Vector2i(9, 18)])
-	build(m, "hotel", [Vector2i(12, 18)])
-	build(m, "hotel_twin", [Vector2i(14, 18)])
-	build(m, "housekeeping", [Vector2i(17, 18)])
-	build(m, "hotel_suite", [Vector2i(9, 17)])
-	build(m, "housing", [Vector2i(13, 17)])
-	build(m, "security", [Vector2i(16, 17)])
-	build(m, "medical", [Vector2i(9, 16)])
-	build(m, "recycling", [Vector2i(12, 16)])
-	build(m, "wedding", [Vector2i(9, 15)])
+	for y in [15, 16, 17]:
+		build(m, "office", [Vector2i(-12, y), Vector2i(-8, y), Vector2i(-4, y), Vector2i(0, y), Vector2i(4, y)])
 	build(m, "office", [Vector2i(0, 14), Vector2i(4, 14)])
 	build(m, "event_hall", [Vector2i(2, 13)])
+	build(m, "restaurant", [Vector2i(9, 17)])
+	build(m, "hotel", [Vector2i(12, 17)])
+	build(m, "hotel_twin", [Vector2i(14, 17)])
+	build(m, "housekeeping", [Vector2i(17, 17)])
+	build(m, "hotel_suite", [Vector2i(9, 16)])
+	build(m, "housing", [Vector2i(13, 16)])
+	build(m, "security", [Vector2i(16, 16)])
+	build(m, "medical", [Vector2i(9, 15)])
+	build(m, "recycling", [Vector2i(12, 15)])
+	build(m, "wedding", [Vector2i(9, 14)])
 	build(m, "subway", [Vector2i(9, 19)])
-	build(m, "stairs", [Vector2i(-9, 18), Vector2i(-9, 17), Vector2i(-9, 16)])
-	build(m, "office", [Vector2i(-12, 15)])
 	m.select_mode("office")
 	m.camera.zoom = Vector2(2.4, 2.4)
-	m.camera.focus_on(m.tile_map.to_global(m.tile_map.map_to_local(Vector2i(4, 15))))
+	m.camera.focus_on(m.tile_map.to_global(m.tile_map.map_to_local(Vector2i(3, 15))))
 
 	# 昼（昼休み。飲食店とエレベーターが混み合う）
 	m.clock.set_time(1, 7, 59)

@@ -22,11 +22,13 @@ const TenantSystem := preload("res://tenant_system.gd")
 # 建物の定義（種類を増やすときはここに追記する）
 # 見た目は pixel_art.gd のドット絵（TILES に同じ名前で描く）
 # width: 横のマス数（省略時は1）。建設・撤去はこのまとまり（ユニット）ごとに行い、cost はユニット1つ分
+# floors: 建てられる階。"ground" = 1階だけ / "basement" = 地下だけ / "any" = どこでも / 省略 = 1階以外
+#         （1階はロビー専用のフロアなので、テナントや設備は1階に建てられない）
 # ---------------------------------------------------
 const BUILDINGS := {
 	"office": {"name": "オフィス", "cost": 400000, "source_id": 0, "width": 4},
-	"stairs": {"name": "階段", "cost": 50000, "source_id": 1},
-	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2},
+	"stairs": {"name": "階段", "cost": 50000, "source_id": 1, "floors": "any"},
+	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2, "floors": "any"},
 	"hotel": {"name": "シングル", "cost": 150000, "source_id": 3, "width": 2},
 	"hotel_twin": {"name": "ツイン", "cost": 200000, "source_id": 10, "width": 3},
 	"hotel_suite": {"name": "スイート", "cost": 500000, "source_id": 11, "width": 4},
@@ -38,7 +40,8 @@ const BUILDINGS := {
 	"housing": {"name": "住宅", "cost": 400000, "source_id": 9, "width": 3},
 	"wedding": {"name": "結婚式場", "cost": 1000000, "source_id": 12, "width": 6},
 	"event_hall": {"name": "イベントホール", "cost": 800000, "source_id": 13, "width": 6},
-	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14, "width": 4},
+	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14, "width": 4, "floors": "basement"},
+	"lobby": {"name": "ロビー", "cost": 30000, "source_id": 15, "floors": "ground"},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -47,14 +50,14 @@ const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴ�
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
-	{"name": "移動", "modes": ["stairs", "elevator", "add_car"]},
+	{"name": "ロビー・移動", "modes": ["lobby", "stairs", "elevator", "add_car"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway"]},
 	{"name": "その他", "modes": ["resident"]},
 ]
 const SCROLL_MARGIN_ROWS := 10 # スクロールできる範囲の、建物の上下に足す余白（行数）
 
-var funds: int = 1000000
-var current_mode: String = "office"
+var funds: int = 2000000
+var current_mode: String = "lobby" # 更地から始めるので、最初はロビーを選んでおく
 var funds_label: Label # 資金表示用のUIラベル
 var message_label: Label # 操作結果のメッセージ表示用
 var hover_label: Label # カーソル下のマスの情報表示用
@@ -88,19 +91,14 @@ var selected_resident = null # 行き先の指示を待っている住人
 # ---------------------------------------------------
 var building_grid: Dictionary = {}
 
-# 1階の高さ（y）。起動時の一番下の階を1階とし、それより下（yが大きい）は地下
-var ground_y := 0
+# 1階の高さ（y）。それより下（yが大きい）は地下。ゲームは更地から始まり、ここに地面の線が引かれる
+const GROUND_FLOOR_Y := 18
+var ground_y := GROUND_FLOOR_Y
 
 func _ready() -> void:
 	apply_pixel_art_tiles()
 	apply_tile_types()
 	load_grid_from_tilemap()
-	# 起動時の一番下の階を1階にする
-	for cell: Vector2i in building_grid:
-		ground_y = cell.y
-		break
-	for cell: Vector2i in building_grid:
-		ground_y = maxi(ground_y, cell.y)
 	elevator_system = ElevatorSystem.new()
 	elevator_system.setup(self)
 	add_child(elevator_system)
@@ -177,6 +175,8 @@ func _notification(what: int) -> void:
 func focus_camera_on_building():
 	var used: Rect2i = tile_map.get_used_rect()
 	if used.size == Vector2i.ZERO:
+		# 更地: 地面の線が画面の下寄りに来るように、1階の少し上を中央にする
+		camera.focus_on(tile_map.to_global(Vector2(0, (ground_y - 1) * tile_map.tile_set.tile_size.y)))
 		return
 	var center_local = (tile_map.map_to_local(used.position) + tile_map.map_to_local(used.end - Vector2i.ONE)) / 2.0
 	camera.focus_on(tile_map.to_global(center_local))
@@ -270,6 +270,7 @@ func create_ui():
 	var help_label = Label.new()
 	help_label.text = "\n".join([
 		"建設: 上の「建設」メニューで選び、マップを左クリック / 右クリック: 撤去（建設費の半額を返金）",
+		"更地から始まる。1階はロビー専用（ロビー・階段・エレベーターだけ）。人はロビーの左端（入口）から出入りする",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
@@ -565,8 +566,13 @@ func get_build_problem(origin: Vector2i, type: String) -> String:
 	for cell in get_footprint(origin, type):
 		if not is_cell_empty(cell):
 			return "ほかの建物と重なるため建てられません"
-	if type == "subway" and origin.y <= ground_y:
-		return "地下鉄駅は地下（1階より下）にしか建てられません"
+	var floors: String = BUILDINGS[type].get("floors", "")
+	if floors == "ground" and origin.y != ground_y:
+		return "%sは1階にしか建てられません" % BUILDINGS[type].name
+	if floors == "basement" and origin.y <= ground_y:
+		return "%sは地下（1階より下）にしか建てられません" % BUILDINGS[type].name
+	if floors == "" and origin.y == ground_y:
+		return "1階はロビー専用です（1階に建てられるのはロビー・階段・エレベーターだけ）"
 	if funds < BUILDINGS[type].cost:
 		return "資金不足です！"
 	return ""
@@ -705,11 +711,11 @@ func spawn_resident(cell: Vector2i):
 	residents.append(resident)
 	return resident
 
-# 1階の入口のマス：1階の左端（1階に建物がなければnull）
+# 1階の入口のマス：1階メインロビーの左端（ロビーがなければnull）
 func get_entrance():
 	var entrance = null
 	for cell: Vector2i in building_grid:
-		if cell.y == ground_y and (entrance == null or cell.x < entrance.x):
+		if cell.y == ground_y and building_grid[cell].type == "lobby" and (entrance == null or cell.x < entrance.x):
 			entrance = cell
 	return entrance
 
