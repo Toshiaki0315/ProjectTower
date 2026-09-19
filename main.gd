@@ -23,6 +23,7 @@ const BUILDINGS := {
 	"hotel": {"name": "ホテル客室", "cost": 150000, "source_id": 3, "color": Color(0.55, 0.4, 0.75)},
 	"housekeeping": {"name": "ハウスキーパー室", "cost": 100000, "source_id": 4, "color": Color(0.25, 0.6, 0.6)},
 	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5, "color": Color(0.85, 0.45, 0.2)},
+	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6, "color": Color(0.45, 0.5, 0.3)},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -119,7 +120,7 @@ func focus_camera_on_building():
 # ---------------------------------------------------
 # 画面構成:
 #   上部バー    … 1段目: 資金 / 日付と時刻 / 速度 / 操作説明ボタン
-#                  2段目: モード切り替えボタン
+#                  2段目: モード切り替えボタン（入りきらなければ折り返す）
 #   操作説明    … 上部バーの下に表示（ボタンで開閉）
 #   （マップ）  … クリックはそのままマップに届く
 #   下部バー    … 1段目: 操作結果のメッセージ
@@ -144,8 +145,10 @@ func create_ui():
 	var status_row = HBoxContainer.new()
 	status_row.add_theme_constant_override("separation", 8)
 	top_rows.add_child(status_row)
-	var mode_row = HBoxContainer.new()
-	mode_row.add_theme_constant_override("separation", 8)
+	# モードのボタンは横幅に入りきらなければ自動で折り返す
+	var mode_row = HFlowContainer.new()
+	mode_row.add_theme_constant_override("h_separation", 8)
+	mode_row.add_theme_constant_override("v_separation", 4)
 	top_rows.add_child(mode_row)
 	
 	funds_label = Label.new()
@@ -201,7 +204,8 @@ func create_ui():
 		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料2万円を払って帰る。清掃が済むまで次の客は泊まれない",
 		"ハウスキーパー室: 清掃員が1人。清掃待ちの部屋を近い順に掃除する",
 		"飲食店: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1千円の売上）",
-		"収支: 毎日0時に決算。賃料1万円/オフィス、宿泊料、飲食店の売上、維持費（エレベーター2千円・ハウスキーパー室5千円/マス）",
+		"ゴミ処理場: 1マスで1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
+		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
 		"ズーム: マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 	])
@@ -276,7 +280,7 @@ func get_mode_label(mode: String) -> String:
 	if mode == MODE_RESIDENT:
 		return "住人 (テスト)"
 	var data = BUILDINGS[mode]
-	return "%s (%d万円)" % [data.name, data.cost / 10000]
+	return "%s %d万" % [data.name, data.cost / 10000]
 
 # 選択中のボタンを強調表示する
 func update_mode_buttons():
@@ -284,7 +288,7 @@ func update_mode_buttons():
 		var btn: Button = mode_buttons[mode]
 		var label = get_mode_label(mode)
 		if mode == current_mode:
-			btn.text = "▶ " + label + " [選択中]"
+			btn.text = "▶ " + label
 			btn.button_pressed = true
 			btn.modulate = Color(1.0, 0.9, 0.3) # 黄色っぽく強調
 		else:
@@ -325,6 +329,8 @@ func update_hover_label():
 		text += "（%s）" % hotel_system.get_room_state_text(cell)
 	elif type == "restaurant":
 		text += "（客 %d人）" % commerce_system.count_eating_at(cell)
+	elif type == "recycling":
+		text += "（ビル全体の処理能力 %d/日）" % economy_system.recycling_capacity()
 	var resident = get_resident_at(cell)
 	if resident:
 		text += " / 住人のストレス: %d" % int(resident.stress)

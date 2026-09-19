@@ -7,17 +7,24 @@ extends Node
 #   宿泊料:   その日にチェックアウトした客の宿泊料（hotel_system が記録する）
 #   飲食売上: その日に飲食店で食事をした客の代金（commerce_system が記録する）
 #   維持費:   建物ごとの MAINTENANCE × マス数
+#   ゴミ処理: その日の活動で出たゴミのうち、ゴミ処理場で処理しきれない分を外部に委託する費用
+#             ゴミの量 = 出勤があったオフィス数 + チェックアウトした客室数 + 飲食店の客数 / 10
+#             処理能力 = ゴミ処理場のマス数 × RECYCLING_CAPACITY
 # ---------------------------------------------------
 
 const OFFICE_RENT := 10000 # オフィス1マスの1日の賃料
 const MAINTENANCE := {     # 1マスの1日の維持費
 	"elevator": 2000,
 	"housekeeping": 5000,
+	"recycling": 5000,
 }
+const MEALS_PER_GARBAGE := 10   # 飲食店の客何人分でゴミ1になるか
+const RECYCLING_CAPACITY := 20  # ゴミ処理場1マスが1日に処理できるゴミの量
+const OUTSOURCE_COST := 1000    # 処理しきれないゴミ1あたりの外部委託費
 
 var world: Node2D # main.gd
 var last_day := 1 # 最後に決算した日の翌日（= 今日）
-var last_report := {} # 最後の決算: {"day", "rent", "hotel", "food", "maintenance", "total"}
+var last_report := {} # 最後の決算: {"day", "rent", "hotel", "food", "maintenance", "garbage", "garbage_cost", "total"}
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -31,19 +38,30 @@ func _process(_delta: float) -> void:
 
 # 指定した日の決算
 func settle(day: int) -> void:
-	var rent := 0
+	var active_offices := 0
 	for cell in world.commute_system.workers:
 		if world.commute_system.workers[cell].arrived_day == day and not world.commute_system.workers[cell].unreachable:
-			rent += OFFICE_RENT
+			active_offices += 1
+	var rent := active_offices * OFFICE_RENT
 	var maintenance := 0
 	for type in MAINTENANCE:
 		maintenance += MAINTENANCE[type] * world.find_cells_of_type(type).size()
 	var hotel: int = world.hotel_system.revenue_by_day.get(day, 0)
 	var food: int = world.commerce_system.revenue_by_day.get(day, 0)
-	var total := rent + hotel + food - maintenance
-	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "maintenance": maintenance, "total": total}
+	var checkouts: int = hotel / world.hotel_system.ROOM_RATE
+	var meals: int = food / world.commerce_system.MEAL_PRICE
+	var garbage: int = active_offices + checkouts + meals / MEALS_PER_GARBAGE
+	var garbage_cost := maxi(garbage - recycling_capacity(), 0) * OUTSOURCE_COST
+	var total := rent + hotel + food - maintenance - garbage_cost
+	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "maintenance": maintenance,
+		"garbage": garbage, "garbage_cost": garbage_cost, "total": total}
 	world.funds += total
 	world.update_funds_display() # last_reportを更新してから表示する（前日の収支も表示されるため）
-	world.show_message("%d日目の決算: 賃料 +%s円 / 宿泊料 +%s円 / 飲食 +%s円 / 維持費 -%s円 / 合計 %s円" % [
+	world.show_message("%d日目の決算: 賃料 +%s円 / 宿泊料 +%s円 / 飲食 +%s円 / 維持費 -%s円 / ゴミ処理 -%s円（ゴミ%d・処理能力%d） / 合計 %s円" % [
 		day, world.format_money(rent), world.format_money(hotel), world.format_money(food),
-		world.format_money(maintenance), world.format_money(total, true)])
+		world.format_money(maintenance), world.format_money(garbage_cost), garbage, recycling_capacity(),
+		world.format_money(total, true)])
+
+# ビル全体のゴミ処理能力（1日あたり）
+func recycling_capacity() -> int:
+	return world.find_cells_of_type("recycling").size() * RECYCLING_CAPACITY

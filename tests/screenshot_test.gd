@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -56,8 +56,9 @@ func run_build_scenario() -> bool:
 	# 1. 階段ボタンをクリック → 階段が[選択中]になる
 	await click_button(main.mode_buttons["stairs"])
 	check(main.current_mode == "stairs", "階段ボタンでモードがstairsになる")
-	check(main.mode_buttons["stairs"].text.contains("[選択中]"), "階段ボタンに[選択中]が付く")
-	check(not main.mode_buttons["office"].text.contains("[選択中]"), "オフィスボタンから[選択中]が外れる")
+	check(main.mode_buttons["stairs"].text.begins_with("▶"), "階段ボタンに▶が付く")
+	check(main.mode_buttons["stairs"].button_pressed, "階段ボタンが押し込まれた表示になる")
+	check(not main.mode_buttons["office"].text.begins_with("▶"), "オフィスボタンから▶が外れる")
 	await capture("build_02_stairs_selected")
 
 	# 2. 空マスを左クリック → 階段を建設（-5万円）
@@ -538,7 +539,8 @@ func run_commute_scenario() -> bool:
 # ---------------------------------------------------
 # シナリオ10: 毎日の決算（賃料収入と維持費）
 # シナリオ9と同じ建物で1日目を過ごし、0:00の決算を確かめる。
-# 出勤できるオフィス67マス × 1万円 − エレベーター6マス × 2千円 = +658,000円
+# 出勤できるオフィス67マス × 1万円 − エレベーター6マス × 2千円
+#   − ゴミ67の外部委託（ゴミ処理場なし）× 1千円 = +591,000円
 # ---------------------------------------------------
 func run_economy_scenario() -> bool:
 	print("[シナリオ] 決算")
@@ -570,8 +572,9 @@ func run_economy_scenario() -> bool:
 	check(report.get("day") == 1, "日付が変わると1日目の決算をする")
 	check(report.get("rent") == 670000, "出勤したオフィス67マス分の賃料67万円が入る（孤立したオフィスは0）")
 	check(report.get("maintenance") == 12000, "エレベーター6マス分の維持費1.2万円がかかる")
-	check(main.funds == funds_before + 658000, "資金が差し引き65.8万円増える")
-	check(main.funds_label.text.contains("（前日 +658,000円）"), "資金の横に前日の収支が出る")
+	check(report.get("garbage") == 67 and report.get("garbage_cost") == 67000, "ゴミ処理場がないとゴミ67を外部委託して6.7万円かかる")
+	check(main.funds == funds_before + 591000, "資金が差し引き59.1万円増える")
+	check(main.funds_label.text.contains("（前日 +591,000円）"), "資金の横に前日の収支が出る")
 	check(main.message_label.text.contains("1日目の決算"), "決算の内容がメッセージに出る")
 	await capture("economy_01_settled")
 	return true
@@ -707,6 +710,45 @@ func run_lunch_scenario() -> bool:
 	main.clock.set_process(false)
 	check(main.economy_system.last_report.get("food") == 67000, "決算に飲食店の売上6.7万円が入る")
 	check(main.message_label.text.contains("飲食 +67,000円"), "決算のメッセージに飲食の売上が出る")
+	return true
+
+# ---------------------------------------------------
+# シナリオ13: ゴミ処理場
+# シナリオ10と同じ建物＋1階のシャフトの右隣にゴミ処理場2マス（処理能力40）。
+# ゴミ67のうち40を処理し、残り27を外部委託（2.7万円）。維持費はエレベーター1.2万＋ゴミ処理場1万。
+# ---------------------------------------------------
+func run_recycling_scenario() -> bool:
+	print("[シナリオ] ゴミ処理場")
+	main.funds = 10000000
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["recycling"])
+	for rx in [9, 10]:
+		await click_cell(Vector2i(rx, 18), MOUSE_BUTTON_LEFT)
+	check(main.funds == 10000000 - 6 * 100000 - 3 * 100000 - 2 * 150000, "ゴミ処理場の建設費15万円×2がかかる")
+	check(main.economy_system.recycling_capacity() == 40, "ゴミ処理場2マスで処理能力40/日になる")
+	await hover_cell(Vector2i(9, 18))
+	check(main.hover_label.text.contains("処理能力 40/日"), "カーソルを合わせると処理能力が出る")
+	await capture("recycling_01_built")
+	
+	main.clock.set_time(1, 7, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 8.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
+	main.clock.set_time(1, 23, 58)
+	await wait_until(func(): return not main.economy_system.last_report.is_empty(), 10.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	var report = main.economy_system.last_report
+	check(report.get("garbage") == 67, "出勤したオフィス67マスからゴミ67が出る")
+	check(report.get("garbage_cost") == 27000, "処理しきれない27を外部委託して2.7万円かかる")
+	check(report.get("maintenance") == 22000, "維持費はエレベーター1.2万円＋ゴミ処理場1万円")
+	check(report.get("total") == 670000 - 22000 - 27000, "合計は+62.1万円（ゴミ処理場なしより4.2万円得）")
+	check(main.message_label.text.contains("ゴミ処理 -27,000円（ゴミ67・処理能力40）"), "決算のメッセージにゴミの量と処理能力が出る")
 	return true
 
 func count_rides(path: Array[Vector2i]) -> int:
