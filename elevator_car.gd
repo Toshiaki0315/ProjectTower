@@ -10,6 +10,7 @@ extends Node2D
 # 呼び出しの種類:
 #   カゴ呼び  (car_calls)            … 乗っている人が押した行き先。方向に関係なく停まる
 #   乗り場呼び(up_calls / down_calls) … 待っている人の呼び出し。その方向へ進むときに停まる
+# 定員（CAPACITY）: 満員のカゴには乗れない。満員の間は乗り場呼びでは停まらず、カゴ呼びにだけ停まる。
 # ※ yが小さいほど上の階なので、「上へ」はyが減る方向。
 # ---------------------------------------------------
 
@@ -20,6 +21,7 @@ enum Direction { NONE, UP, DOWN }
 
 const SPEED := 48.0    # 昇降の速さ（px/秒）
 const DOOR_TIME := 1.0 # 停車して扉を開けている時間（秒）
+const CAPACITY := 8    # 定員
 
 var world: Node2D  # main.gd
 var column: int    # シャフトのx座標
@@ -33,6 +35,7 @@ var door_timer := 0.0
 var car_calls := {}  # 階 -> true
 var up_calls := {}   # 階 -> true
 var down_calls := {} # 階 -> true
+var passengers: Array = [] # 乗っている住人
 
 func setup(p_world: Node2D, x: int, top: int, bottom: int) -> void:
 	world = p_world
@@ -90,12 +93,18 @@ func call_from_hall(y: int, dir: Direction) -> bool:
 func is_doors_open_at(y: int) -> bool:
 	return state == State.DOORS_OPEN and floor_y == y
 
-# dir方向へ行きたい人が、この階で乗れるか（扉が開いていて、同じ方向へ進むか行き先が未定）
+# 定員に達しているか
+func is_full() -> bool:
+	passengers = passengers.filter(is_instance_valid) # いなくなった住人を除く
+	return passengers.size() >= CAPACITY
+
+# dir方向へ行きたい人が、この階で乗れるか（扉が開いていて、同じ方向へ進むか行き先が未定で、満員でない）
 func can_board(y: int, dir: Direction) -> bool:
-	return is_doors_open_at(y) and (direction == dir or direction == Direction.NONE)
+	return is_doors_open_at(y) and (direction == dir or direction == Direction.NONE) and not is_full()
 
 # 乗り込んで行き先ボタンを押す。行き先が未定のカゴなら、その方向へ進むことにする
-func board(dest_y: int) -> void:
+func board(resident, dest_y: int) -> void:
+	passengers.append(resident)
 	request_floor(dest_y)
 	if direction == Direction.NONE:
 		direction = Direction.UP if dest_y < floor_y else Direction.DOWN
@@ -127,8 +136,8 @@ func _process(delta: float) -> void:
 # 停まっているときに、この階で扉を開けるか、どちらへ動くかを決める
 func decide_next_action() -> void:
 	var next_dir := choose_direction(floor_y)
-	if car_calls.has(floor_y) or has_hall_call(floor_y, next_dir) \
-			or (next_dir == Direction.NONE and has_any_hall_call(floor_y)):
+	if car_calls.has(floor_y) or wants_hall_stop(floor_y, next_dir) \
+			or (next_dir == Direction.NONE and wants_any_hall_stop(floor_y)):
 		stop_here()
 	elif next_dir != Direction.NONE:
 		direction = next_dir
@@ -142,10 +151,10 @@ func start_moving() -> void:
 
 # 移動中に階に着いたとき、ここで停まるか
 func should_stop_at(y: int) -> bool:
-	if car_calls.has(y) or has_hall_call(y, direction):
+	if car_calls.has(y) or wants_hall_stop(y, direction):
 		return true
 	# この先に呼び出しがないなら、逆方向の乗り場呼びでも停まって折り返す
-	return not has_calls_beyond(y, direction) and has_any_hall_call(y)
+	return not has_calls_beyond(y, direction) and wants_any_hall_stop(y)
 
 # この階で停車する。次に進む方向を決め、その方向の乗り場呼びを取り消して扉を開ける
 func stop_here() -> void:
@@ -200,6 +209,17 @@ func has_hall_call(y: int, dir: Direction) -> bool:
 func has_any_hall_call(y: int) -> bool:
 	return up_calls.has(y) or down_calls.has(y)
 
+# 乗り場呼びで停まるか（満員なら誰も乗れないので停まらない）
+func wants_hall_stop(y: int, dir: Direction) -> bool:
+	return has_hall_call(y, dir) and not is_full()
+
+func wants_any_hall_stop(y: int) -> bool:
+	return has_any_hall_call(y) and not is_full()
+
+# 降りる（乗客の一覧から外す）
+func alight(resident) -> void:
+	passengers.erase(resident)
+
 # ---------------------------------------------------
 # 描画
 # ---------------------------------------------------
@@ -216,6 +236,11 @@ func _draw() -> void:
 		# 扉が閉まっている：銀色の扉と中央の合わせ目
 		draw_rect(body, Color(0.75, 0.78, 0.85))
 		draw_line(Vector2(0, -7), Vector2(0, 7), Color(0.3, 0.3, 0.35), 1.0)
+	# 乗っている人数のゲージ（満員なら赤）
+	var load_ratio := float(passengers.size()) / CAPACITY
+	if load_ratio > 0.0:
+		var gauge_color := Color(1.0, 0.3, 0.3) if passengers.size() >= CAPACITY else Color(0.3, 1.0, 0.4)
+		draw_rect(Rect2(-6, 5, 12.0 * minf(load_ratio, 1.0), 2), gauge_color)
 	# 進行方向の表示（▲ 上へ / ▼ 下へ）
 	var arrow_color := Color(0.3, 1.0, 0.4)
 	if direction == Direction.UP:

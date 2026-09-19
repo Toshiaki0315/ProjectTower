@@ -8,7 +8,7 @@ extends Node2D
 # 状態:
 #   WALKING  … 経路に沿って歩く（階段の上り下りを含む）
 #   WAITING  … シャフトの前で行きたい方向（上/下）のボタンを押してカゴを待つ。
-#              同じ方向へ進むカゴの扉が開いたら乗る（逆方向のカゴは見送る）
+#              同じ方向へ進むカゴの扉が開いたら乗る（逆方向のカゴ・満員のカゴは見送る）
 #   RIDING   … カゴに乗っている（目的の階で扉が開いたら降りる）
 #
 # ストレス（0〜100）:
@@ -146,7 +146,7 @@ func process_waiting() -> void:
 		return
 	# 行きたい方向へ進むカゴがこの階で扉を開けたら、乗り込んで行き先の階を押す
 	if car.can_board(cell.y, ride_dir):
-		car.board(path[0].y)
+		car.board(self, path[0].y)
 		state = State.RIDING
 	else:
 		car.call_from_hall(cell.y, ride_dir) # 呼び出しが取り消されていたら押し直す
@@ -167,6 +167,7 @@ func process_riding() -> void:
 	if car.is_doors_open_at(dest.y):
 		cell = dest
 		position = world.tile_map.map_to_local(cell)
+		car.alight(self)
 		car = null
 		state = State.WALKING
 		if path[0] == dest:

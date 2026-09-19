@@ -376,6 +376,10 @@ func update_hover_label():
 		text += "（客 %d人）" % commerce_system.count_eating_at(cell)
 	elif event_system.is_hall_type(type):
 		text += "（来客 %d人）" % event_system.count_at_hall(cell)
+	elif type == "elevator":
+		var car = elevator_system.get_car_at(cell)
+		if car:
+			text += "（カゴ %d/%d人）" % [car.passengers.size(), car.CAPACITY]
 	elif type == "housing":
 		text += "（%s）" % housing_system.get_home_state_text(cell)
 	elif type == "recycling":

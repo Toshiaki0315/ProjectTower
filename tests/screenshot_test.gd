@@ -26,7 +26,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -515,13 +515,13 @@ func run_commute_scenario() -> bool:
 	check(commute.count_in_building() > 0, "8時台に社員が入口から出勤してくる")
 	await capture("commute_01_rush")
 	var max_stress := 0.0
-	while main.clock.minute_of_day() < 10 * 60:
+	while main.clock.minute_of_day() < 10 * 60 + 45: # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 		for r in main.residents:
 			if is_instance_valid(r):
 				max_stress = maxf(max_stress, r.stress)
 		await process_frame
 	print("    at_office=", commute.count_at_office(), " in_building=", commute.count_in_building(), " unreachable=", commute.count_unreachable())
-	check(commute.count_at_office() == 68, "10時には通勤できる68人全員が自分のオフィスに着いている")
+	check(commute.count_at_office() == 68, "10時45分には通勤できる68人全員が自分のオフィスに着いている")
 	check(commute.count_unreachable() == 4, "孤立したオフィスの4人は通勤できない")
 	check(main.stats_label.text.contains("通勤できない 4人"), "下部バーに通勤できない人数が出る")
 	check(elevator_stops[0] > 0, "上の階の社員はエレベーターで出勤する")
@@ -530,11 +530,11 @@ func run_commute_scenario() -> bool:
 	
 	# 夕方 → 全員帰る
 	Engine.time_scale = 16.0
-	await wait_until(func(): return main.clock.minute_of_day() >= 19 * 60, 60.0)
+	await wait_until(func(): return main.clock.minute_of_day() >= 19 * 60 + 45, 60.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 	Engine.time_scale = 1.0
 	await wait_frames(2)
 	print("    evening in_building=", commute.count_in_building())
-	check(commute.count_in_building() == 0, "19時には全員が入口から帰っている")
+	check(commute.count_in_building() == 0, "19時45分には全員が入口から帰っている")
 	await capture("commute_03_evening")
 	main.clock.set_process(false)
 	return true
@@ -680,8 +680,8 @@ func run_lunch_scenario() -> bool:
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
 	Engine.time_scale = 8.0
-	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
-	check(commute.count_at_office() == 68, "10時には68人全員がオフィスにいる")
+	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60 + 45, 30.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
+	check(commute.count_at_office() == 68, "10時45分には68人全員がオフィスにいる")
 	
 	# 昼休み
 	var car = main.elevator_system.cars[0]
@@ -700,11 +700,11 @@ func run_lunch_scenario() -> bool:
 	await capture("lunch_01_crowd")
 	await wait_until(func():
 		max_eating[0] = maxi(max_eating[0], commerce.count_eating_at(restaurant))
-		return main.clock.minute_of_day() >= 15 * 60, 30.0) # 店の奥の席まで歩く人もいるので余裕をもって15時
+		return main.clock.minute_of_day() >= 15 * 60 + 45, 30.0) # 店の奥の席まで歩く人・エレベーターの定員待ちがあるので余裕をもつ
 	check(max_eating[0] > 0, "昼に社員が飲食店で食事をする")
 	check(lunch_stops[0] > 0, "上の階の社員はエレベーターで飲食店へ行き来する")
 	check(commerce.revenue_by_day.get(1, 0) == 68000, "68人が食事をして売上6.8万円になる")
-	check(commute.count_at_office() == 68, "15時には全員がオフィスに戻っている")
+	check(commute.count_at_office() == 68, "15時45分には全員がオフィスに戻っている")
 	
 	# 1日目の決算に飲食店の売上が入る
 	main.clock.set_time(1, 23, 59)
@@ -955,8 +955,8 @@ func run_weekday_scenario() -> bool:
 	clock.set_time(5, 7, 59)
 	clock.set_process(true)
 	Engine.time_scale = 8.0
-	await wait_until(func(): return clock.minute_of_day() >= 10 * 60, 30.0)
-	check(main.commute_system.count_at_office() == 68, "金曜日は68人が出勤する")
+	await wait_until(func(): return clock.minute_of_day() >= 10 * 60 + 45, 30.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
+	check(main.commute_system.count_at_office() == 68, "金曜日は68人が出勤する（10時45分）")
 	clock.set_time(5, 16, 59)
 	Engine.time_scale = 16.0
 	await wait_until(func(): return main.housing_system.count_at_home() == 3 and clock.minute_of_day() >= 20 * 60, 30.0)
@@ -979,10 +979,10 @@ func run_weekday_scenario() -> bool:
 	# 8日目（月）: また出勤する
 	clock.set_time(8, 7, 59)
 	Engine.time_scale = 8.0
-	await wait_until(func(): return clock.minute_of_day() >= 10 * 60, 30.0)
+	await wait_until(func(): return clock.minute_of_day() >= 10 * 60 + 45, 30.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 	Engine.time_scale = 1.0
 	clock.set_process(false)
-	check(main.commute_system.count_at_office() == 68, "月曜日はまた68人が出勤する")
+	check(main.commute_system.count_at_office() == 68, "月曜日はまた68人が出勤する（10時45分）")
 	return true
 
 # ---------------------------------------------------
@@ -1083,7 +1083,7 @@ func run_subway_scenario() -> bool:
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
 	Engine.time_scale = 8.0
-	while main.clock.minute_of_day() < 10 * 60:
+	while main.clock.minute_of_day() < 10 * 60 + 45: # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 		for r in main.residents:
 			if is_instance_valid(r) and not first_cells.has(r):
 				first_cells[r] = r.cell
@@ -1099,12 +1099,71 @@ func run_subway_scenario() -> bool:
 			from_main += 1
 	check(from_station > 0 and from_main > 0, "地下鉄駅と1階の入口の両方から社員が来る（駅 %d人・1階 %d人）" % [from_station, from_main])
 	check(from_station + from_main == 68, "68人全員がどちらかの入口から来る")
-	check(main.commute_system.count_at_office() == 68, "10時には68人全員がオフィスに着いている")
+	check(main.commute_system.count_at_office() == 68, "10時45分には68人全員がオフィスに着いている")
 	
 	# ★4の条件に地下鉄駅がある
 	main.rating_system.stars = 3
 	check(main.rating_system.missing_for_next() == ["人口250"], "★4の条件（人口250・地下鉄駅）のうち、地下鉄駅は満たしている")
 	main.rating_system.stars = 1
+	return true
+
+# ---------------------------------------------------
+# シナリオ20: カゴの定員
+# x=8 に y=13〜18 のシャフト、上の階 y=13 にオフィス。(7,15) に住人12人を置き、全員を (5,13) へ向かわせる。
+# カゴの定員は8人なので、8人が乗り、残り4人は見送って次に来たカゴに乗る。
+# ---------------------------------------------------
+func run_capacity_scenario() -> bool:
+	print("[シナリオ] カゴの定員")
+	main.funds = 10000000
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
+	var car = main.elevator_system.cars[0]
+	check(car.CAPACITY == 8, "カゴの定員は8人")
+	
+	var goal := Vector2i(5, 13)
+	var people := []
+	for i in 12:
+		var r = main.spawn_resident(Vector2i(7, 15))
+		r.go_to(goal)
+		people.append(r)
+	
+	var max_passengers := 0
+	var left_behind := false # 満員のカゴが動いている間に、乗れずに待っている人がいたか
+	var captured := false
+	var limit := Time.get_ticks_msec() + 30000
+	Engine.time_scale = 4.0
+	while Time.get_ticks_msec() < limit:
+		max_passengers = maxi(max_passengers, car.passengers.size())
+		var waiting := 0
+		for r in people:
+			if r.state == r.State.WAITING:
+				waiting += 1
+		if car.is_full() and car.state == car.State.MOVING and waiting > 0:
+			left_behind = true
+			if not captured:
+				await capture("capacity_01_full")
+				captured = true
+		var arrived := 0
+		for r in people:
+			if r.cell == goal and not r.is_moving():
+				arrived += 1
+		if arrived == people.size():
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	check(max_passengers == 8, "カゴには最大で定員の8人までしか乗らない（最大 %d人）" % max_passengers)
+	check(left_behind, "満員のカゴは乗れなかった人を残して動く")
+	var arrived_all := true
+	for r in people:
+		if r.cell != goal or r.is_moving():
+			arrived_all = false
+	check(arrived_all, "乗れなかった4人も次のカゴで上がり、12人全員が目的地に着く")
+	check(car.passengers.is_empty(), "全員降りたらカゴは空になる")
+	await hover_cell(Vector2i(8, 16))
+	check(main.hover_label.text.contains("カゴ 0/8人"), "エレベーターにカーソルを合わせるとカゴの人数が出る")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
