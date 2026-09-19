@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -41,7 +41,9 @@ func start_main() -> void:
 		await wait_frames(1)
 	main = load("res://main.tscn").instantiate()
 	root.add_child(main)
-	await wait_frames(3)
+	Engine.time_scale = 1.0
+	await wait_frames(3) # _ready()が済むまで待つ
+	main.clock.set_process(false) # 社員の出勤で他のシナリオが乱れないよう、時計は止めておく
 
 # ---------------------------------------------------
 # シナリオ1: 建設・撤去とモード表示
@@ -163,8 +165,8 @@ func run_camera_scenario() -> bool:
 	check(main.funds == 1000000, "ホイール操作で建設されない")
 	
 	# ズーム後もクリックしたマスに正しく建設できる
-	await click_cell(Vector2i(6, 14), MOUSE_BUTTON_LEFT)
-	check(main.get_building_type(Vector2i(6, 14)) == "office", "ズーム後もクリックしたマスに建設できる")
+	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_LEFT) # 2段の上部バーに隠れない位置
+	check(main.get_building_type(Vector2i(9, 16)) == "office", "ズーム後もクリックしたマスに建設できる")
 	await capture("camera_02_zoomed_in")
 	
 	# ズームの上限・下限
@@ -471,6 +473,66 @@ func run_collective_scenario() -> bool:
 	check(not boarded_going_down, "上へ行きたい住人は下りのカゴに乗らない")
 	check(arrivals == [18, 15, 13], "カゴは18で折り返し、上りで15に寄って住人を乗せ、13で降ろす")
 	check(resident.cell == goal, "住人が目的地に着く")
+	return true
+
+# ---------------------------------------------------
+# シナリオ9: オフィスの出退社ラッシュ
+# 事前配置のブロック（y=15〜18）＋ x=8 のシャフト（y=13〜18）＋ 上の階 y=13 のオフィス3つ
+# ＋ どこにもつながらない孤立したオフィス1つ。入口はブロック最下段の左端(-8,18)。
+# ---------------------------------------------------
+func run_commute_scenario() -> bool:
+	print("[シナリオ] 出退社ラッシュ")
+	main.funds = 10000000
+	var commute = main.commute_system
+	var x := 8
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT) # 孤立したオフィス
+	check(main.get_entrance() == Vector2i(-10, 20), "入口は一番下の階の左端（孤立したオフィスの行が一番下）")
+	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_RIGHT)
+	await click_cell(Vector2i(-10, 12), MOUSE_BUTTON_LEFT) # 上の方に置き直す
+	check(main.get_entrance() == Vector2i(-8, 18), "入口はブロック最下段の左端(-8,18)")
+	check(commute.workers.size() == 68, "オフィス68マスに社員68人が登録される")
+	
+	# 7:59 → 時計を進めて朝のラッシュを見る
+	var car = main.elevator_system.cars[0]
+	var elevator_stops := [0]
+	car.arrived.connect(func(_y): elevator_stops[0] += 1)
+	main.clock.set_time(1, 7, 59)
+	main.clock.set_process(true)
+	check(main.clock_label.text != "", "上部バーに時刻が出る")
+	Engine.time_scale = 8.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 8 * 60 + 30, 20.0)
+	check(main.clock_label.text.begins_with("1日目 08:"), "時刻の表示が進む（1日目 08:xx）")
+	check(commute.count_in_building() > 0, "8時台に社員が入口から出勤してくる")
+	await capture("commute_01_rush")
+	var max_stress := 0.0
+	while main.clock.minute_of_day() < 10 * 60:
+		for r in main.residents:
+			if is_instance_valid(r):
+				max_stress = maxf(max_stress, r.stress)
+		await process_frame
+	print("    at_office=", commute.count_at_office(), " in_building=", commute.count_in_building(), " unreachable=", commute.count_unreachable())
+	check(commute.count_at_office() == 67, "10時には通勤できる67人全員が自分のオフィスに着いている")
+	check(commute.count_unreachable() == 1, "孤立したオフィスの1人は通勤できない")
+	check(main.stats_label.text.contains("通勤できない 1人"), "下部バーに通勤できない人数が出る")
+	check(elevator_stops[0] > 0, "上の階の社員はエレベーターで出勤する")
+	check(max_stress > 0.0, "エレベーター待ちで社員にストレスがたまる")
+	await capture("commute_02_at_office")
+	
+	# 夕方 → 全員帰る
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 19 * 60, 60.0)
+	Engine.time_scale = 1.0
+	await wait_frames(2)
+	print("    evening in_building=", commute.count_in_building())
+	check(commute.count_in_building() == 0, "19時には全員が入口から帰っている")
+	await capture("commute_03_evening")
+	main.clock.set_process(false)
 	return true
 
 func count_rides(path: Array[Vector2i]) -> int:

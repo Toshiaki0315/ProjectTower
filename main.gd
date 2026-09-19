@@ -3,6 +3,8 @@ extends Node2D
 const Resident := preload("res://resident.gd")
 const GridOverlay := preload("res://grid_overlay.gd")
 const ElevatorSystem := preload("res://elevator_system.gd")
+const GameClock := preload("res://game_clock.gd")
+const CommuteSystem := preload("res://commute_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
@@ -28,6 +30,10 @@ var help_panel: Control # 操作説明（ボタンで表示/非表示）
 var mode_buttons: Dictionary = {} # モード名 -> Button
 var grid_overlay # マス目の表示
 var elevator_system # エレベーターのシャフトとカゴの管理
+var clock # ゲーム内の時計
+var commute_system # オフィスの社員の出退勤
+var clock_label: Label # 日付と時刻の表示
+var stats_label: Label # 社員の人数の表示
 
 var residents: Array = [] # 配置済みの住人
 var selected_resident = null # 行き先の指示を待っている住人
@@ -48,6 +54,12 @@ func _ready() -> void:
 	elevator_system.setup(self)
 	add_child(elevator_system)
 	elevator_system.rebuild()
+	clock = GameClock.new()
+	add_child(clock)
+	commute_system = CommuteSystem.new()
+	commute_system.setup(self)
+	add_child(commute_system)
+	commute_system.rebuild()
 	tile_map.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST # 拡大してもタイルをぼかさない
 	focus_camera_on_building()
 	grid_overlay = GridOverlay.new()
@@ -59,6 +71,11 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	grid_overlay.update_hover()
 	update_hover_label()
+	clock_label.text = clock.get_time_text()
+	stats_label.text = "社員: 在館 %d / 全 %d人" % [commute_system.count_in_building(), commute_system.workers.size()]
+	var unreachable: int = commute_system.count_unreachable()
+	if unreachable > 0:
+		stats_label.text += "（通勤できない %d人）" % unreachable
 
 func _notification(what: int) -> void:
 	# マウスがウィンドウの外に出たらマスの強調表示を消す
@@ -77,10 +94,11 @@ func focus_camera_on_building():
 # UIの自動生成ロジック
 # ---------------------------------------------------
 # 画面構成:
-#   上部バー    … 資金 / モード切り替えボタン / 操作説明ボタン
+#   上部バー    … 1段目: 資金 / 日付と時刻 / 速度 / 操作説明ボタン
+#                  2段目: モード切り替えボタン
 #   操作説明    … 上部バーの下に表示（ボタンで開閉）
 #   （マップ）  … クリックはそのままマップに届く
-#   下部バー    … 操作結果のメッセージ / カーソル下のマスの情報
+#   下部バー    … 操作結果のメッセージ / 社員の人数 / カーソル下のマスの情報
 # バーの上のクリックはバーが受け止めるので、下のマスに建設されることはない。
 func create_ui():
 	var canvas = CanvasLayer.new()
@@ -92,15 +110,46 @@ func create_ui():
 	layout.add_theme_constant_override("separation", 0)
 	canvas.add_child(layout)
 	
-	# --- 上部バー ---
-	var top_row = HBoxContainer.new()
-	top_row.add_theme_constant_override("separation", 8)
-	layout.add_child(make_bar(top_row))
+	# --- 上部バー（2段） ---
+	#   1段目: 資金 / 日付と時刻 / 速度 / 操作説明
+	#   2段目: モード切り替えボタン
+	var top_rows = VBoxContainer.new()
+	top_rows.add_theme_constant_override("separation", 4)
+	layout.add_child(make_bar(top_rows))
+	var status_row = HBoxContainer.new()
+	status_row.add_theme_constant_override("separation", 8)
+	top_rows.add_child(status_row)
+	var mode_row = HBoxContainer.new()
+	mode_row.add_theme_constant_override("separation", 8)
+	top_rows.add_child(mode_row)
 	
 	funds_label = Label.new()
 	funds_label.add_theme_font_size_override("font_size", 20)
-	funds_label.custom_minimum_size.x = 260 # 金額の桁が変わってもボタンの位置がずれないように
-	top_row.add_child(funds_label)
+	funds_label.custom_minimum_size.x = 240 # 金額の桁が変わっても時刻の位置がずれないように
+	status_row.add_child(funds_label)
+	
+	clock_label = Label.new()
+	clock_label.add_theme_font_size_override("font_size", 20)
+	status_row.add_child(clock_label)
+	
+	status_row.add_child(make_spacer())
+	
+	# ゲームの速度（Engine.time_scaleで、時計・住人・エレベーターをまとめて早送りする）
+	var speed_group = ButtonGroup.new()
+	for speed in [1, 4, 16]:
+		var btn = Button.new()
+		btn.text = "%dx" % speed
+		btn.toggle_mode = true
+		btn.button_group = speed_group
+		btn.button_pressed = speed == 1
+		btn.pressed.connect(func(): Engine.time_scale = speed)
+		status_row.add_child(btn)
+	
+	var help_button = Button.new()
+	help_button.text = "操作説明"
+	help_button.toggle_mode = true
+	help_button.toggled.connect(func(on): help_panel.visible = on)
+	status_row.add_child(help_button)
 	
 	# 同じグループのボタンは1つだけ押下状態になる（ラジオボタン的な挙動）
 	var group = ButtonGroup.new()
@@ -109,16 +158,8 @@ func create_ui():
 		btn.toggle_mode = true
 		btn.button_group = group
 		btn.pressed.connect(func(): select_mode(mode))
-		top_row.add_child(btn)
+		mode_row.add_child(btn)
 		mode_buttons[mode] = btn
-	
-	top_row.add_child(make_spacer())
-	
-	var help_button = Button.new()
-	help_button.text = "操作説明"
-	help_button.toggle_mode = true
-	help_button.toggled.connect(func(on): help_panel.visible = on)
-	top_row.add_child(help_button)
 	
 	# --- 操作説明（上部バーの下、右寄せ） ---
 	var help_row = HBoxContainer.new()
@@ -130,6 +171,8 @@ func create_ui():
 		"左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
+		"社員: オフィス1マスに1人。8〜9時に入口（1階の左端）から出勤し、17〜18時に帰る",
+		"速度: 1x / 4x / 16x で時間の進みを早送り",
 		"ズーム: マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 	])
@@ -150,6 +193,12 @@ func create_ui():
 	message_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
 	message_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom_row.add_child(message_label)
+	
+	stats_label = Label.new()
+	bottom_row.add_child(stats_label)
+	
+	var separator = VSeparator.new()
+	bottom_row.add_child(separator)
 	
 	hover_label = Label.new()
 	bottom_row.add_child(hover_label)
@@ -405,6 +454,17 @@ func spawn_resident(cell: Vector2i):
 	residents.append(resident)
 	return resident
 
+# 入口のマス：ビルの一番下の階の左端（建物がなければnull）
+# 社員はここに現れて出勤し、ここから帰る
+func get_entrance():
+	if building_grid.is_empty():
+		return null
+	var entrance: Vector2i = building_grid.keys()[0]
+	for cell: Vector2i in building_grid:
+		if cell.y > entrance.y or (cell.y == entrance.y and cell.x < entrance.x):
+			entrance = cell
+	return entrance
+
 # 指定マスにいる住人（乗車中の住人は除く。いなければnull）
 func get_resident_at(cell: Vector2i):
 	for resident in residents:
@@ -481,6 +541,7 @@ func build_at(map_pos: Vector2i):
 	tile_map.set_cell(map_pos, data.source_id, Vector2i(0, 0))
 	building_grid[map_pos] = {"type": current_mode}
 	elevator_system.rebuild()
+	commute_system.rebuild()
 	update_funds_display()
 	show_message("%sを建設しました %s" % [data.name, map_pos])
 
@@ -496,5 +557,6 @@ func demolish_at(map_pos: Vector2i):
 	tile_map.erase_cell(map_pos)
 	building_grid.erase(map_pos)
 	elevator_system.rebuild()
+	commute_system.rebuild()
 	update_funds_display()
 	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, map_pos, refund])

@@ -13,6 +13,7 @@ const BORDER_COLOR := Color(0, 0, 0, 0.35)
 const BORDER_WIDTH := 1.5 # 画面上のpx（ズームしても太さが変わらない）
 const HOVER_OK_COLOR := Color(0.3, 1.0, 0.4)
 const HOVER_NG_COLOR := Color(1.0, 0.3, 0.3)
+const ENTRANCE_COLOR := Color(0.3, 1.0, 0.4)
 
 var world: Node2D # main.gd
 var hover_screen_pos := Vector2.ZERO # 最後にマウスがあった画面上の位置
@@ -53,6 +54,14 @@ func _draw() -> void:
 	for cell in world.building_grid:
 		draw_rect(cell_rect(cell, tile_size).grow(-width / 2.0), BORDER_COLOR, false, width)
 
+	# 入口（マスの左端に緑の扉と、中へ向かう矢印）
+	var entrance = world.get_entrance()
+	if entrance != null:
+		var rect := cell_rect(entrance, tile_size)
+		draw_rect(Rect2(rect.position, Vector2(3, tile_size.y)), ENTRANCE_COLOR)
+		var mid := rect.position + Vector2(5, tile_size.y / 2.0)
+		draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -3), mid + Vector2(4, 0), mid + Vector2(0, 3)]), ENTRANCE_COLOR)
+	
 	# カーソル下のマス
 	if hover_visible:
 		var color := HOVER_OK_COLOR if world.can_click_cell(hover_cell) else HOVER_NG_COLOR
