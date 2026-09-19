@@ -22,6 +22,8 @@ const TenantSystem := preload("res://scripts/systems/tenant_system.gd")
 # 建物の定義（種類を増やすときはここに追記する）
 # 見た目は pixel_art.gd のドット絵（TILES に同じ名前で描く）
 # width: 横のマス数（省略時は1）。建設・撤去はこのまとまり（ユニット）ごとに行い、cost はユニット1つ分
+# height: 縦の階数（省略時は1）。左下のマスを基準に、上の階へ伸びる。人が歩けるのは一番下の階だけ
+# lobby: true ならロビー（1階の入口になる）
 # floors: 建てられる階。"ground" = 1階だけ / "basement" = 地下だけ / "any" = どこでも / 省略 = 1階以外
 #         （1階はロビー専用のフロアなので、テナントや設備は1階に建てられない）
 # ---------------------------------------------------
@@ -41,7 +43,9 @@ const BUILDINGS := {
 	"wedding": {"name": "結婚式場", "cost": 1000000, "source_id": 12, "width": 6},
 	"event_hall": {"name": "イベントホール", "cost": 800000, "source_id": 13, "width": 6},
 	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14, "width": 4, "floors": "basement"},
-	"lobby": {"name": "ロビー", "cost": 30000, "source_id": 15, "floors": "ground"},
+	"lobby": {"name": "ロビー", "cost": 30000, "source_id": 15, "floors": "ground", "lobby": true},
+	"lobby2": {"name": "吹き抜けロビー（2階分）", "cost": 60000, "source_id": 16, "floors": "ground", "height": 2, "lobby": true},
+	"lobby3": {"name": "吹き抜けロビー（3階分）", "cost": 90000, "source_id": 17, "floors": "ground", "height": 3, "lobby": true},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -50,7 +54,7 @@ const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴ�
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
-	{"name": "ロビー・移動", "modes": ["lobby", "stairs", "elevator", "add_car"]},
+	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "stairs", "elevator", "add_car"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway"]},
 	{"name": "その他", "modes": ["resident"]},
 ]
@@ -271,6 +275,7 @@ func create_ui():
 	help_label.text = "\n".join([
 		"建設: 上の「建設」メニューで選び、マップを左クリック / 右クリック: 撤去（建設費の半額を返金）",
 		"更地から始まる。1階はロビー専用（ロビー・階段・エレベーターだけ）。人はロビーの左端（入口）から出入りする",
+		"吹き抜けロビー: 2階分・3階分の高さのロビー。上の階には床がないので、人は1階だけを歩く",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
@@ -383,7 +388,10 @@ func get_mode_info(mode: String) -> String:
 		return "建物をクリックで住人を置き、行き先をクリック"
 	if mode == MODE_ADD_CAR:
 		return "1台 %s円（シャフトをクリック。1本に%d台まで）" % [format_money(elevator_system.CAR_COST), elevator_system.MAX_CARS]
-	return "建設費 %s円・横%dマス" % [format_money(BUILDINGS[mode].cost), get_width(mode)]
+	var info := "建設費 %s円・横%dマス" % [format_money(BUILDINGS[mode].cost), get_width(mode)]
+	if get_height(mode) > 1:
+		info += "・高さ%d階分" % get_height(mode)
+	return info
 
 # 建設メニューの選択と説明を、今のモードに合わせる
 func update_mode_select():
@@ -490,14 +498,16 @@ func apply_pixel_art_tiles():
 			var grid: Vector2i = source.get_atlas_grid_size()
 			source.texture = ImageTexture.create_from_image(PixelArt.make_atlas_image(type, grid.x, grid.y))
 		else:
-			# 横に複数マスの建物は、絵の区画ごとにタイル (0,0), (1,0), ... を作る
+			# 複数マスの建物は、絵の区画ごとにタイルを作る（横 i 番目・上から j 番目の区画がタイル (i, j)）
 			var source := TileSetAtlasSource.new()
 			source.texture = ImageTexture.create_from_image(PixelArt.make_tile_image(type))
 			source.texture_region_size = tile_set.tile_size
-			for i in get_width(type):
-				source.create_tile(Vector2i(i, 0))
+			for j in get_height(type):
+				for i in get_width(type):
+					source.create_tile(Vector2i(i, j))
 			tile_set.add_source(source, id)
 		assert(PixelArt.tile_width(type) == get_width(type), "%s のドット絵の横幅が BUILDINGS の width と違います" % type)
+		assert(PixelArt.tile_height(type) == get_height(type), "%s のドット絵の高さが BUILDINGS の height と違います" % type)
 
 # BUILDINGSの定義をもとに、TileSetのカスタムデータ「type」を設定する
 # （メモリ上のみ。.tscnには保存されないため、エディタ上では空のまま見える）
@@ -551,12 +561,25 @@ func is_cell_empty(cell: Vector2i) -> bool:
 func get_width(type: String) -> int:
 	return BUILDINGS[type].get("width", 1)
 
-# 左端 origin から建物を建てたときに使うマスの一覧
+# 建物の高さ（階数）
+func get_height(type: String) -> int:
+	return BUILDINGS[type].get("height", 1)
+
+func is_lobby_type(type: String) -> bool:
+	return BUILDINGS.has(type) and BUILDINGS[type].get("lobby", false)
+
+# 左下のマス origin から建物を建てたときに使うマスの一覧（横幅 × 高さ。上の階は y が小さい）
 func get_footprint(origin: Vector2i, type: String) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	for i in get_width(type):
-		cells.append(origin + Vector2i(i, 0))
+	for k in get_height(type):
+		for i in get_width(type):
+			cells.append(origin + Vector2i(i, -k))
 	return cells
+
+# 人が歩けるマスか（建物があって、その建物の一番下の階＝床のある階）
+# 吹き抜けロビーの上の部分のように、床のない上の階のマスには入れない
+func is_walkable(cell: Vector2i) -> bool:
+	return building_grid.has(cell) and building_grid[cell].origin.y == cell.y
 
 # 指定マスを含む建物（ユニット）の全マス
 func get_unit_cells(cell: Vector2i) -> Array[Vector2i]:
@@ -614,12 +637,12 @@ const ELEVATOR_FLOOR_COST := 0.5 # エレベーターで1階分移動する
 # 戻り値: [{"to": Vector2i, "cost": float}, ...]
 func get_moves(cell: Vector2i) -> Array:
 	var result: Array = []
-	if is_cell_empty(cell):
+	if not is_walkable(cell):
 		return result
 	for dir in [Vector2i.LEFT, Vector2i.RIGHT]:
-		if not is_cell_empty(cell + dir):
+		if is_walkable(cell + dir):
 			result.append({"to": cell + dir, "cost": WALK_COST})
-	if get_building_type(cell) == "stairs" and not is_cell_empty(cell + Vector2i.UP):
+	if get_building_type(cell) == "stairs" and is_walkable(cell + Vector2i.UP):
 		result.append({"to": cell + Vector2i.UP, "cost": STAIRS_COST})
 	if get_building_type(cell + Vector2i.DOWN) == "stairs":
 		result.append({"to": cell + Vector2i.DOWN, "cost": STAIRS_COST})
@@ -718,7 +741,7 @@ func spawn_resident(cell: Vector2i):
 func get_entrance():
 	var entrance = null
 	for cell: Vector2i in building_grid:
-		if cell.y == ground_y and building_grid[cell].type == "lobby" and (entrance == null or cell.x < entrance.x):
+		if cell.y == ground_y and is_lobby_type(building_grid[cell].type) and (entrance == null or cell.x < entrance.x):
 			entrance = cell
 	return entrance
 
@@ -839,10 +862,12 @@ func build_at(map_pos: Vector2i):
 	
 	var data = BUILDINGS[current_mode]
 	funds -= data.cost
-	var cells := get_footprint(map_pos, current_mode)
-	for i in cells.size():
-		tile_map.set_cell(cells[i], data.source_id, Vector2i(i, 0)) # ドット絵の i 番目の区画
-		building_grid[cells[i]] = {"type": current_mode, "origin": map_pos}
+	var height := get_height(current_mode)
+	for cell in get_footprint(map_pos, current_mode):
+		# ドット絵の区画: 横は左端からの位置、縦は上から数えた位置（一番下の階が一番下の区画）
+		var atlas := Vector2i(cell.x - map_pos.x, height - 1 - (map_pos.y - cell.y))
+		tile_map.set_cell(cell, data.source_id, atlas)
+		building_grid[cell] = {"type": current_mode, "origin": map_pos}
 	rebuild_systems()
 	update_funds_display()
 	show_message("%sを建設しました %s" % [data.name, map_pos])

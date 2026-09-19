@@ -29,7 +29,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario]:
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
 		await start_main(scenario != run_empty_start_scenario)
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
@@ -1365,7 +1365,14 @@ func run_scroll_sky_scenario() -> bool:
 		if select.is_item_separator(i):
 			headers.append(select.get_item_text(i))
 	check(headers == ["テナント", "ロビー・移動", "設備", "その他"], "建設メニューは見出し（テナント・ロビー・移動・設備・その他）ごとに並ぶ")
-	await click_at(select.get_global_rect().get_center(), MOUSE_BUTTON_LEFT)
+	# 押した瞬間にリストが開く（離す位置がリストの項目の上だと、その項目が選ばれて閉じるので、押すだけにする）
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = select.get_global_rect().get_center()
+	press.global_position = press.position
+	root.push_input(press)
+	await wait_frames(2)
 	check(select.get_popup().visible, "建設メニューをクリックするとリストが開く")
 	select.get_popup().hide()
 	await choose_mode("hotel_suite")
@@ -1761,6 +1768,40 @@ func run_home_evening(day: int, stressed: bool) -> void:
 	await wait_until(func(): return main.economy_system.last_report.get("day") == day, 10.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
+
+# ---------------------------------------------------
+# シナリオ30: 吹き抜けロビー（高さのある建物）
+# 共通のビルの1階ロビー（x=-8〜7）の右隣に、2階分（x=8）と3階分（x=9）の吹き抜けロビーを建てる。
+# ---------------------------------------------------
+func run_atrium_scenario() -> bool:
+	print("[シナリオ] 吹き抜けロビー")
+	main.funds = 10000000
+	focus_camera(Vector2i(8, 16))
+	await choose_mode("lobby2")
+	check(main.mode_info_label.text == "建設費 60,000円・横1マス・高さ2階分", "建設メニューに高さが出る")
+	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(8, 17)), "吹き抜けロビーも1階からしか建てられない")
+	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(8, 18)) == "lobby2" and main.get_building_type(Vector2i(8, 17)) == "lobby2", "2階分の吹き抜けロビーは1階と2階のマスを使う")
+	check(main.funds == 10000000 - 60000, "2階分の吹き抜けロビーは6万円")
+	await choose_mode("lobby3")
+	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
+	check(main.get_unit_cells(Vector2i(9, 16)) == [Vector2i(9, 18), Vector2i(9, 17), Vector2i(9, 16)], "3階分の吹き抜けロビーは1〜3階のマスを使う")
+	
+	# 上の部分には床がないので、ほかの建物は建てられず、人も歩けない
+	await choose_mode("office")
+	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(8, 17)) == "lobby2", "吹き抜けの上の部分にはほかの建物を建てられない")
+	check(main.is_walkable(Vector2i(8, 18)) and not main.is_walkable(Vector2i(8, 17)), "歩けるのは吹き抜けロビーの1階だけ")
+	check(main.can_move(Vector2i(7, 18), Vector2i(8, 18)), "1階では、ロビーから吹き抜けロビーへ歩いて行ける")
+	check(not main.can_move(Vector2i(7, 17), Vector2i(8, 17)), "2階のオフィスから吹き抜けの上の部分へは入れない")
+	check(main.get_entrance() == Vector2i(-8, 18), "入口は今までどおりロビーの左端")
+	await capture("atrium_01")
+	
+	# どのマスを右クリックしても、吹き抜けロビー全体を撤去する
+	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_RIGHT)
+	check(main.is_cell_empty(Vector2i(9, 18)) and main.is_cell_empty(Vector2i(9, 16)), "上の部分を右クリックしても、吹き抜けロビー全体を撤去する")
+	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
 func run_day(day: int) -> void:

@@ -16,7 +16,7 @@ extends Node2D
 
 const NIGHT_TINT := Color(0.35, 0.4, 0.55) # 真っ暗な夜のときの建物の色（タイルに掛ける）
 const LIGHT_COLOR := Color(0.6, 0.45, 0.2) # 明かりの色（加算する）
-const ALWAYS_LIT := ["lobby", "stairs", "elevator", "housekeeping", "recycling", "security", "medical", "subway"]
+const ALWAYS_LIT := ["lobby", "lobby2", "lobby3", "stairs", "elevator", "housekeeping", "recycling", "security", "medical", "subway"]
 const LAMP_SPACING := 4        # 街灯の間隔（マス）
 const LAMP_HEIGHT := 13.0      # 街灯の高さ（ドット）
 const GLOW_COLOR := Color(1.0, 0.75, 0.35) # 街灯・入口の照明の光の色

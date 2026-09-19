@@ -4,6 +4,7 @@ extends RefCounted
 # ドット絵：建物のタイル（1マス = 16×16ドット）を文字で描き、起動時に画像にする。
 # 1文字 = 1ドット。文字と色の対応は PALETTE、"." は透明。
 # 横に何マスかにまたがる建物は、横幅 16×マス数 の絵として描く（例: オフィスは4マス = 64ドット）。
+# 縦に何階分かの高さがある建物は、縦 16×階数 の絵として描く（例: 2階分の吹き抜けロビー = 32ドット）。
 # 画像ファイルを用意しなくても、ここを書き換えるだけで見た目を変えられる。
 # ---------------------------------------------------
 
@@ -238,6 +239,90 @@ const TILES := {
 		"FFFFFFFFFFFFFFFF",
 		"KKKKKKKKKKKKKKKK",
 	],
+	"lobby2": [
+		"KKKKKKKKKKKKKKKK",
+		"ggVVVVVVVVVVVVgg",
+		"ggVVVVVLLVVVVVgg",
+		"ggVVVVLLLLVVVVgg",
+		"ggVVVVVLLVVVVVgg",
+		"ggVBBBBBBBBBBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwvwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwvwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwvwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwvwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwvwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwvwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBBBBBBBBBBVgg",
+		"VgVgVgVgVgVgVgVg",
+		"gVgVgVgVgVgVgVgV",
+		"FFFFFFFFFFFFFFFF",
+		"KKKKKKKKKKKKKKKK",
+	],
+	"lobby3": [
+		"KKKKKKKKKKKKKKKK",
+		"ggVVVVVVVVVVVVgg",
+		"ggVVVVVLLVVVVVgg",
+		"ggVVVVLLLLVVVVgg",
+		"ggVVVVVLLVVVVVgg",
+		"ggVBBBBBBBBBBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwvwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwvwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwvwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwvwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwvwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwvwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwvwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwvwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwvwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwvwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBwwwwwwwwBVgg",
+		"ggVBBBBBBBBBBVgg",
+		"VgVgVgVgVgVgVgVg",
+		"gVgVgVgVgVgVgVgV",
+		"FFFFFFFFFFFFFFFF",
+		"KKKKKKKKKKKKKKKK",
+	],
 	"housekeeping": [
 		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 		"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
@@ -352,12 +437,16 @@ const TILES := {
 static func tile_width(type: String) -> int:
 	return TILES[type][0].length() / SIZE
 
-# 指定した建物の絵全体の画像（横 16×マス数、縦 16）を作る
+# 建物の高さ（階数）
+static func tile_height(type: String) -> int:
+	return TILES[type].size() / SIZE
+
+# 指定した建物の絵全体の画像（横 16×マス数、縦 16×階数）を作る
 static func make_tile_image(type: String) -> Image:
 	var rows: Array = TILES[type]
 	var width: int = rows[0].length()
-	var image := Image.create(width, SIZE, false, Image.FORMAT_RGBA8)
-	for y in SIZE:
+	var image := Image.create(width, rows.size(), false, Image.FORMAT_RGBA8)
+	for y in rows.size():
 		for x in width:
 			var ch: String = rows[y][x]
 			image.set_pixel(x, y, PALETTE.get(ch, Color.TRANSPARENT))
