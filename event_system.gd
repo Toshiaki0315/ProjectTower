@@ -4,6 +4,7 @@ extends Node
 # 結婚式場・イベントホール：休日だけ催しがあり、大勢の来客が入口からやって来る。
 #   EVENT_TYPES の会場ごとに、
 #     arrive_start〜arrive_end の間のランダムな時刻に来客（visitors 人）が入口に現れ、会場へ向かう。
+#     会場は横に何マスかの建物で、左端のマスで表す。来客は会場の中のマスに振り分ける。
 #     会場に着いたら料金（price）を払う。
 #     催しが終わる end の後、少しずつ（LEAVE_SPREAD 分の間に）入口へ帰っていく。
 # 建設・撤去のたびに rebuild() を呼んで、会場の対応を更新する。
@@ -33,6 +34,8 @@ func rebuild() -> void:
 	var cells: Array[Vector2i] = []
 	for type in EVENT_TYPES:
 		for cell in world.find_cells_of_type(type):
+			if world.building_grid[cell].origin != cell:
+				continue # 会場は左端のマスで表す
 			cells.append(cell)
 			if not halls.has(cell):
 				halls[cell] = {"type": type, "event_day": 0, "visitors": []}
@@ -60,33 +63,37 @@ func _process(_delta: float) -> void:
 func plan_visitors(cell: Vector2i, info: Dictionary, day: int) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([cell, day, "event"])
+	var spots: Array[Vector2i] = world.get_unit_cells(cell)
 	var visitors := []
 	for i in info.visitors:
+		# 来客は会場のマスに順に振り分け、同じマスの人は左右に少しずらして描く
+		var lap: int = i / spots.size()
 		visitors.append({
+			"spot": spots[i % spots.size()],
 			"arrive": rng.randi_range(info.arrive_start, info.arrive_end - 1),
 			"leave": info.end + rng.randi_range(0, LEAVE_SPREAD),
-			"offset": Vector2(rng.randi_range(-4, 4), 0), # 会場で重ならないよう少しずらして描く
+			"offset": Vector2([0, -4, 4][lap % 3], 0),
 			"resident": null, "spawned": false, "arrived": false, "leaving": false,
 		})
 	return visitors
 
-func process_visitor(cell: Vector2i, _hall: Dictionary, info: Dictionary, v: Dictionary, day: int, now: int) -> void:
+func process_visitor(_cell: Vector2i, _hall: Dictionary, info: Dictionary, v: Dictionary, day: int, now: int) -> void:
 	# 来る時刻になったら入口に現れて会場へ向かう（たどり着けなければ来ない）
 	if not v.spawned:
 		if now >= v.arrive:
 			v.spawned = true
-			var entrance = world.nearest_entrance(cell)
+			var entrance = world.nearest_entrance(v.spot)
 			if entrance != null:
 				v.resident = world.spawn_resident(entrance)
 				v.resident.base_color = info.color
 				v.resident.sprite_offset = v.offset
-				v.resident.go_to(cell)
+				v.resident.go_to(v.spot)
 		return
 	var resident = v.resident
 	if not is_instance_valid(resident):
 		return
 	# 会場に着いたら料金を払う
-	if not v.arrived and resident.cell == cell and not resident.is_moving():
+	if not v.arrived and resident.cell == v.spot and not resident.is_moving():
 		v.arrived = true
 		revenue_by_day[day] = revenue_by_day.get(day, 0) + info.price
 		visitors_by_day[day] = visitors_by_day.get(day, 0) + 1
@@ -108,8 +115,10 @@ func send_to_entrance(v: Dictionary) -> void:
 		v.resident.queue_free()
 		v.resident = null
 
-# 指定した会場に着いている来客の数
+# 指定した会場に着いている来客の数（会場のどのマスを指定してもよい）
 func count_at_hall(cell: Vector2i) -> int:
+	if world.building_grid.has(cell):
+		cell = world.building_grid[cell].origin
 	if not halls.has(cell):
 		return 0
 	var n := 0

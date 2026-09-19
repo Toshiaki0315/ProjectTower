@@ -27,7 +27,7 @@ func setup(p_world: Node2D) -> void:
 func population() -> int:
 	var commute = world.commute_system
 	return commute.workers.size() - commute.count_unreachable() + world.hotel_system.total_capacity() \
-		+ world.housing_system.count_moved_in()
+		+ world.housing_system.count_residents()
 
 # 賃料・宿泊料に上乗せする割合（★1なら0）
 func bonus_rate() -> float:

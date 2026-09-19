@@ -20,6 +20,10 @@ func _init() -> void:
 	# 本物のマウスの操作がテストの入力に割り込まないよう、ウィンドウはマウスを受け付けない
 	# （テストの入力は push_input で直接送るので影響しない）
 	root.mouse_passthrough = true
+	# ウィンドウが他のウィンドウの裏に隠れると、macOSは画面の更新を止めることがある。
+	# 垂直同期を待つとそこでフレームが止まってしまうので、テスト中は切って60fpsに制限する
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
 	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario]:
@@ -696,11 +700,11 @@ func run_lunch_scenario() -> bool:
 	await capture("lunch_01_crowd")
 	await wait_until(func():
 		max_eating[0] = maxi(max_eating[0], commerce.count_eating_at(restaurant))
-		return main.clock.minute_of_day() >= 14 * 60 + 30, 30.0)
+		return main.clock.minute_of_day() >= 15 * 60, 30.0) # 店の奥の席まで歩く人もいるので余裕をもって15時
 	check(max_eating[0] > 0, "昼に社員が飲食店で食事をする")
 	check(lunch_stops[0] > 0, "上の階の社員はエレベーターで飲食店へ行き来する")
 	check(commerce.revenue_by_day.get(1, 0) == 68000, "68人が食事をして売上6.8万円になる")
-	check(commute.count_at_office() == 68, "14時半には全員がオフィスに戻っている")
+	check(commute.count_at_office() == 68, "15時には全員がオフィスに戻っている")
 	
 	# 1日目の決算に飲食店の売上が入る
 	main.clock.set_time(1, 23, 59)
@@ -804,46 +808,58 @@ func run_housing_scenario() -> bool:
 	print("[シナリオ] 住宅")
 	main.funds = 10000000
 	var housing = main.housing_system
-	var homes: Array[Vector2i] = [Vector2i(8, 18), Vector2i(9, 18)]
+	var homes: Array[Vector2i] = [Vector2i(8, 18), Vector2i(11, 18)] # 横3マスずつ（x=8〜10、11〜13）
+	focus_camera(Vector2i(8, 17))
 	await click_button(main.mode_buttons["housing"])
 	for cell in homes:
 		await click_cell(cell, MOUSE_BUTTON_LEFT)
-	check(main.funds == 10000000 - 2 * 150000, "住宅の建設費15万円×2がかかる")
+	check(main.funds == 10000000 - 2 * 400000, "住宅（横3マス）の建設費40万円×2がかかる")
 	check(housing.homes.size() == 2 and housing.count_moved_in() == 0, "建てた直後はまだ入居者がいない")
-	await hover_cell(homes[0])
-	check(main.hover_label.text.contains("住宅（入居者募集中）"), "カーソルを合わせると「入居者募集中」と出る")
+	check(housing.homes[homes[0]].members.size() == 3, "住宅1戸は3人家族（1人1マス）")
+	await hover_cell(homes[0] + Vector2i(2, 0))
+	check(main.hover_label.text.contains("住宅（入居者募集中）"), "住宅のどのマスにカーソルを合わせても「入居者募集中」と出る")
 	
-	# 1日目の夕方: 入居者が来て入居し、販売収入が入る
+	# 1日目の夕方: 家族が来て入居し、販売収入が入る
 	main.clock.set_time(1, 16, 59)
 	main.clock.set_process(true)
 	Engine.time_scale = 16.0
 	await wait_until(func(): return main.clock.minute_of_day() >= 20 * 60 + 30, 30.0)
-	check(housing.count_moved_in() == 2 and housing.count_at_home() == 2, "夕方に2戸とも入居者が来て家にいる")
-	check(housing.revenue_by_day.get(1, 0) == 500000, "入居で販売収入25万円×2が入る")
-	check(housing.homes[homes[0]].resident.base_color == housing.RESIDENT_COLOR, "入居者は緑の服")
+	check(housing.count_moved_in() == 2 and housing.count_at_home() == 6, "夕方に2戸とも入居し、6人が家にいる")
+	var rooms := {}
+	for m in housing.homes[homes[0]].members:
+		if housing.is_at_home(m):
+			rooms[m.resident.cell] = true
+	check(rooms.size() == 3, "家族3人はそれぞれ別のマス（部屋）にいる")
+	check(housing.revenue_by_day.get(1, 0) == 1400000, "入居で販売収入70万円×2が入る")
+	check(housing.homes[homes[0]].members[0].resident.base_color == housing.RESIDENT_COLOR, "入居者は緑の服")
 	var others: int = main.commute_system.workers.size() - main.commute_system.count_unreachable() + main.hotel_system.total_capacity()
-	check(main.rating_system.population() == others + 2, "入居者の分だけ人口が増える")
+	check(main.rating_system.population() == others + 6, "入居者6人の分だけ人口が増える")
 	await hover_cell(homes[0])
-	check(main.hover_label.text.contains("住宅（在宅）"), "入居後は「在宅」と出る")
+	check(main.hover_label.text.contains("住宅（在宅 3/3人）"), "入居後は在宅の人数が出る")
 	await capture("housing_01_moved_in")
 	
 	# 2日目の朝: 1日目の決算に販売収入が入り、入居者は出かける
 	main.clock.set_time(2, 6, 59)
 	await wait_until(func(): return main.economy_system.last_report.get("day") == 1, 10.0)
-	check(main.economy_system.last_report.get("housing") == 500000, "1日目の決算に住宅販売50万円が入る")
-	check(main.message_label.text.contains("住宅販売 +500,000円"), "決算のメッセージに住宅販売が出る")
+	check(main.economy_system.last_report.get("housing") == 1400000, "1日目の決算に住宅販売140万円が入る")
+	check(main.message_label.text.contains("住宅販売 +1,400,000円"), "決算のメッセージに住宅販売が出る")
+	check(main.economy_system.last_report.get("garbage") >= 2, "入居済みの住宅2戸からゴミが出る（1戸につき1）")
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
-	check(housing.count_at_home() == 0, "朝のうちに入居者は出かけている")
-	check(housing.homes[homes[0]].resident == null, "出かけた入居者はビルの外にいる")
+	check(housing.count_at_home() == 0, "朝のうちに入居者は全員出かけている")
+	var inside := 0
+	for m in housing.homes[homes[0]].members:
+		if m.resident != null:
+			inside += 1
+	check(inside == 0, "出かけた入居者はビルの外にいる")
 	await hover_cell(homes[0])
-	check(main.hover_label.text.contains("住宅（外出中）"), "外出中は「外出中」と出る")
+	check(main.hover_label.text.contains("住宅（在宅 0/3人）"), "外出中は在宅0人と出る")
 	
 	# 2日目の夕方: 帰ってくる（販売収入は2回目は入らない）
 	main.clock.set_time(2, 16, 59)
 	await wait_until(func(): return main.clock.minute_of_day() >= 20 * 60 + 30, 30.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
-	check(housing.count_at_home() == 2, "夕方には2人とも帰ってくる")
+	check(housing.count_at_home() == 6, "夕方には6人とも帰ってくる")
 	check(housing.revenue_by_day.get(2, 0) == 0, "販売収入は入居したときの1回だけ")
 	return true
 
@@ -916,7 +932,7 @@ func run_room_types_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ17: 平日・休日のサイクル
-# シナリオ10と同じ建物（社員68人）＋ 1階の右隣に住宅1戸(9,18)。
+# シナリオ10と同じ建物（社員68人）＋ 1階の右隣に住宅1戸（横3マス、x=9〜11）。
 # 5日目（金）→ 6日目（土・休日）→ 8日目（月）と進めて違いを確かめる。
 # ---------------------------------------------------
 func run_weekday_scenario() -> bool:
@@ -942,14 +958,14 @@ func run_weekday_scenario() -> bool:
 	check(main.commute_system.count_at_office() == 68, "金曜日は68人が出勤する")
 	clock.set_time(5, 16, 59)
 	Engine.time_scale = 16.0
-	await wait_until(func(): return main.housing_system.count_at_home() == 1 and clock.minute_of_day() >= 20 * 60, 30.0)
+	await wait_until(func(): return main.housing_system.count_at_home() == 3 and clock.minute_of_day() >= 20 * 60, 30.0)
 	
 	# 6日目（土）: 休日。社員は来ない。入居者は遅めに出かける
 	clock.set_time(6, 7, 59)
 	await wait_until(func(): return clock.minute_of_day() >= 9 * 60 + 45, 30.0)
 	check(main.clock_label.text.begins_with("6日目（土）休日"), "上部バーに曜日と休日が出る")
 	check(main.commute_system.count_in_building() == 0, "休日は社員が出勤しない")
-	check(main.housing_system.count_at_home() == 1, "休日の入居者は9時45分にはまだ家にいる（平日なら9時までに出かける）")
+	check(main.housing_system.count_at_home() == 3, "休日の入居者3人は9時45分にはまだ家にいる（平日なら9時までに出かける）")
 	await capture("weekday_01_holiday")
 	await wait_until(func(): return clock.minute_of_day() >= 12 * 60 + 10, 30.0)
 	check(main.housing_system.count_at_home() == 0, "休日の入居者は12時までに出かける")
@@ -970,8 +986,8 @@ func run_weekday_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ18: 結婚式場・イベントホール（休日の大勢の来客）
-# x=8 に y=13〜18 のシャフト、1階の右隣(9,18)に結婚式場、上の階(7,13)にイベントホール。
-# イベントホールの来客はエレベーターで上がる。
+# x=8 に y=13〜18 のシャフト、1階の右隣に結婚式場（横6マス、x=9〜14）、
+# 上の階のシャフトの左にイベントホール（横6マス、x=2〜7）。イベントホールの来客はエレベーターで上がる。
 # ---------------------------------------------------
 func run_event_scenario() -> bool:
 	print("[シナリオ] 結婚式場・イベントホール")
@@ -982,7 +998,8 @@ func run_event_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	var wedding := Vector2i(9, 18)
-	var hall := Vector2i(7, 13)
+	var hall := Vector2i(2, 13)
+	focus_camera(Vector2i(6, 16))
 	await click_button(main.mode_buttons["wedding"])
 	await click_cell(wedding, MOUSE_BUTTON_LEFT)
 	await click_button(main.mode_buttons["event_hall"])
@@ -1004,6 +1021,11 @@ func run_event_scenario() -> bool:
 	await wait_until(func(): return clock.minute_of_day() >= 11 * 60 + 40, 30.0)
 	check(main.commute_system.count_in_building() == 0, "月曜日に出勤した社員は、日付が変わったら帰っている")
 	check(events.count_at_hall(wedding) == 12, "休日の結婚式には12人が来ている")
+	var spots := {}
+	for v in events.halls[wedding].visitors:
+		if is_instance_valid(v.resident):
+			spots[v.resident.cell] = true
+	check(spots.size() == 6, "来客は結婚式場の6マスに分かれている")
 	await hover_cell(wedding)
 	check(main.hover_label.text.contains("結婚式場（来客 12人）"), "カーソルを合わせると来客の人数が出る")
 	await capture("event_01_wedding")
