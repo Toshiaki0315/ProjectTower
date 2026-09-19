@@ -24,7 +24,8 @@ const TenantSystem := preload("res://scripts/systems/tenant_system.gd")
 # width: 横のマス数（省略時は1）。建設・撤去はこのまとまり（ユニット）ごとに行い、cost はユニット1つ分
 # height: 縦の階数（省略時は1）。左下のマスを基準に、上の階へ伸びる。人が歩けるのは一番下の階だけ
 # lobby: true ならロビー（1階の入口になる）
-# floors: 建てられる階。"ground" = 1階だけ / "basement" = 地下だけ / "any" = どこでも / 省略 = 1階以外
+# floors: 建てられる階。"ground" = 1階だけ / "basement" = 地下だけ / "any" = どこでも /
+#         "sky_lobby" = 15階・30階・45階…だけ（SKY_LOBBY_INTERVAL 階ごと） / 省略 = 1階以外
 #         （1階はロビー専用のフロアなので、テナントや設備は1階に建てられない）
 # ---------------------------------------------------
 const BUILDINGS := {
@@ -46,6 +47,7 @@ const BUILDINGS := {
 	"lobby": {"name": "ロビー", "cost": 30000, "source_id": 15, "floors": "ground", "lobby": true},
 	"lobby2": {"name": "吹き抜けロビー（2階分）", "cost": 60000, "source_id": 16, "floors": "ground", "height": 2, "lobby": true},
 	"lobby3": {"name": "吹き抜けロビー（3階分）", "cost": 90000, "source_id": 17, "floors": "ground", "height": 3, "lobby": true},
+	"sky_lobby": {"name": "スカイロビー", "cost": 50000, "source_id": 18, "floors": "sky_lobby"},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -54,10 +56,11 @@ const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴ�
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
-	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "stairs", "elevator", "add_car"]},
+	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "elevator", "add_car"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway"]},
 	{"name": "その他", "modes": ["resident"]},
 ]
+const SKY_LOBBY_INTERVAL := 15 # スカイロビーを建てられる階の間隔（15階・30階・45階…）
 const SCROLL_MARGIN_ROWS := 10 # スクロールできる範囲の、建物の上下に足す余白（行数）
 
 var funds: int = 2000000
@@ -276,6 +279,7 @@ func create_ui():
 		"建設: 上の「建設」メニューで選び、マップを左クリック / 右クリック: 撤去（建設費の半額を返金）",
 		"更地から始まる。1階はロビー専用（ロビー・階段・エレベーターだけ）。人はロビーの左端（入口）から出入りする",
 		"吹き抜けロビー: 2階分・3階分の高さのロビー。上の階には床がないので、人は1階だけを歩く",
+		"スカイロビー: 15階・30階・45階…にだけ建てられる乗り換え専用のフロア（何階かはカーソル下の情報に出る）",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
@@ -449,7 +453,7 @@ func update_hover_label():
 		return
 	var cell: Vector2i = grid_overlay.hover_cell
 	var type = get_building_type(cell)
-	var text = "マス %s: %s" % [cell, BUILDINGS[type].name if type != "" else "空き"]
+	var text = "%s マス %s: %s" % [get_floor_name(cell.y), cell, BUILDINGS[type].name if type != "" else "空き"]
 	if type == "office" and tenant_system.get_rating_text(cell) != "":
 		text += "（%s）" % tenant_system.get_rating_text(cell)
 	if hotel_system.is_room_type(type):
@@ -576,6 +580,17 @@ func get_footprint(origin: Vector2i, type: String) -> Array[Vector2i]:
 			cells.append(origin + Vector2i(i, -k))
 	return cells
 
+# 何階か（1階は地面の線のすぐ上の段。地下は B1階・B2階…）
+func get_floor_name(y: int) -> String:
+	if y > ground_y:
+		return "B%d階" % (y - ground_y)
+	return "%d階" % (ground_y - y + 1)
+
+# スカイロビーを建てられる階か（15階・30階・45階…）
+func is_sky_lobby_floor(y: int) -> bool:
+	var floor_number := ground_y - y + 1
+	return floor_number > 1 and floor_number % SKY_LOBBY_INTERVAL == 0
+
 # 人が歩けるマスか（建物があって、その建物の一番下の階＝床のある階）
 # 吹き抜けロビーの上の部分のように、床のない上の階のマスには入れない
 func is_walkable(cell: Vector2i) -> bool:
@@ -597,6 +612,9 @@ func get_build_problem(origin: Vector2i, type: String) -> String:
 		return "%sは1階にしか建てられません" % BUILDINGS[type].name
 	if floors == "basement" and origin.y <= ground_y:
 		return "%sは地下（1階より下）にしか建てられません" % BUILDINGS[type].name
+	if floors == "sky_lobby" and not is_sky_lobby_floor(origin.y):
+		return "%sは%d階・%d階・%d階…にしか建てられません（ここは%s）" % [BUILDINGS[type].name,
+			SKY_LOBBY_INTERVAL, SKY_LOBBY_INTERVAL * 2, SKY_LOBBY_INTERVAL * 3, get_floor_name(origin.y)]
 	if floors == "" and origin.y == ground_y:
 		return "1階はロビー専用です（1階に建てられるのはロビー・階段・エレベーターだけ）"
 	if funds < BUILDINGS[type].cost:

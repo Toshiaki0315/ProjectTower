@@ -29,7 +29,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario]:
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
 		await start_main(scenario != run_empty_start_scenario)
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
@@ -1801,6 +1801,31 @@ func run_atrium_scenario() -> bool:
 	# どのマスを右クリックしても、吹き抜けロビー全体を撤去する
 	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_RIGHT)
 	check(main.is_cell_empty(Vector2i(9, 18)) and main.is_cell_empty(Vector2i(9, 16)), "上の部分を右クリックしても、吹き抜けロビー全体を撤去する")
+	return true
+
+# ---------------------------------------------------
+# シナリオ31: スカイロビー（15階・30階…だけに建てられる乗り換えフロア）
+# 1階は y=18 なので、15階は y=4、30階は y=-11。
+# ---------------------------------------------------
+func run_sky_lobby_scenario() -> bool:
+	print("[シナリオ] スカイロビー")
+	main.funds = 10000000
+	check(main.get_floor_name(18) == "1階" and main.get_floor_name(4) == "15階" and main.get_floor_name(20) == "B2階", "階の名前: y=18 は1階、y=4 は15階、y=20 はB2階")
+	check(main.is_sky_lobby_floor(4) and main.is_sky_lobby_floor(-11) and not main.is_sky_lobby_floor(5) and not main.is_sky_lobby_floor(18), "スカイロビーを建てられるのは15階・30階…だけ")
+	focus_camera(Vector2i(2, 5))
+	await choose_mode("sky_lobby")
+	await click_cell(Vector2i(0, 5), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(0, 5)), "14階にはスカイロビーを建てられない")
+	check(main.message_label.text.contains("15階・30階・45階…にしか建てられません（ここは14階）"), "建てられる階と、今の階がメッセージで出る")
+	for x in range(0, 5):
+		await click_cell(Vector2i(x, 4), MOUSE_BUTTON_LEFT)
+	check(main.find_cells_of_type("sky_lobby").size() == 5, "15階にはスカイロビーを1マスずつ横に伸ばせる")
+	check(main.funds == 10000000 - 5 * 50000, "スカイロビーは1マス5万円")
+	check(main.is_walkable(Vector2i(2, 4)) and main.can_move(Vector2i(1, 4), Vector2i(2, 4)), "スカイロビーは歩いて移動できる")
+	check(main.get_entrances() == [Vector2i(-8, 18)], "スカイロビーは入口にはならない")
+	await hover_cell(Vector2i(2, 4))
+	check(main.hover_label.text.begins_with("15階 マス (2, 4): スカイロビー"), "カーソル下の情報の先頭に何階かが出る")
+	await capture("sky_lobby_01")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
