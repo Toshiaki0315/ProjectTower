@@ -28,7 +28,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -1328,6 +1328,52 @@ func run_scroll_sky_scenario() -> bool:
 	clock.set_time(1, 17, 1)
 	check(clock.sky_color().is_equal_approx(c2) == false and c2.lerp(clock.sky_color(), 0.5).is_equal_approx(c2.lerp(clock.sky_color(), 0.5)), "空の色は1分ごとに少しずつ変わる")
 	check(not c1.is_equal_approx(c2), "昼と夕方前で空の色が違う")
+	return true
+
+# ---------------------------------------------------
+# シナリオ23: 夜の明かり
+# 1階の右隣に、シングル（x=8〜9）・住宅（x=10〜12）・警備室（x=13〜14）。
+# 昼は明かりの重ね描きなし。夜は建物が暗くなり、人がいる部屋・設備にだけ明かりが灯る。
+# ---------------------------------------------------
+func run_night_light_scenario() -> bool:
+	print("[シナリオ] 夜の明かり")
+	main.funds = 100000000
+	var lighting = main.lighting
+	var room := Vector2i(8, 18)
+	var home := Vector2i(10, 18)
+	var security := Vector2i(13, 18)
+	focus_camera(Vector2i(8, 16))
+	await choose_mode("hotel")
+	await click_cell(room, MOUSE_BUTTON_LEFT)
+	await choose_mode("housing")
+	await click_cell(home, MOUSE_BUTTON_LEFT)
+	await choose_mode("security")
+	await click_cell(security, MOUSE_BUTTON_LEFT)
+	
+	# 昼: 建物は暗くならない。社員がいるオフィスには明かりの判定がある（昼は描かない）
+	main.clock.set_time(1, 7, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 8.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60 + 45, 30.0)
+	check(main.tile_map.self_modulate == Color.WHITE, "昼は建物が暗くならない")
+	var lit: Dictionary = lighting.get_lit_cells()
+	check(lit.has(Vector2i(0, 18)) and lit.has(security), "社員がいるオフィス・設備は明かりが灯る扱いになる")
+	check(not lit.has(room) and not lit.has(home), "客や住人がいない客室・住宅は明かりが灯らない")
+	
+	# 夜: 宿泊客・住人が帰ってくる。オフィスは誰もいない
+	main.clock.set_time(1, 16, 59)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 21 * 60 + 30, 30.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	lit = lighting.get_lit_cells()
+	check(main.clock.darkness() > 0.5, "21時半は暗い")
+	check(main.tile_map.self_modulate.get_luminance() < 0.6, "夜は建物のタイルが暗くなる")
+	check(lit.has(room) and lit.has(room + Vector2i(1, 0)), "宿泊客がいる客室は部屋全体に明かりが灯る")
+	check(lit.has(home) and lit.has(home + Vector2i(2, 0)), "家にいる人の部屋に明かりが灯る")
+	check(lit.has(security), "警備室は一晩中明かりが灯る")
+	check(not lit.has(Vector2i(0, 18)), "社員が帰ったオフィスは暗いまま")
+	await capture("night_01_lights")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

@@ -12,6 +12,7 @@ const CommerceSystem := preload("res://commerce_system.gd")
 const RatingSystem := preload("res://rating_system.gd")
 const HousingSystem := preload("res://housing_system.gd")
 const EventSystem := preload("res://event_system.gd")
+const Lighting := preload("res://lighting.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
@@ -70,6 +71,7 @@ var commerce_system # 飲食店（社員の昼食）
 var rating_system # ビルの評価（★）
 var housing_system # 住宅と入居者
 var event_system # 結婚式場・イベントホール（休日の来客）
+var lighting # 夜の明かり
 var clock_label: Label # 日付と時刻の表示
 var stats_label: Label # 社員の人数の表示
 
@@ -128,6 +130,9 @@ func _ready() -> void:
 	economy_system = EconomySystem.new()
 	economy_system.setup(self)
 	add_child(economy_system)
+	lighting = Lighting.new()
+	lighting.setup(self)
+	tile_map.add_child(lighting)
 	tile_map.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST # 拡大してもタイルをぼかさない
 	focus_camera_on_building()
 	grid_overlay = GridOverlay.new()
