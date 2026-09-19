@@ -28,7 +28,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -1406,6 +1406,48 @@ func run_sun_moon_scenario() -> bool:
 		clock.set_time(1, t[0], t[1])
 		await wait_frames(2)
 		await capture("sun_moon_%02d%02d_%s" % [t[0], t[1], t[2]])
+	return true
+
+# ---------------------------------------------------
+# シナリオ25: 夜の演出（街灯・入口の照明）
+# 街灯はビルの外の地面（1階の高さの空きマス）に4マスおきに立ち、夜に灯る。入口の扉の周りも光る。
+# ---------------------------------------------------
+func run_street_lamp_scenario() -> bool:
+	print("[シナリオ] 街灯・入口の照明")
+	var lighting = main.lighting
+	var view := Rect2(-30 * 16, 0, 60 * 16, 400)
+	var lamps: Array[Vector2] = lighting.get_street_lamps(view)
+	check(not lamps.is_empty(), "ビルの外の地面に街灯が立つ")
+	var on_building := false
+	var spacing_ok := true
+	for lamp in lamps:
+		var x := int(floor(lamp.x / 16.0))
+		if not main.is_cell_empty(Vector2i(x, main.ground_y)):
+			on_building = true
+		if posmod(x, lighting.LAMP_SPACING) != 0:
+			spacing_ok = false
+	check(not on_building, "建物があるマスには街灯を立てない（ブロックの x=-8〜7 には立たない）")
+	check(spacing_ok, "街灯は4マスおきに立つ")
+	check(is_equal_approx(lamps[0].y + lighting.LAMP_HEIGHT, (main.ground_y + 1) * 16.0), "街灯は地面の線の上に立つ")
+	
+	# 建物を建てると、そのマスの街灯はなくなる
+	main.funds = 10000000
+	var lamp_x := 12 # 4の倍数なので街灯が立つ位置
+	check(lighting.get_street_lamps(view).any(func(p): return int(floor(p.x / 16.0)) == lamp_x), "x=12 に街灯がある")
+	main.select_mode("security")
+	main.build_at(Vector2i(11, main.ground_y))
+	check(not lighting.get_street_lamps(view).any(func(p): return int(floor(p.x / 16.0)) == lamp_x), "建物を建てるとそのマスの街灯はなくなる")
+	
+	# 入口の照明: 入口の数だけ
+	check(lighting.get_entrance_lights().size() == main.get_entrances().size(), "入口ごとに照明がある")
+	
+	focus_camera(Vector2i(2, 15))
+	main.clock.set_time(1, 22, 0)
+	await wait_frames(3)
+	await capture("street_lamp_01_night")
+	main.clock.set_time(1, 12, 0)
+	await wait_frames(3)
+	await capture("street_lamp_02_day")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

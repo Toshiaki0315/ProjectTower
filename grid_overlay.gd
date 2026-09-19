@@ -113,6 +113,7 @@ class SoilBackground extends Node2D:
 				visible_rect.size.x, sky_bottom - visible_rect.position.y), world.clock.sky_color())
 			draw_stars(visible_rect, sky_bottom, tile_size, world.clock.darkness())
 			draw_sun_and_moon(visible_rect, sky_bottom)
+			draw_street_lamps(visible_rect, world.clock.darkness())
 		
 		# 土
 		if visible_rect.end.y > ground_bottom:
@@ -138,6 +139,18 @@ class SoilBackground extends Node2D:
 			var pos := celestial_position(moon, visible_rect, sky_bottom)
 			draw_circle(pos, 14 * px, Color(1.0, 1.0, 0.85))
 			draw_circle(pos + Vector2(7, -3) * px, 12 * px, clock.sky_color()) # 空の色で欠けさせて三日月にする
+
+	# 街灯の柱と灯り（夜は灯りが明るくなる。光の輪は lighting.gd が重ねる）
+	func draw_street_lamps(visible_rect: Rect2, darkness: float) -> void:
+		var lighting = overlay.world.lighting
+		if lighting == null:
+			return
+		var pole_color := Color(0.25, 0.27, 0.3)
+		var head_color := Color(0.55, 0.55, 0.5).lerp(Color(1.0, 0.9, 0.55), darkness)
+		for head in lighting.get_street_lamps(visible_rect):
+			draw_rect(Rect2(head.x - 0.5, head.y, 1, lighting.LAMP_HEIGHT), pole_color)  # 柱
+			draw_rect(Rect2(head.x - 2, head.y - 1, 4, 2), pole_color)                   # かさ
+			draw_rect(Rect2(head.x - 1, head.y + 1, 2, 1), head_color)                   # 灯り
 
 	# 空の中の位置: t=0 で左下、t=0.5 で上の真ん中、t=1 で右下
 	func celestial_position(t: float, visible_rect: Rect2, sky_bottom: float) -> Vector2:

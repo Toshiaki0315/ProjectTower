@@ -8,6 +8,8 @@ extends Node2D
 #     住宅              … 家にいる人の部屋のマス
 #     飲食店・会場      … 客がいる間、建物の全マス
 #     階段・エレベーター・設備 … いつも（一晩中灯っている）
+#   街灯: ビルの外の地面（1階の高さの空きマス）に LAMP_SPACING マスおきに立ち、夜に灯る
+#   入口の照明: 1階の入口・地下鉄駅の扉の周りが、夜に光る
 # 明かりは加算合成で重ねるので、暗くしたタイルの上で暖かい色に光って見える。
 # TileMapLayerの子として追加するので、座標はタイルマップ座標系。
 # ---------------------------------------------------
@@ -15,6 +17,9 @@ extends Node2D
 const NIGHT_TINT := Color(0.35, 0.4, 0.55) # 真っ暗な夜のときの建物の色（タイルに掛ける）
 const LIGHT_COLOR := Color(0.6, 0.45, 0.2) # 明かりの色（加算する）
 const ALWAYS_LIT := ["stairs", "elevator", "housekeeping", "recycling", "security", "medical", "subway"]
+const LAMP_SPACING := 4        # 街灯の間隔（マス）
+const LAMP_HEIGHT := 13.0      # 街灯の高さ（ドット）
+const GLOW_COLOR := Color(1.0, 0.75, 0.35) # 街灯・入口の照明の光の色
 
 var world: Node2D # main.gd
 
@@ -66,6 +71,28 @@ func get_lit_cells() -> Dictionary:
 				lit[c] = true
 	return lit
 
+# 画面に映っている範囲（visible_rect、タイルマップ座標系）にある街灯の、灯りの位置の一覧
+# 街灯は1階の高さの、建物のない空きマスに LAMP_SPACING マスおきに立つ
+func get_street_lamps(visible_rect: Rect2) -> Array[Vector2]:
+	var lamps: Array[Vector2] = []
+	var tile_size := Vector2(world.tile_map.tile_set.tile_size)
+	var first := int(floor(visible_rect.position.x / tile_size.x)) - 1
+	var last := int(ceil(visible_rect.end.x / tile_size.x)) + 1
+	var floor_y: float = (world.ground_y + 1) * tile_size.y # 地面の高さ（1階の床の下端 = 地面の線）
+	for x in range(first, last + 1):
+		if posmod(x, LAMP_SPACING) != 0 or not world.is_cell_empty(Vector2i(x, world.ground_y)):
+			continue
+		lamps.append(Vector2((x + 0.5) * tile_size.x, floor_y - LAMP_HEIGHT))
+	return lamps
+
+# 入口の照明の位置の一覧（扉のある左端の、少し上）
+func get_entrance_lights() -> Array[Vector2]:
+	var lights: Array[Vector2] = []
+	var tile_size := Vector2(world.tile_map.tile_set.tile_size)
+	for entrance in world.get_entrances():
+		lights.append(Vector2(entrance) * tile_size + Vector2(3, 4))
+	return lights
+
 func is_present(resident, cell: Vector2i) -> bool:
 	return is_instance_valid(resident) and resident.cell == cell and not resident.is_moving()
 
@@ -79,3 +106,14 @@ func _draw() -> void:
 	for cell in get_lit_cells():
 		# 天井と床の線は残して、部屋の中だけを明るくする
 		draw_rect(Rect2(Vector2(cell) * tile_size + Vector2(0, 1), Vector2(tile_size.x, tile_size.y - 3)), color)
+	
+	# 街灯と入口の照明: 中心が明るく、外へ行くほど弱い光の輪を重ねる
+	var visible_rect: Rect2 = get_global_transform_with_canvas().affine_inverse() * get_viewport_rect()
+	for pos in get_street_lamps(visible_rect) + get_entrance_lights():
+		draw_glow(pos, darkness)
+
+func draw_glow(pos: Vector2, darkness: float) -> void:
+	for ring in [[14.0, 0.12], [9.0, 0.18], [5.0, 0.3], [2.0, 0.6]]:
+		var c: Color = GLOW_COLOR * (ring[1] * darkness)
+		c.a = 1.0
+		draw_circle(pos, ring[0], c)
