@@ -10,7 +10,7 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 #   godot --path . -s res://tests/screenshot_test.gd -- <保存先ディレクトリ>
 # 保存先を省略すると user://screenshots に保存する。
 # 一部のシナリオだけ流すときは、環境変数 TEST_ONLY にシナリオの関数名の一部を入れる（例: TEST_ONLY=express）。
-# ※ 実行中にウィンドウが他のウィンドウの裏に隠れると、macOSに処理を間引かれて止まることがある。
+# ※ テスト中のウィンドウは常に最前面に出る（マウスは受け付けないので操作の邪魔にはならない）。
 # ---------------------------------------------------
 
 var main: Node2D
@@ -24,6 +24,9 @@ func _init() -> void:
 	# 本物のマウスの操作がテストの入力に割り込まないよう、ウィンドウはマウスを受け付けない
 	# （テストの入力は push_input で直接送るので影響しない）
 	root.mouse_passthrough = true
+	# ウィンドウが他のウィンドウの裏に隠れると、macOSに処理を間引かれて止まることがあるので、
+	# 常に最前面に表示する（マウスは受け付けないので、前面にあってもほかの作業の邪魔にはならない）
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)
 	# ウィンドウが他のウィンドウの裏に隠れると、macOSは画面の更新を止めることがある。
 	# 垂直同期を待つとそこでフレームが止まってしまうので、テスト中は切って60fpsに制限する
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -35,9 +38,6 @@ func _init() -> void:
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
 		await start_main(scenario != run_empty_start_scenario)
-		# 建物の支えのルールは、ルールを確かめるシナリオでだけ使う。
-		# ほかのシナリオは、エレベーターや収支などを確かめやすいよう、空中にも建てられる配置で組んである
-		main.require_support = scenario in [run_empty_start_scenario, run_atrium_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario]
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
 		if finished != true:
@@ -149,14 +149,14 @@ func run_build_scenario() -> bool:
 	await capture("build_02_stairs_selected")
 
 	# 2. 空マスを左クリック → 階段を建設（-5万円）
-	var stairs_cell := Vector2i(-4, 20)
+	var stairs_cell := Vector2i(-4, 19) # 1階のロビーの真下（B1階）
 	await click_cell(stairs_cell, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(stairs_cell) == "stairs", "左クリックで階段が建つ")
 	check(main.funds == start_funds - 50000, "階段の建設費5万円が引かれる")
 
 	# 3. オフィスに切り替えて左クリック → オフィスを建設（-10万円）
 	await choose_mode("office")
-	var office_cell := Vector2i(2, 20)
+	var office_cell := Vector2i(2, 19) # 1階のロビーの真下（B1階。x=2〜5）
 	await click_cell(office_cell, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(office_cell) == "office", "左クリックでオフィスが建つ")
 	check(main.get_building_type(office_cell + Vector2i(3, 0)) == "office", "オフィスは横4マスにまたがって建つ")
@@ -185,14 +185,18 @@ func run_build_scenario() -> bool:
 # シナリオ2: 階段による移動
 # 事前配置のブロック（y=15〜18）の右隣に階段を置き、その上の階に横4マスのオフィス(x=5〜8)を建てる。
 # 住人はブロック上段(0,15)から、階段(8,15)→(8,14)を通って上の階(5,14)へ向かう。
+# 階段は1階から積み上げるので、(8,18)はロビー、(8,17)〜(8,15)は階段にする。
 # ---------------------------------------------------
 func run_stairs_scenario() -> bool:
 	print("[シナリオ] 階段による移動")
 	await choose_mode("stairs")
+	# 足場: 階段は1階から積み上げるので、(8,18)はロビー、(8,17)〜(8,16)は階段にしておく
+	build_support([Vector2i(8, 18)], "lobby")
+	build_support([Vector2i(8, 17), Vector2i(8, 16)])
 	await click_cell(Vector2i(8, 15), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
 	await click_cell(Vector2i(5, 14), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=5〜8。右端が階段の真上）
-	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT) # どこにもつながらない孤立したオフィス
+	await click_cell(Vector2i(-8, 19), MOUSE_BUTTON_LEFT) # ロビーの真下（B1階）の、どこにもつながらない孤立したオフィス
 	
 	# 移動ルール
 	check(main.can_move(Vector2i(8, 15), Vector2i(8, 14)), "階段マスから上の階へ移動できる")
@@ -209,7 +213,7 @@ func run_stairs_scenario() -> bool:
 	check(resident.cell == start and resident.selected, "配置した住人が選択状態になる")
 	
 	# 経路のない行き先 → 移動しない
-	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(-8, 19), MOUSE_BUTTON_LEFT)
 	check(not resident.is_moving(), "経路のない行き先では移動しない")
 	check(main.message_label.text.contains("経路がありません"), "経路がないことがメッセージで表示される")
 	
@@ -253,6 +257,8 @@ func run_camera_scenario() -> bool:
 	check(main.funds == 1000000, "ホイール操作で建設されない")
 	
 	# ズーム後もクリックしたマスに正しく建設できる
+	build_support(cells_row(18, 9, 12), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
+	build_support(cells_row(17, 9, 12)) # 足場: 2階を埋めて、その上の3階に建てられるようにする
 	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_LEFT) # 2段の上部バーに隠れない位置
 	check(main.get_building_type(Vector2i(9, 16)) == "office", "ズーム後もクリックしたマスに建設できる")
 	await capture("camera_02_zoomed_in")
@@ -311,7 +317,7 @@ func run_ui_scenario() -> bool:
 	check(not overlay.hover_visible, "上部バーの上ではマスを強調表示しない")
 	
 	# カーソル下のマスの強調表示と情報
-	var empty_cell := Vector2i(3, 13)
+	var empty_cell := Vector2i(3, 14) # ブロックの真上の空きマス（支えがあるので建てられる）
 	await hover_cell(empty_cell)
 	check(overlay.hover_visible and overlay.hover_cell == empty_cell, "カーソル下のマスを強調表示する")
 	check(main.can_click_cell(empty_cell), "空きマスは建設可能（緑）と判定される")
@@ -393,20 +399,20 @@ func run_elevator_scenario() -> bool:
 	check(car.direction == car.Direction.NONE, "呼び出しがなくなると進行方向が消える")
 	Engine.time_scale = 1.0
 	
-	# シャフトの最下段を撤去 → 同じカゴのまま範囲が縮む
+	# 途中や最下段は、上のマスを支えているので撤去できない
 	await click_cell(Vector2i(x, 18), MOUSE_BUTTON_RIGHT)
-	check(elevators.cars.size() == 1 and elevators.cars[0] == car, "シャフトを縮めても同じカゴが残る")
-	check(car.bottom_y == 17, "シャフトの範囲がy=14〜17になる")
-	var other_cell := Vector2i(x, 14)
-	
-	# 途中を撤去 → シャフトが2本に分かれ、カゴも2台になる
 	await click_cell(Vector2i(x, 16), MOUSE_BUTTON_RIGHT)
-	check(elevators.cars.size() == 2, "途中を撤去するとシャフトが2本になりカゴも2台になる")
-	check(elevators.cars.has(car), "元のカゴは今いる階のシャフトに残る")
+	check(main.get_building_type(Vector2i(x, 18)) == "elevator" and main.get_building_type(Vector2i(x, 16)) == "elevator", "シャフトの途中や最下段は撤去できない")
+	check(main.message_label.text.begins_with("上の階の建物を支えているため撤去できません"), "撤去できない理由がメッセージで出る")
+	
+	# 一番上のマスを撤去 → 同じカゴのまま範囲が縮む
+	await click_cell(Vector2i(x, 14), MOUSE_BUTTON_RIGHT)
+	check(elevators.cars.size() == 1 and elevators.cars[0] == car, "シャフトを縮めても同じカゴが残る")
+	check(car.top_y == 15, "シャフトの範囲がy=15〜18になる")
 	
 	# 範囲外の階は呼べない
-	check(not car.request_floor(other_cell.y), "別のシャフトになった階には呼べない")
-	await capture("elevator_03_split")
+	check(not car.request_floor(14), "シャフトからなくなった階には呼べない")
+	await capture("elevator_03_shrunk")
 	return true
 
 # ---------------------------------------------------
@@ -422,6 +428,7 @@ func run_ride_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var car = main.elevator_system.cars[0]
 	var arrivals: Array[int] = []
@@ -452,12 +459,10 @@ func run_ride_scenario() -> bool:
 	await capture("ride_03_arrived")
 	
 	# 階段とエレベーターの使い分け
-	# x=9 に y=14〜18 の階段を積み、y=13 にオフィスを置く（x=8のシャフトと並ぶ）
+	# x=9 に y=13〜18 の階段を積む（x=8のシャフトと並ぶ。一番上の(9,13)が踊り場になる）
 	await choose_mode("stairs")
-	for y in range(18, 13, -1):
+	for y in range(18, 12, -1):
 		await click_cell(Vector2i(9, y), MOUSE_BUTTON_LEFT)
-	await choose_mode("office")
-	await click_cell(Vector2i(9, 13), MOUSE_BUTTON_LEFT)
 	check(count_rides(main.find_path(Vector2i(8, 15), Vector2i(8, 14))) == 0, "1階だけの移動なら階段を使う")
 	check(count_rides(main.find_path(Vector2i(8, 18), Vector2i(8, 13))) == 1, "5階離れた移動ならエレベーターを使う")
 	return true
@@ -474,6 +479,7 @@ func run_stress_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var car = main.elevator_system.cars[0]
 	
@@ -526,6 +532,7 @@ func run_collective_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var car = main.elevator_system.cars[0]
 	
@@ -563,7 +570,7 @@ func run_collective_scenario() -> bool:
 # ---------------------------------------------------
 # シナリオ9: オフィスの出退社ラッシュ
 # 事前配置のブロック（y=15〜18）＋ x=8 のシャフト（y=13〜18）＋ 上の階 y=13 のオフィス3つ
-# ＋ どこにもつながらない孤立したオフィス1つ。入口はブロック最下段の左端(-8,18)。
+# ＋ ロビーの真下（B1階）の、どこにもつながらない孤立したオフィス1つ。入口はブロック最下段の左端(-8,18)。
 # ---------------------------------------------------
 func run_commute_scenario() -> bool:
 	print("[シナリオ] 出退社ラッシュ")
@@ -574,12 +581,10 @@ func run_commute_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
-	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT) # 孤立したオフィス
+	await click_cell(Vector2i(-8, 19), MOUSE_BUTTON_LEFT) # ロビーの真下（B1階）の、どこにもつながらない孤立したオフィス
 	check(main.get_entrance() == Vector2i(-8, 18), "地下にオフィスを建てても、入口は1階の左端のまま")
-	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_RIGHT)
-	await click_cell(Vector2i(-10, 14), MOUSE_BUTTON_LEFT) # 上の方に置き直す
-	check(main.get_entrance() == Vector2i(-8, 18), "入口はブロック最下段の左端(-8,18)")
 	check(commute.workers.size() == 56, "オフィス56マス（14棟）に社員56人が登録される")
 	
 	# 7:59 → 時計を進めて朝のラッシュを見る
@@ -636,8 +641,9 @@ func run_economy_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
-	await click_cell(Vector2i(-10, 14), MOUSE_BUTTON_LEFT) # 孤立したオフィス（賃料は入らない）
+	await click_cell(Vector2i(-8, 19), MOUSE_BUTTON_LEFT) # ロビーの真下（B1階）の孤立したオフィス（賃料は入らない）
 	check(main.funds_label.text.contains("現在の資金: 8,600,000円"), "資金の表示もカンマ区切りになる")
 	
 	# 1日目の朝に全員出勤させてから、夜中まで時計を進める
@@ -674,6 +680,7 @@ func run_hotel_scenario() -> bool:
 	main.build_at(Vector2i(8, 18))
 	main.funds = 10000000
 	var hotel = main.hotel_system
+	build_support(cells_row(18, 9, 15), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	var room_cells: Array[Vector2i] = [Vector2i(8, 17), Vector2i(10, 17), Vector2i(12, 17)]
 	focus_camera(Vector2i(10, 17))
 	await choose_mode("hotel")
@@ -753,8 +760,11 @@ func run_lunch_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var restaurant := Vector2i(9, 17) # 1階はロビー専用なので、2階のシャフトの右隣
+	build_support(cells_row(18, 9, 11), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
+
 	await choose_mode("restaurant")
 	await click_cell(restaurant, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(restaurant) == "restaurant", "飲食店を建てられる（20万円）")
@@ -811,8 +821,10 @@ func run_recycling_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	focus_camera(Vector2i(8, 16))
+	build_support(cells_row(18, 9, 14), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	await choose_mode("recycling")
 	for rx in [9, 12]:
 		await click_cell(Vector2i(rx, 17), MOUSE_BUTTON_LEFT) # 1階はロビー専用なので2階に
@@ -851,12 +863,14 @@ func run_rating_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	check(rating.stars == 1 and rating.population() == 52, "最初は★1、人口52（社員52人）")
 	check(rating.missing_for_next() == ["警備室"], "★2に足りないのは警備室だけ")
 	await wait_frames(2)
 	check(main.stats_label.text.begins_with("★1 人口52（★2まで: 警備室）"), "下部バーに評価と次の★に足りないものが出る")
 	
+	build_support(cells_row(18, 9, 13), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	await choose_mode("security")
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT) # 1階はロビー専用なので2階に
 	check(rating.missing_for_next().is_empty(), "警備室を置くと★2の条件を満たす")
@@ -897,6 +911,7 @@ func run_housing_scenario() -> bool:
 	main.build_at(Vector2i(8, 18))
 	main.funds = 10000000
 	var housing = main.housing_system
+	build_support(cells_row(18, 9, 13), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	var homes: Array[Vector2i] = [Vector2i(8, 17), Vector2i(11, 17)] # 横3マスずつ（x=8〜10、11〜13）
 	focus_camera(Vector2i(8, 17))
 	await choose_mode("housing")
@@ -965,6 +980,7 @@ func run_room_types_scenario() -> bool:
 	main.build_at(Vector2i(8, 18))
 	main.funds = 10000000
 	var hotel = main.hotel_system
+	build_support(cells_row(18, 9, 16), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	var twin := Vector2i(8, 17)
 	var suite := Vector2i(11, 17)
 	focus_camera(Vector2i(11, 17))
@@ -1038,8 +1054,10 @@ func run_weekday_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var home := Vector2i(9, 17) # 1階はロビー専用なので、2階のシャフトの右隣
+	build_support(cells_row(18, 9, 11), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	await choose_mode("housing")
 	await click_cell(home, MOUSE_BUTTON_LEFT)
 	
@@ -1092,6 +1110,8 @@ func run_event_scenario() -> bool:
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	var wedding := Vector2i(9, 17) # 1階はロビー専用なので、2階のシャフトの右隣
 	var hall := Vector2i(2, 13)
+	build_support(cells_row(18, 9, 14), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
+	build_support(cells_row(14, 2, 7)) # 足場: 5階(y=14)を埋めて、その上の6階に会場を建てられるようにする
 	focus_camera(Vector2i(6, 16))
 	await choose_mode("wedding")
 	await click_cell(wedding, MOUSE_BUTTON_LEFT)
@@ -1151,15 +1171,18 @@ func run_subway_scenario() -> bool:
 	main.funds = 100000000
 	check(main.ground_y == 18, "1階の高さは y=18")
 	await choose_mode("elevator")
-	for y in range(19, 12, -1):
+	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(8, 19), MOUSE_BUTTON_LEFT) # 地下は1階のシャフトを建ててから掘る
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	# 左側: 1階の入口の左隣(-9,18)の階段で2階へ上がれるようにする（上に x=-12〜-9 のオフィス）
+	# 足場: オフィス(x=-12〜-9)の下の1階に階段を足す（ロビーにすると入口が左に移ってしまう）。
+	# (-9,18)の階段は、2階へ上がる道にもなる
+	build_support(cells_row(18, -12, -9))
 	main.select_mode("office")
 	main.build_at(Vector2i(-12, 17))
-	main.select_mode("stairs")
-	main.build_at(Vector2i(-9, 18))
 	check(main.get_entrance() == Vector2i(-8, 18), "ロビーの左に階段を置いても、入口はロビーの左端のまま")
 	
 	# 地下鉄駅は地下にしか建てられない
@@ -1168,6 +1191,7 @@ func run_subway_scenario() -> bool:
 	check(main.is_cell_empty(Vector2i(9, 18)), "1階には地下鉄駅を建てられない")
 	check(main.message_label.text.contains("地下鉄駅は地下（1階より下）にしか建てられません"), "建てられない理由がメッセージで出る")
 	var station := Vector2i(9, 19)
+	build_support(cells_row(18, 9, 12), "lobby") # 足場: 地下の駅は1階の真下にしか掘れないので、1階にロビーを足す
 	await click_cell(station, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(station) == "subway", "地下(y=19)には地下鉄駅を建てられる")
 	check(main.get_entrance() == Vector2i(-8, 18), "地下に建物ができても、1階の入口は変わらない")
@@ -1217,6 +1241,7 @@ func run_capacity_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
 	var car = main.elevator_system.cars[0]
 	check(car.capacity == 8, "カゴの定員は8人")
@@ -1278,6 +1303,7 @@ func run_multi_car_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
 	check(elevators.get_cars_at(Vector2i(8, 15)).size() == 1, "シャフトを建てるとカゴが1台できる")
 	
@@ -1447,6 +1473,7 @@ func run_night_light_scenario() -> bool:
 	main.build_at(Vector2i(8, 18))
 	main.funds = 100000000
 	var lighting = main.lighting
+	build_support(cells_row(18, 9, 14), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	var room := Vector2i(8, 17)
 	var home := Vector2i(10, 17)
 	var security := Vector2i(13, 17)
@@ -1571,6 +1598,7 @@ func run_tenant_rating_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
 	check(tenants.offices.is_empty(), "最初の決算まではオフィスの評価がない")
 	check(tenants.rating_for(10.0) == tenants.Rating.GOOD and tenants.rating_for(45.0) == tenants.Rating.NORMAL \
@@ -1620,6 +1648,7 @@ func run_vacancy_scenario() -> bool:
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
+	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
 	
 	await run_day(1)
@@ -1684,6 +1713,7 @@ func run_hotel_rating_scenario() -> bool:
 	main.build_at(Vector2i(8, 18))
 	var tenants = main.tenant_system
 	var hotel = main.hotel_system
+	build_support(cells_row(18, 9, 11), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	var room := Vector2i(8, 17)
 	main.select_mode("hotel")
 	main.build_at(room)
@@ -1731,6 +1761,7 @@ func run_home_rating_scenario() -> bool:
 	main.build_at(Vector2i(8, 18))
 	var tenants = main.tenant_system
 	var housing = main.housing_system
+	build_support(cells_row(18, 9, 10), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	var home := Vector2i(8, 17)
 	main.select_mode("housing")
 	main.build_at(home)
@@ -1819,9 +1850,12 @@ func run_sky_lobby_scenario() -> bool:
 	check(main.get_floor_name(18) == "1階" and main.get_floor_name(4) == "15階" and main.get_floor_name(20) == "B2階", "階の名前: y=18 は1階、y=4 は15階、y=20 はB2階")
 	check(main.is_sky_lobby_floor(4) and main.is_sky_lobby_floor(-11) and not main.is_sky_lobby_floor(5) and not main.is_sky_lobby_floor(18), "スカイロビーを建てられるのは15階・30階…だけ")
 	focus_camera(Vector2i(2, 5))
+	# 足場: スカイロビーを建てる x=0〜4 の下（5階〜14階）を埋めて、15階まで積み上げる
+	for y in range(14, 4, -1):
+		build_support(cells_row(y, 0, 4))
 	await choose_mode("sky_lobby")
-	await click_cell(Vector2i(0, 5), MOUSE_BUTTON_LEFT)
-	check(main.is_cell_empty(Vector2i(0, 5)), "14階にはスカイロビーを建てられない")
+	await click_cell(Vector2i(6, 5), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(6, 5)), "14階にはスカイロビーを建てられない")
 	check(main.message_label.text.contains("15階・30階・45階…にしか建てられません（ここは14階）"), "建てられる階と、今の階がメッセージで出る")
 	for x in range(0, 5):
 		await click_cell(Vector2i(x, 4), MOUSE_BUTTON_LEFT)
@@ -2058,6 +2092,26 @@ func count_rides(path: Array[Vector2i]) -> int:
 		if main.is_elevator_ride(path[i], path[i + 1]):
 			rides += 1
 	return rides
+
+# テストの足場: 支えのために、指定したマスに建物を建てる（2階から上は階段、1階はロビー）。
+# 階段とロビーは社員も維持費も増やさず、足場の建設費は元に戻すので、
+# 各シナリオの人数・金額の確認には影響しない
+func build_support(cells: Array, type := "stairs") -> void:
+	var funds_before: int = main.funds
+	var mode: String = main.current_mode
+	main.select_mode(type)
+	for cell in cells:
+		main.build_at(cell)
+	main.select_mode(mode)
+	main.funds = funds_before
+	main.update_funds_display()
+
+# y階の x0〜x1 のマスの一覧（build_support に渡す）
+func cells_row(y: int, x0: int, x1: int) -> Array:
+	var cells: Array = []
+	for x in range(x0, x1 + 1):
+		cells.append(Vector2i(x, y))
+	return cells
 
 # 建設メニューから選ぶ（プレイヤーがリストで項目を選んだときと同じく item_selected を送る）
 func choose_mode(mode: String) -> void:

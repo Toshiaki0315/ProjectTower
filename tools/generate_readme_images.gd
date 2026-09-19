@@ -26,6 +26,9 @@ const PERSON_SCALE := 8
 
 func _init() -> void:
 	root.mouse_passthrough = true
+	# ウィンドウが他のウィンドウの裏に隠れると、macOSに処理を間引かれて止まることがあるので、
+	# 常に最前面に表示する（マウスは受け付けないので、前面にあってもほかの作業の邪魔にはならない）
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 60
 	for dir in ["buildings", "people", "elevator", "screenshots"]:
