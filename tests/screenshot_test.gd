@@ -579,20 +579,22 @@ func run_economy_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ11: ホテルとハウスキーパー
-# ブロック最下段(y=18)の右隣に、客室3室(x=8〜10)とハウスキーパー室(x=11)を並べる。
-# 入口(-8,18)から同じ階を歩いて行き来できる。
+# ブロック最下段(y=18)の右隣に、シングル3室（横2マスずつ、x=8・10・12から）とハウスキーパー室(x=14)を並べる。
+# 入口(-8,18)から同じ階を歩いて行き来できる。右側が画面に入るようにカメラを動かしておく。
 # ---------------------------------------------------
 func run_hotel_scenario() -> bool:
 	print("[シナリオ] ホテルとハウスキーパー")
 	main.funds = 10000000
 	var hotel = main.hotel_system
-	var room_cells: Array[Vector2i] = [Vector2i(8, 18), Vector2i(9, 18), Vector2i(10, 18)]
+	var room_cells: Array[Vector2i] = [Vector2i(8, 18), Vector2i(10, 18), Vector2i(12, 18)]
+	focus_camera(Vector2i(10, 17))
 	await click_button(main.mode_buttons["hotel"])
 	for cell in room_cells:
 		await click_cell(cell, MOUSE_BUTTON_LEFT)
 	await click_button(main.mode_buttons["housekeeping"])
-	await click_cell(Vector2i(11, 18), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(14, 18), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 3 * 150000 - 100000, "客室15万円×3とハウスキーパー室10万円がかかる")
+	check(main.get_unit_cells(Vector2i(9, 18)) == [Vector2i(8, 18), Vector2i(9, 18)], "シングルは横2マスの部屋")
 	check(hotel.rooms.size() == 3 and hotel.count_rooms(hotel.RoomState.CLEAN) == 3, "客室が3室でき、最初はきれいな空室")
 	check(hotel.housekeepers.size() == 1, "ハウスキーパー室に清掃員が1人いる")
 	var keeper = hotel.housekeepers.values()[0].resident
@@ -610,8 +612,8 @@ func run_hotel_scenario() -> bool:
 		if is_instance_valid(guest) and guest.cell == cell and guest.base_color == hotel.GUEST_COLOR:
 			guests_in_room += 1
 	check(guests_in_room == 3, "薄紫の宿泊客がそれぞれの部屋に着いている")
-	await hover_cell(room_cells[0])
-	check(main.hover_label.text.contains("シングル（宿泊中）"), "カーソルを合わせると部屋の状態が出る")
+	await hover_cell(room_cells[0] + Vector2i(1, 0))
+	check(main.hover_label.text.contains("シングル（宿泊中）"), "部屋のどのマスにカーソルを合わせても部屋の状態が出る")
 	check(main.stats_label.text.contains("客室: 宿泊 3"), "下部バーに客室の状況が出る")
 	var viewport_width: float = main.get_viewport_rect().size.x
 	var help_button_right := 0.0
@@ -636,8 +638,8 @@ func run_hotel_scenario() -> bool:
 	check(saw_dirty[0], "チェックアウトした部屋は清掃待ちになる")
 	check(saw_cleaning[0], "清掃員が部屋に来て清掃する")
 	check(hotel.count_rooms(hotel.RoomState.CLEAN) == 3, "清掃が済むと3室ともきれいな空室に戻る")
-	await wait_until(func(): return keeper.cell == Vector2i(11, 18) and not keeper.is_moving(), 20.0)
-	check(keeper.cell == Vector2i(11, 18), "仕事が終わると清掃員はハウスキーパー室に戻る")
+	await wait_until(func(): return keeper.cell == Vector2i(14, 18) and not keeper.is_moving(), 20.0)
+	check(keeper.cell == Vector2i(14, 18), "仕事が終わると清掃員はハウスキーパー室に戻る")
 	
 	# 2日目の決算に宿泊料と維持費が入る
 	main.clock.set_time(2, 23, 59)
@@ -847,21 +849,24 @@ func run_housing_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ16: ホテルのツイン・スイート
-# ブロック最下段(y=18)の右隣に、ツイン(8)・スイート(9)・ハウスキーパー室(10)を並べる。
+# ブロック最下段(y=18)の右隣に、ツイン（横3マス、x=8〜10）・スイート（横4マス、x=11〜14）・
+# ハウスキーパー室(x=15)を並べる。
 # ---------------------------------------------------
 func run_room_types_scenario() -> bool:
 	print("[シナリオ] ツイン・スイート")
 	main.funds = 10000000
 	var hotel = main.hotel_system
 	var twin := Vector2i(8, 18)
-	var suite := Vector2i(9, 18)
+	var suite := Vector2i(11, 18)
+	focus_camera(Vector2i(11, 17))
 	await click_button(main.mode_buttons["hotel_twin"])
 	await click_cell(twin, MOUSE_BUTTON_LEFT)
 	await click_button(main.mode_buttons["hotel_suite"])
 	await click_cell(suite, MOUSE_BUTTON_LEFT)
 	await click_button(main.mode_buttons["housekeeping"])
-	await click_cell(Vector2i(10, 18), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(15, 18), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 200000 - 500000 - 100000, "ツイン20万円・スイート50万円がかかる")
+	check(main.get_unit_cells(twin).size() == 3 and main.get_unit_cells(suite).size() == 4, "ツインは横3マス、スイートは横4マス")
 	check(hotel.total_capacity() == 4, "ツインとスイートは2人ずつ、定員の合計は4人")
 	var others: int = main.commute_system.workers.size() - main.commute_system.count_unreachable()
 	check(main.rating_system.population() == others + 4, "人口には客室の定員が入る")
@@ -873,11 +878,14 @@ func run_room_types_scenario() -> bool:
 	await wait_until(func(): return main.clock.minute_of_day() >= 21 * 60 + 30, 30.0)
 	check(hotel.rooms[twin].guests.size() == 2 and hotel.rooms[suite].guests.size() == 2, "ツインとスイートにそれぞれ2人ずつ泊まる")
 	var arrived := 0
+	var spots := {}
 	for cell in [twin, suite]:
 		for guest in hotel.rooms[cell].guests:
-			if guest.cell == cell and not guest.is_moving():
+			if main.get_unit_cells(cell).has(guest.cell) and not guest.is_moving():
 				arrived += 1
+				spots[guest.cell] = true
 	check(arrived == 4, "4人とも部屋に着いている")
+	check(spots.size() == 4, "同じ部屋の2人は別々のマスにいる（重ならない）")
 	await hover_cell(suite)
 	check(main.hover_label.text.contains("スイート（宿泊中）"), "カーソルを合わせると客室の種類と状態が出る")
 	await capture("room_types_01_night")
@@ -1093,6 +1101,10 @@ func count_rides(path: Array[Vector2i]) -> int:
 		if main.is_elevator_ride(path[i], path[i + 1]):
 			rides += 1
 	return rides
+
+# 指定したマスが画面の中央に来るようにカメラを動かす
+func focus_camera(cell: Vector2i) -> void:
+	main.camera.focus_on(main.tile_map.to_global(main.tile_map.map_to_local(cell)))
 
 func hover_cell(cell: Vector2i) -> void:
 	var tile_map: TileMapLayer = main.tile_map

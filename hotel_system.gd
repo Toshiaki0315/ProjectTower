@@ -3,7 +3,8 @@ extends Node2D
 # ---------------------------------------------------
 # ホテルとハウスキーパー（清掃員）
 #
-# 客室（1マス = 1室）の種類は ROOM_TYPES（シングル・ツイン・スイート）。
+# 客室は横に何マスかの建物（ユニット）で、1ユニット = 1室。部屋は左端のマスで表す。
+# 種類は ROOM_TYPES（シングル・ツイン・スイート）。
 # 種類ごとに、泊まる人数（guests）・1泊の宿泊料（rate）・清掃にかかる分数（cleaning）が違う。
 # 客室の状態:
 #   CLEAN     … きれいな空室。CHECKIN_START〜CHECKIN_END の間に宿泊客が入口から来る
@@ -60,6 +61,8 @@ func rebuild() -> void:
 	var room_cells: Array[Vector2i] = []
 	for type in ROOM_TYPES:
 		for cell in world.find_cells_of_type(type):
+			if world.building_grid[cell].origin != cell:
+				continue # 部屋は左端のマスで表す
 			room_cells.append(cell)
 			if not rooms.has(cell):
 				rooms[cell] = {"type": type, "state": RoomState.CLEAN, "guests": [], "checkin_day": 0, "cleaner": null}
@@ -110,12 +113,12 @@ func process_rooms() -> void:
 				if room.checkin_day != day and now >= checkin_minute(cell, day) and now < CHECKIN_END:
 					room.checkin_day = day
 					var count: int = ROOM_TYPES[room.type].guests
+					var unit_cells: Array[Vector2i] = world.get_unit_cells(cell)
 					for i in count:
-						var guest = spawn_guest(cell)
+						# 客は部屋の中の別々のマスに振り分ける（重なって1人に見えないように）
+						var spot: Vector2i = unit_cells[i * unit_cells.size() / count]
+						var guest = spawn_guest(spot)
 						if guest:
-							# 2人以上なら左右に少しずらして描く（重なって1人に見えないように）
-							if count > 1:
-								guest.sprite_offset = Vector2(-3 + 6 * i, 0)
 							room.guests.append(guest)
 					if not room.guests.is_empty():
 						room.state = RoomState.OCCUPIED
@@ -249,7 +252,10 @@ func count_rooms(state: RoomState) -> int:
 			n += 1
 	return n
 
+# 指定マスを含む客室の状態（部屋のどのマスを指定してもよい）
 func get_room_state_text(cell: Vector2i) -> String:
+	if world.building_grid.has(cell):
+		cell = world.building_grid[cell].origin
 	if not rooms.has(cell):
 		return ""
 	match rooms[cell].state:
@@ -267,13 +273,14 @@ func housekeeper_at(cell: Vector2i) -> bool:
 func _draw() -> void:
 	var tile_size := Vector2(world.tile_map.tile_set.tile_size)
 	for cell in rooms:
-		var rect := Rect2(Vector2(cell) * tile_size, tile_size)
-		match rooms[cell].state:
-			RoomState.OCCUPIED:
-				# 宿泊中: 窓の黄色い明かり
-				draw_rect(Rect2(rect.position + Vector2(4, 3), Vector2(8, 5)), Color(1.0, 0.9, 0.4))
-			RoomState.DIRTY:
-				# 清掃待ち: 茶色い汚れ
-				draw_rect(rect.grow(-2), Color(0.45, 0.3, 0.15, 0.55))
-				draw_circle(rect.get_center() + Vector2(-3, 2), 2.0, Color(0.35, 0.22, 0.1))
-				draw_circle(rect.get_center() + Vector2(3, -1), 1.5, Color(0.35, 0.22, 0.1))
+		for spot in world.get_unit_cells(cell):
+			var rect := Rect2(Vector2(spot) * tile_size, tile_size)
+			match rooms[cell].state:
+				RoomState.OCCUPIED:
+					# 宿泊中: 各区画の窓に黄色い明かり（どの区画も窓の位置はそろえてある）
+					draw_rect(Rect2(rect.position + Vector2(4, 3), Vector2(8, 3)), Color(1.0, 0.9, 0.4, 0.85))
+				RoomState.DIRTY:
+					# 清掃待ち: 茶色い汚れ
+					draw_rect(rect.grow(-2), Color(0.45, 0.3, 0.15, 0.55))
+					draw_circle(rect.get_center() + Vector2(-3, 2), 2.0, Color(0.35, 0.22, 0.1))
+					draw_circle(rect.get_center() + Vector2(3, -1), 1.5, Color(0.35, 0.22, 0.1))
