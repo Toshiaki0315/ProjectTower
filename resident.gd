@@ -1,5 +1,7 @@
 extends Node2D
 
+const ElevatorCar := preload("res://elevator_car.gd")
+
 # ---------------------------------------------------
 # 住人：グリッド上を1マスずつ歩き、階段やエレベーターで上下の階へ移動する。
 # 移動できるかどうかの判断と経路探索は world（main.gd）に任せる。
@@ -56,7 +58,7 @@ var cell: Vector2i             # 現在いるマス（乗車中は乗ったマ�
 var goal: Vector2i             # 目的地のマス
 var path: Array[Vector2i] = [] # これから進むマス（先頭が次のマス）
 var state := State.WALKING
-var car = null                 # 待っている／乗っているカゴ
+var car = null                 # 乗っているカゴ
 var ride_dir := 0              # 乗りたい方向（カゴのDirection.UP / DOWN）
 var stress := 0.0
 var base_color := Color.WHITE  # 平常時の体の色（社員: 白 / 宿泊客: 薄紫 / 清掃員: 水色）
@@ -118,11 +120,10 @@ func process_walking(delta: float) -> void:
 			world.show_message("経路が途切れたため、住人が立ち止まりました")
 		return
 
-	# 次の一歩がエレベーターなら、カゴを呼んで待つ
+	# 次の一歩がエレベーターなら、乗り場のボタンを押して待つ
 	if at_cell_center and world.is_elevator_ride(cell, next):
-		car = world.elevator_system.get_car_at(cell)
-		ride_dir = car.Direction.UP if next.y < cell.y else car.Direction.DOWN
-		car.call_from_hall(cell.y, ride_dir)
+		ride_dir = ElevatorCar.Direction.UP if next.y < cell.y else ElevatorCar.Direction.DOWN
+		world.elevator_system.request_hall(cell, ride_dir)
 		state = State.WAITING
 		return
 
@@ -138,18 +139,20 @@ func process_waiting() -> void:
 		leave("住人の足元が撤去されたため、住人が退場しました")
 		return
 	# シャフトが変わってカゴがなくなった／行き先の階に行けなくなったら経路を探し直す
-	if not is_instance_valid(car) or not world.can_move(cell, path[0]):
+	if world.elevator_system.get_cars_at(cell).is_empty() or not world.can_move(cell, path[0]):
 		if not go_to(goal):
 			path.clear()
 			state = State.WALKING
 			world.show_message("経路が途切れたため、住人が立ち止まりました")
 		return
-	# 行きたい方向へ進むカゴがこの階で扉を開けたら、乗り込んで行き先の階を押す
-	if car.can_board(cell.y, ride_dir):
+	# 行きたい方向へ進む、空きのあるカゴがこの階で扉を開けたら、乗り込んで行き先の階を押す
+	var boardable = world.elevator_system.find_boardable_car(cell, ride_dir)
+	if boardable:
+		car = boardable
 		car.board(self, path[0].y)
 		state = State.RIDING
 	else:
-		car.call_from_hall(cell.y, ride_dir) # 呼び出しが取り消されていたら押し直す
+		world.elevator_system.request_hall(cell, ride_dir) # 呼び出しが取り消されていたら押し直す
 
 func process_riding() -> void:
 	# 乗っているカゴがなくなったら退場する（シャフトごと撤去されたなど）

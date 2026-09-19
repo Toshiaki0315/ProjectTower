@@ -40,6 +40,7 @@ const BUILDINGS := {
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
+const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴを追加するモード
 
 var funds: int = 1000000
 var current_mode: String = "office"
@@ -218,7 +219,7 @@ func create_ui():
 	
 	# 同じグループのボタンは1つだけ押下状態になる（ラジオボタン的な挙動）
 	var group = ButtonGroup.new()
-	for mode in BUILDINGS.keys() + [MODE_RESIDENT]:
+	for mode in BUILDINGS.keys() + [MODE_ADD_CAR, MODE_RESIDENT]:
 		var btn = Button.new()
 		btn.toggle_mode = true
 		btn.button_group = group
@@ -236,6 +237,7 @@ func create_ui():
 		"左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
+		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
 		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
 		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
 		"入口: 1階の左端と地下鉄駅（地下にだけ建てられる）。人は近い方の入口から出入りする",
@@ -324,6 +326,8 @@ func select_mode(mode: String):
 func get_mode_label(mode: String) -> String:
 	if mode == MODE_RESIDENT:
 		return "住人 (テスト)"
+	if mode == MODE_ADD_CAR:
+		return "カゴ追加 %d万" % (elevator_system.CAR_COST / 10000)
 	var data = BUILDINGS[mode]
 	return "%s %d万" % [data.name, data.cost / 10000]
 
@@ -377,9 +381,12 @@ func update_hover_label():
 	elif event_system.is_hall_type(type):
 		text += "（来客 %d人）" % event_system.count_at_hall(cell)
 	elif type == "elevator":
-		var car = elevator_system.get_car_at(cell)
-		if car:
-			text += "（カゴ %d/%d人）" % [car.passengers.size(), car.CAPACITY]
+		var cars: Array = elevator_system.get_cars_at(cell)
+		if not cars.is_empty():
+			var loads: Array[String] = []
+			for car in cars:
+				loads.append("%d/%d" % [car.passengers.size(), car.CAPACITY])
+			text += "（カゴ%d台: %s人）" % [cars.size(), "・".join(loads)]
 	elif type == "housing":
 		text += "（%s）" % housing_system.get_home_state_text(cell)
 	elif type == "recycling":
@@ -606,13 +613,15 @@ func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 func can_click_cell(cell: Vector2i) -> bool:
 	if current_mode == MODE_RESIDENT:
 		return not is_cell_empty(cell)
+	if current_mode == MODE_ADD_CAR:
+		return elevator_system.get_add_car_problem(cell) == ""
 	if current_mode == "elevator" and get_building_type(cell) == "elevator":
 		return true # シャフトをクリックするとカゴを呼べる
 	return get_build_problem(cell, current_mode) == ""
 
 # カーソル下で強調表示するマス（建設モードなら、建てたときに使うマス全部）
 func get_hover_footprint(cell: Vector2i) -> Array[Vector2i]:
-	if current_mode == MODE_RESIDENT or get_building_type(cell) == "elevator":
+	if current_mode == MODE_RESIDENT or current_mode == MODE_ADD_CAR or get_building_type(cell) == "elevator":
 		return [cell]
 	return get_footprint(cell, current_mode)
 
@@ -710,12 +719,24 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if current_mode == MODE_RESIDENT:
 			handle_resident_click(map_pos)
+		elif current_mode == MODE_ADD_CAR:
+			add_elevator_car(map_pos)
 		elif current_mode == "elevator" and get_building_type(map_pos) == "elevator":
 			call_elevator(map_pos)
 		else:
 			build_at(map_pos)
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
 		demolish_at(map_pos)
+
+# カゴ追加モードでシャフトのマスをクリックしたとき、その階にカゴを1台追加する
+func add_elevator_car(cell: Vector2i):
+	var problem: String = elevator_system.get_add_car_problem(cell)
+	if problem != "":
+		show_message(problem)
+		return
+	elevator_system.add_car(cell)
+	update_funds_display()
+	show_message("エレベーターにカゴを追加しました %s（このシャフトは%d台）" % [cell, elevator_system.get_cars_at(cell).size()])
 
 # シャフトのマスをクリックしたとき、その階にカゴを呼ぶ
 func call_elevator(cell: Vector2i):

@@ -1,5 +1,7 @@
 extends SceneTree
 
+const ElevatorCar := preload("res://elevator_car.gd")
+
 # ---------------------------------------------------
 # 画面確認用テスト
 # main.tscnを起動し、実際のクリック操作を再現して各段階のスクリーンショットを保存する。
@@ -26,7 +28,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -1163,7 +1165,74 @@ func run_capacity_scenario() -> bool:
 	check(arrived_all, "乗れなかった4人も次のカゴで上がり、12人全員が目的地に着く")
 	check(car.passengers.is_empty(), "全員降りたらカゴは空になる")
 	await hover_cell(Vector2i(8, 16))
-	check(main.hover_label.text.contains("カゴ 0/8人"), "エレベーターにカーソルを合わせるとカゴの人数が出る")
+	check(main.hover_label.text.contains("カゴ1台: 0/8人"), "エレベーターにカーソルを合わせるとカゴの人数が出る")
+	return true
+
+# ---------------------------------------------------
+# シナリオ21: 1本のシャフトに複数のカゴ
+# シナリオ10と同じ建物（社員68人、x=8 のシャフト y=13〜18）に、カゴを3台追加して4台にする。
+# ※ 今は乗り場の呼び出しを「一番近いカゴ」に割り当てるだけなので、1階の呼び出しが同じカゴに集まり、
+#    4台にしてもラッシュはほとんど早くならない（群管理で改善する）。ここでは台数・費用・表示を確かめる。
+# ---------------------------------------------------
+func run_multi_car_scenario() -> bool:
+	print("[シナリオ] 複数のカゴ")
+	main.funds = 10000000
+	var elevators = main.elevator_system
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
+	check(elevators.get_cars_at(Vector2i(8, 15)).size() == 1, "シャフトを建てるとカゴが1台できる")
+	
+	# カゴ追加モードでシャフトをクリックすると、その階にカゴが増える
+	var funds_before: int = main.funds
+	await click_button(main.mode_buttons["add_car"])
+	await click_cell(Vector2i(8, 13), MOUSE_BUTTON_LEFT)
+	var cars: Array = elevators.get_cars_at(Vector2i(8, 15))
+	check(cars.size() == 2, "カゴ追加でシャフトのカゴが2台になる")
+	check(cars[1].floor_y == 13, "追加したカゴはクリックした階(13)にいる")
+	check(main.funds == funds_before - 50000, "カゴの追加に5万円かかる")
+	await click_cell(Vector2i(8, 15), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
+	check(elevators.get_cars_at(Vector2i(8, 15)).size() == 4, "カゴを4台まで増やせる")
+	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_LEFT)
+	check(elevators.get_cars_at(Vector2i(8, 15)).size() == 4, "5台目は追加できない")
+	check(main.message_label.text.contains("4台まで"), "追加できない理由がメッセージで出る")
+	await click_cell(Vector2i(6, 13), MOUSE_BUTTON_LEFT)
+	check(main.message_label.text.contains("シャフトに追加します"), "シャフト以外をクリックすると理由がメッセージで出る")
+	await hover_cell(Vector2i(8, 14))
+	check(main.hover_label.text.contains("カゴ4台: 0/8・0/8・0/8・0/8人"), "カーソルを合わせると各カゴの人数が出る")
+	
+	# 乗り場のボタンは一番近いカゴに割り当てる（今は一番近いカゴ。群管理で賢くする）
+	elevators.request_hall(Vector2i(8, 14), ElevatorCar.Direction.UP)
+	var assigned = elevators.hall_assignments.get([Vector2i(8, 14), ElevatorCar.Direction.UP])
+	check(assigned != null and assigned.floor_y in [13, 15], "乗り場の呼び出しは近いカゴ（13階か15階）に割り当てる")
+	assigned.up_calls.clear() # 確認用の呼び出しを取り消す
+	elevators.hall_assignments.clear()
+	
+	# 朝のラッシュ: 4台で運ぶ（終わった時刻は記録だけする）
+	var done_time := ""
+	main.clock.set_time(1, 7, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 8.0
+	var captured := false
+	while main.clock.minute_of_day() < 10 * 60 + 45:
+		if not captured and main.clock.minute_of_day() >= 8 * 60 + 40:
+			await capture("multi_car_01_rush")
+			captured = true
+		if done_time == "" and main.commute_system.count_at_office() == 68:
+			done_time = main.clock.get_time_text()
+		await process_frame
+	print("    rush done at ", done_time)
+	check(done_time != "", "4台でも68人全員がオフィスに着く（全員着いた時刻: %s）" % done_time)
+	
+	# 追加したカゴの維持費: 3台 × 3千円
+	main.clock.set_time(1, 23, 58)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == 1, 10.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(main.economy_system.last_report.get("maintenance") == 12000 + 3 * 3000, "追加したカゴ3台の維持費9千円がかかる")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

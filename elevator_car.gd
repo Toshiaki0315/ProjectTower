@@ -37,12 +37,13 @@ var up_calls := {}   # 階 -> true
 var down_calls := {} # 階 -> true
 var passengers: Array = [] # 乗っている住人
 
-func setup(p_world: Node2D, x: int, top: int, bottom: int) -> void:
+# start_y: カゴが最初にいる階（シャフトを建てたときは最下階、カゴを追加したときはクリックした階）
+func setup(p_world: Node2D, x: int, top: int, bottom: int, start_y: int) -> void:
 	world = p_world
 	column = x
 	top_y = top
 	bottom_y = bottom
-	floor_y = bottom_y # 最下階からスタート
+	floor_y = start_y
 	target_y = floor_y
 	position = floor_position(floor_y)
 	z_index = 8 # マス目の表示より手前、住人より奥

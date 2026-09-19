@@ -57,6 +57,7 @@ func settle(day: int) -> void:
 	var maintenance := 0
 	for type in MAINTENANCE:
 		maintenance += MAINTENANCE[type] * world.find_units_of_type(type).size()
+	maintenance += world.elevator_system.CAR_MAINTENANCE * world.elevator_system.count_extra_cars()
 	var hotel: int = world.hotel_system.revenue_by_day.get(day, 0)
 	var food: int = world.commerce_system.revenue_by_day.get(day, 0)
 	var checkouts: int = world.hotel_system.checkouts_by_day.get(day, 0)
