@@ -24,6 +24,7 @@ const MAINTENANCE := {     # 1マスの1日の維持費
 	"recycling": 5000,
 	"security": 5000,
 	"medical": 10000,
+	"subway": 10000,
 }
 const MEALS_PER_GARBAGE := 10   # 飲食店の客・会場の来客の何人分でゴミ1になるか
 const RECYCLING_CAPACITY := 20  # ゴミ処理場1マスが1日に処理できるゴミの量
@@ -90,12 +91,9 @@ func settle(day: int) -> void:
 
 # 入口からたどり着けるオフィスの数（休日の賃料の計算用）
 func count_reachable_offices() -> int:
-	var entrance = world.get_entrance()
-	if entrance == null:
-		return 0
 	var n := 0
 	for cell in world.commute_system.workers:
-		if not world.find_path(entrance, cell).is_empty():
+		if world.nearest_entrance(cell) != null:
 			n += 1
 	return n
 

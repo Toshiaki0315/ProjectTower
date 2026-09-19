@@ -146,8 +146,8 @@ func is_any_guest_riding(room: Dictionary) -> bool:
 
 # 入口に客を出して部屋へ向かわせる。たどり着けなければnull
 func spawn_guest(cell: Vector2i):
-	var entrance = world.get_entrance()
-	if entrance == null or world.find_path(entrance, cell).is_empty():
+	var entrance = world.nearest_entrance(cell)
+	if entrance == null:
 		return null
 	var guest = world.spawn_resident(entrance)
 	guest.base_color = GUEST_COLOR
@@ -159,8 +159,8 @@ func checkout(_cell: Vector2i, room: Dictionary) -> void:
 	var day: int = world.clock.day
 	revenue_by_day[day] = revenue_by_day.get(day, 0) + ROOM_TYPES[room.type].rate
 	checkouts_by_day[day] = checkouts_by_day.get(day, 0) + 1
-	var entrance = world.get_entrance()
 	for guest in room.guests:
+		var entrance = world.nearest_entrance(guest.cell)
 		if entrance != null and guest.go_to(entrance):
 			leaving_guests.append(guest)
 		else:
@@ -170,11 +170,11 @@ func checkout(_cell: Vector2i, room: Dictionary) -> void:
 
 # 入口に着いた客は帰る（消える）
 func process_leaving_guests() -> void:
-	var entrance = world.get_entrance()
 	for guest in leaving_guests.duplicate():
 		if not is_instance_valid(guest):
 			leaving_guests.erase(guest)
 		elif not guest.is_moving():
+			var entrance = world.nearest_entrance(guest.cell)
 			if entrance == null or guest.cell == entrance or not guest.go_to(entrance):
 				guest.queue_free()
 				leaving_guests.erase(guest)

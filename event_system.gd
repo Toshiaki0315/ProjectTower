@@ -75,8 +75,8 @@ func process_visitor(cell: Vector2i, _hall: Dictionary, info: Dictionary, v: Dic
 	if not v.spawned:
 		if now >= v.arrive:
 			v.spawned = true
-			var entrance = world.get_entrance()
-			if entrance != null and not world.find_path(entrance, cell).is_empty():
+			var entrance = world.nearest_entrance(cell)
+			if entrance != null:
 				v.resident = world.spawn_resident(entrance)
 				v.resident.base_color = info.color
 				v.resident.sprite_offset = v.offset
@@ -95,8 +95,7 @@ func process_visitor(cell: Vector2i, _hall: Dictionary, info: Dictionary, v: Dic
 		v.leaving = true
 		send_to_entrance(v)
 	elif v.leaving and not resident.is_moving():
-		var entrance = world.get_entrance()
-		if entrance == null or resident.cell == entrance:
+		if world.is_entrance(resident.cell) or world.nearest_entrance(resident.cell) == null:
 			resident.queue_free()
 			v.resident = null
 		else:
@@ -104,7 +103,7 @@ func process_visitor(cell: Vector2i, _hall: Dictionary, info: Dictionary, v: Dic
 
 # 入口へ向かわせる。たどり着けなければ、その場で帰ったことにする
 func send_to_entrance(v: Dictionary) -> void:
-	var entrance = world.get_entrance()
+	var entrance = world.nearest_entrance(v.resident.cell)
 	if entrance == null or (v.resident.cell != entrance and not v.resident.go_to(entrance)):
 		v.resident.queue_free()
 		v.resident = null

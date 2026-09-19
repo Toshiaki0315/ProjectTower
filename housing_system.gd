@@ -65,7 +65,7 @@ func _process(_delta: float) -> void:
 		if home.leaving:
 			# 入口に着いたらビルの外へ出る。経路が途切れたら探し直す
 			if not resident.is_moving():
-				var entrance = world.get_entrance()
+				var entrance = world.nearest_entrance(resident.cell)
 				if entrance == null or resident.cell == entrance or not resident.go_to(entrance):
 					resident.queue_free()
 					home.resident = null
@@ -81,13 +81,13 @@ func _process(_delta: float) -> void:
 		# 朝になったら入口へ出かける（家に着いてから）
 		if at_home and home.out_day != day and now >= leave_minute(cell, day) and now < return_start(day):
 			home.out_day = day
-			var entrance = world.get_entrance()
+			var entrance = world.nearest_entrance(resident.cell)
 			if entrance != null and resident.go_to(entrance):
 				home.leaving = true
 
 func spawn_at_entrance(cell: Vector2i, home: Dictionary) -> void:
-	var entrance = world.get_entrance()
-	if entrance == null or world.find_path(entrance, cell).is_empty():
+	var entrance = world.nearest_entrance(cell)
+	if entrance == null:
 		return
 	var resident = world.spawn_resident(entrance)
 	resident.base_color = RESIDENT_COLOR

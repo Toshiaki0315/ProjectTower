@@ -22,7 +22,7 @@ func _init() -> void:
 	root.mouse_passthrough = true
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -496,7 +496,7 @@ func run_commute_scenario() -> bool:
 	for ox in range(5, 8):
 		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
 	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT) # 孤立したオフィス
-	check(main.get_entrance() == Vector2i(-10, 20), "入口は一番下の階の左端（孤立したオフィスの行が一番下）")
+	check(main.get_entrance() == Vector2i(-8, 18), "地下にオフィスを建てても、入口は1階の左端のまま")
 	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_RIGHT)
 	await click_cell(Vector2i(-10, 14), MOUSE_BUTTON_LEFT) # 上の方に置き直す
 	check(main.get_entrance() == Vector2i(-8, 18), "入口はブロック最下段の左端(-8,18)")
@@ -1025,6 +1025,65 @@ func run_event_scenario() -> bool:
 	check(main.economy_system.last_report.get("event") == 165000, "決算にイベントの売上16.5万円が入る")
 	check(main.message_label.text.contains("イベント +165,000円"), "決算のメッセージにイベントの売上が出る")
 	check(main.economy_system.last_report.get("garbage") == 2, "来客27人分のゴミ2が出る")
+	return true
+
+# ---------------------------------------------------
+# シナリオ19: 地下鉄駅（地下からの入口）
+# x=8 のシャフトを y=13〜19（地下1階まで）にし、地下1階のシャフトの右隣(9,19)に地下鉄駅。
+# 右寄りの社員は近い地下鉄駅から、左寄りの社員は1階の入口から出勤する。
+# ---------------------------------------------------
+func run_subway_scenario() -> bool:
+	print("[シナリオ] 地下鉄駅")
+	main.funds = 100000000
+	check(main.ground_y == 18, "起動時の一番下の階(y=18)が1階になる")
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(19, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	
+	# 地下鉄駅は地下にしか建てられない
+	await click_button(main.mode_buttons["subway"])
+	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(9, 18)), "1階には地下鉄駅を建てられない")
+	check(main.message_label.text.contains("地下鉄駅は地下（1階より下）にしか建てられません"), "建てられない理由がメッセージで出る")
+	var station := Vector2i(9, 19)
+	await click_cell(station, MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(station) == "subway", "地下(y=19)には地下鉄駅を建てられる")
+	check(main.get_entrance() == Vector2i(-8, 18), "地下に建物ができても、1階の入口は変わらない")
+	check(main.get_entrances() == [Vector2i(-8, 18), station], "入口は1階の入口と地下鉄駅の2つ")
+	check(main.nearest_entrance(Vector2i(6, 13)) == station, "上の階のオフィスからは地下鉄駅の方が近い")
+	check(main.nearest_entrance(Vector2i(-6, 18)) == Vector2i(-8, 18), "1階の左寄りのオフィスからは1階の入口の方が近い")
+	await capture("subway_01_built")
+	
+	# 平日の朝: それぞれ近い入口から出勤してくる
+	var first_cells := {}
+	main.clock.set_time(1, 7, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 8.0
+	while main.clock.minute_of_day() < 10 * 60:
+		for r in main.residents:
+			if is_instance_valid(r) and not first_cells.has(r):
+				first_cells[r] = r.cell
+		await process_frame
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	var from_station := 0
+	var from_main := 0
+	for r in first_cells:
+		if first_cells[r] == station:
+			from_station += 1
+		elif first_cells[r] == Vector2i(-8, 18):
+			from_main += 1
+	check(from_station > 0 and from_main > 0, "地下鉄駅と1階の入口の両方から社員が来る（駅 %d人・1階 %d人）" % [from_station, from_main])
+	check(from_station + from_main == 67, "67人全員がどちらかの入口から来る")
+	check(main.commute_system.count_at_office() == 67, "10時には67人全員がオフィスに着いている")
+	
+	# ★4の条件に地下鉄駅がある
+	main.rating_system.stars = 3
+	check(main.rating_system.missing_for_next() == ["人口250"], "★4の条件（人口250・地下鉄駅）のうち、地下鉄駅は満たしている")
+	main.rating_system.stars = 1
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

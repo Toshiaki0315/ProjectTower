@@ -13,8 +13,9 @@ extends Node
 const REQUIREMENTS := {
 	2: {"population": 50, "buildings": ["security"]},
 	3: {"population": 120, "buildings": ["medical", "recycling"]},
+	4: {"population": 250, "buildings": ["subway"]},
 }
-const MAX_STARS := 3
+const MAX_STARS := 4
 const BONUS_PER_STAR := 0.25
 
 var world: Node2D # main.gd

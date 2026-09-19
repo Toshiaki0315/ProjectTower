@@ -35,6 +35,7 @@ const BUILDINGS := {
 	"housing": {"name": "住宅", "cost": 150000, "source_id": 9},
 	"wedding": {"name": "結婚式場", "cost": 1000000, "source_id": 12},
 	"event_hall": {"name": "イベントホール", "cost": 800000, "source_id": 13},
+	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -70,10 +71,19 @@ var selected_resident = null # 行き先の指示を待っている住人
 # ---------------------------------------------------
 var building_grid: Dictionary = {}
 
+# 1階の高さ（y）。起動時の一番下の階を1階とし、それより下（yが大きい）は地下
+var ground_y := 0
+
 func _ready() -> void:
 	apply_pixel_art_tiles()
 	apply_tile_types()
 	load_grid_from_tilemap()
+	# 起動時の一番下の階を1階にする
+	for cell: Vector2i in building_grid:
+		ground_y = cell.y
+		break
+	for cell: Vector2i in building_grid:
+		ground_y = maxi(ground_y, cell.y)
 	elevator_system = ElevatorSystem.new()
 	elevator_system.setup(self)
 	add_child(elevator_system)
@@ -225,7 +235,8 @@ func create_ui():
 		"左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
-		"社員: オフィス1マスに1人。8〜9時に入口（1階の左端）から出勤し、17〜18時に帰る",
+		"社員: オフィス1マスに1人。8〜9時に入口から出勤し、17〜18時に帰る",
+		"入口: 1階の左端と地下鉄駅（地下にだけ建てられる）。人は近い方の入口から出入りする",
 		"速度: 1x / 4x / 16x で時間の進みを早送り",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
 		"結婚式場: 休日の10〜11時に12人が来て13時まで（1人1万円） / イベントホール: 休日の13〜14時に15人が来て17時まで（1人3千円）",
@@ -535,6 +546,8 @@ func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 func can_click_cell(cell: Vector2i) -> bool:
 	if current_mode == MODE_RESIDENT:
 		return not is_cell_empty(cell)
+	if current_mode == "subway" and cell.y <= ground_y:
+		return false # 地下鉄駅は地下にしか建てられない
 	if current_mode == "elevator" and get_building_type(cell) == "elevator":
 		return true # シャフトをクリックするとカゴを呼べる
 	return is_cell_empty(cell) and funds >= BUILDINGS[current_mode].cost
@@ -551,16 +564,37 @@ func spawn_resident(cell: Vector2i):
 	residents.append(resident)
 	return resident
 
-# 入口のマス：ビルの一番下の階の左端（建物がなければnull）
-# 社員はここに現れて出勤し、ここから帰る
+# 1階の入口のマス：1階の左端（1階に建物がなければnull）
 func get_entrance():
-	if building_grid.is_empty():
-		return null
-	var entrance: Vector2i = building_grid.keys()[0]
+	var entrance = null
 	for cell: Vector2i in building_grid:
-		if cell.y > entrance.y or (cell.y == entrance.y and cell.x < entrance.x):
+		if cell.y == ground_y and (entrance == null or cell.x < entrance.x):
 			entrance = cell
 	return entrance
+
+# 入口の一覧：1階の入口と、地下鉄駅のマス。人はビルの外からここに現れ、ここから帰る
+func get_entrances() -> Array[Vector2i]:
+	var entrances: Array[Vector2i] = []
+	var main_entrance = get_entrance()
+	if main_entrance != null:
+		entrances.append(main_entrance)
+	entrances.append_array(find_cells_of_type("subway"))
+	return entrances
+
+func is_entrance(cell: Vector2i) -> bool:
+	return get_entrances().has(cell)
+
+# 指定マスから一番近い（経路が一番短い）入口。たどり着ける入口がなければnull
+# 経路は行きも帰りも同じなので、ビルに来るときにも帰るときにも使える
+func nearest_entrance(cell: Vector2i):
+	var best = null
+	var best_length := 0
+	for entrance in get_entrances():
+		var path := find_path(cell, entrance)
+		if not path.is_empty() and (best == null or path.size() < best_length):
+			best = entrance
+			best_length = path.size()
+	return best
 
 # 指定マスにいる住人（乗車中の住人は除く。いなければnull）
 func get_resident_at(cell: Vector2i):
@@ -638,6 +672,9 @@ func build_at(map_pos: Vector2i):
 		return
 
 	var data = BUILDINGS[current_mode]
+	if current_mode == "subway" and map_pos.y <= ground_y:
+		show_message("地下鉄駅は地下（1階より下）にしか建てられません")
+		return
 	if funds < data.cost:
 		show_message("資金不足です！")
 		return

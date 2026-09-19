@@ -75,8 +75,7 @@ func _process(_delta: float) -> void:
 			send_home(w)
 		# 帰宅中に入口に着いたら帰る。経路が途切れて立ち止まったら探し直す
 		elif w.leaving and not resident.is_moving():
-			var entrance = world.get_entrance()
-			if entrance != null and resident.cell == entrance:
+			if world.is_entrance(resident.cell):
 				resident.queue_free()
 				w.resident = null
 				w.leaving = false
@@ -84,8 +83,8 @@ func _process(_delta: float) -> void:
 				send_home(w)
 
 func start_commute(cell: Vector2i, w: Dictionary) -> bool:
-	var entrance = world.get_entrance()
-	if entrance == null or world.find_path(entrance, cell).is_empty():
+	var entrance = world.nearest_entrance(cell)
+	if entrance == null:
 		return false
 	var resident = world.spawn_resident(entrance)
 	resident.go_to(cell)
@@ -95,7 +94,7 @@ func start_commute(cell: Vector2i, w: Dictionary) -> bool:
 
 # 入口へ向かわせる。たどり着けなければ、その場で帰ったことにする
 func send_home(w: Dictionary) -> void:
-	var entrance = world.get_entrance()
+	var entrance = world.nearest_entrance(w.resident.cell)
 	if entrance == null or (w.resident.cell != entrance and not w.resident.go_to(entrance)):
 		w.resident.queue_free()
 		w.resident = null
