@@ -28,7 +28,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -1374,6 +1374,38 @@ func run_night_light_scenario() -> bool:
 	check(lit.has(security), "警備室は一晩中明かりが灯る")
 	check(not lit.has(Vector2i(0, 18)), "社員が帰ったオフィスは暗いまま")
 	await capture("night_01_lights")
+	return true
+
+# ---------------------------------------------------
+# シナリオ24: 太陽と月
+# 太陽は5:30に昇って18:30に沈み、月は18:30に昇って翌朝5:30に沈む。空の中を弧を描いて動く。
+# ---------------------------------------------------
+func run_sun_moon_scenario() -> bool:
+	print("[シナリオ] 太陽と月")
+	var clock = main.clock
+	var soil = main.grid_overlay.soil
+	clock.set_time(1, 12, 0)
+	check(is_equal_approx(clock.sun_progress(), 0.5) and clock.moon_progress() < 0.0, "昼の12時は太陽が真ん中にあり、月は出ていない")
+	clock.set_time(1, 3, 0)
+	check(clock.sun_progress() < 0.0 and clock.moon_progress() > 0.0, "深夜は月が出ていて、太陽は出ていない")
+	clock.set_time(1, 5, 30)
+	check(is_equal_approx(clock.sun_progress(), 0.0) and is_equal_approx(clock.moon_progress(), 1.0), "5時30分に太陽が昇り、月が沈む")
+	clock.set_time(1, 18, 30)
+	check(is_equal_approx(clock.sun_progress(), 1.0) and is_equal_approx(clock.moon_progress(), 0.0), "18時30分に太陽が沈み、月が昇る")
+	
+	# 位置: 昇る・沈むときは低く左右の端、真ん中の時刻は高い
+	var rect := Rect2(0, 0, 400, 200)
+	var rise: Vector2 = soil.celestial_position(0.0, rect, 200.0)
+	var noon: Vector2 = soil.celestial_position(0.5, rect, 200.0)
+	var sunset: Vector2 = soil.celestial_position(1.0, rect, 200.0)
+	check(rise.x < noon.x and noon.x < sunset.x, "左から昇って右へ沈む")
+	check(noon.y < rise.y and noon.y < sunset.y, "真ん中の時刻が一番高い")
+	
+	focus_camera(Vector2i(0, 14))
+	for t in [[6, 30, "sunrise"], [12, 0, "noon"], [18, 0, "sunset"], [23, 0, "moon"]]:
+		clock.set_time(1, t[0], t[1])
+		await wait_frames(2)
+		await capture("sun_moon_%02d%02d_%s" % [t[0], t[1], t[2]])
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

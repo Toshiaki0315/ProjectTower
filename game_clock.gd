@@ -60,6 +60,24 @@ func sky_color() -> Color:
 			return from[1].lerp(to[1], t)
 	return SKY_COLORS[0][1]
 
+# 太陽・月が空に出ている時刻（分）
+const SUNRISE := 5 * 60 + 30
+const SUNSET := 18 * 60 + 30
+
+# 太陽の進み具合（0: 昇ったところ 〜 1: 沈むところ）。空に出ていなければ -1
+func sun_progress() -> float:
+	if minute < SUNRISE or minute > SUNSET:
+		return -1.0
+	return (minute - SUNRISE) / float(SUNSET - SUNRISE)
+
+# 月の進み具合（0: 昇ったところ 〜 1: 沈むところ）。空に出ていなければ -1
+func moon_progress() -> float:
+	var night_length := MINUTES_PER_DAY - (SUNSET - SUNRISE)
+	var since_moonrise := fposmod(minute - SUNSET, MINUTES_PER_DAY)
+	if since_moonrise > night_length:
+		return -1.0
+	return since_moonrise / night_length
+
 # 夜の暗さ（0: 明るい昼 〜 1: 真っ暗な夜）。星の見え方に使う
 func darkness() -> float:
 	return clampf(1.0 - sky_color().get_luminance() * 2.5, 0.0, 1.0)

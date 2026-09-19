@@ -112,6 +112,7 @@ class SoilBackground extends Node2D:
 			draw_rect(Rect2(visible_rect.position.x, visible_rect.position.y,
 				visible_rect.size.x, sky_bottom - visible_rect.position.y), world.clock.sky_color())
 			draw_stars(visible_rect, sky_bottom, tile_size, world.clock.darkness())
+			draw_sun_and_moon(visible_rect, sky_bottom)
 		
 		# 土
 		if visible_rect.end.y > ground_bottom:
@@ -119,6 +120,31 @@ class SoilBackground extends Node2D:
 			draw_rect(Rect2(visible_rect.position.x, top, visible_rect.size.x, visible_rect.end.y - top), overlay.SOIL_COLOR)
 			draw_line(Vector2(visible_rect.position.x, ground_bottom), Vector2(visible_rect.end.x, ground_bottom),
 				overlay.GROUND_LINE_COLOR, 2.0)
+
+	# 太陽と月: 画面に映っている空の中を、左（昇る）から右（沈む）へ弧を描いて動く。
+	# 背景なので建物の後ろに隠れる。大きさは画面上で一定（ズームしても変わらない）
+	func draw_sun_and_moon(visible_rect: Rect2, sky_bottom: float) -> void:
+		var clock = overlay.world.clock
+		var px: float = 1.0 / overlay.get_global_transform_with_canvas().get_scale().x # 画面上の1px
+		var sun: float = clock.sun_progress()
+		if sun >= 0.0:
+			var pos := celestial_position(sun, visible_rect, sky_bottom)
+			var height := sin(PI * sun) # 0: 地平線 〜 1: 一番高い
+			var sun_color := Color(1.0, 0.55, 0.2).lerp(Color(1.0, 0.97, 0.75), clampf(height * 1.5, 0.0, 1.0))
+			draw_circle(pos, 26 * px, Color(sun_color, 0.25)) # 光の輪
+			draw_circle(pos, 18 * px, sun_color)
+		var moon: float = clock.moon_progress()
+		if moon >= 0.0:
+			var pos := celestial_position(moon, visible_rect, sky_bottom)
+			draw_circle(pos, 14 * px, Color(1.0, 1.0, 0.85))
+			draw_circle(pos + Vector2(7, -3) * px, 12 * px, clock.sky_color()) # 空の色で欠けさせて三日月にする
+
+	# 空の中の位置: t=0 で左下、t=0.5 で上の真ん中、t=1 で右下
+	func celestial_position(t: float, visible_rect: Rect2, sky_bottom: float) -> Vector2:
+		var sky_height := sky_bottom - visible_rect.position.y
+		var x := visible_rect.position.x + visible_rect.size.x * (0.08 + 0.84 * t)
+		var y := sky_bottom - sky_height * (0.1 + 0.75 * sin(PI * t))
+		return Vector2(x, y)
 
 	# 星: マスごとに決まった乱数で、いくつかのマスに1つずつ置く（カメラを動かしても同じ場所に見える）
 	func draw_stars(visible_rect: Rect2, sky_bottom: float, tile_size: Vector2, darkness: float) -> void:
