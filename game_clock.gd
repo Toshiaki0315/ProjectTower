@@ -13,6 +13,22 @@ const START_MINUTE := 7 * 60 + 30 # 1日目の7:30から始める
 const MAX_MINUTES_PER_FRAME := 2.0
 const WEEKDAY_NAMES := ["月", "火", "水", "木", "金", "土", "日"]
 
+# 空の色の移り変わり: [時刻（分）, 色]。間の時刻は前後の色を少しずつ混ぜる
+const SKY_COLORS := [
+	[0 * 60, Color("#0b1026")],       # 深夜
+	[4 * 60 + 30, Color("#0b1026")],  # 深夜
+	[5 * 60 + 30, Color("#5b4a8a")],  # 早朝（紫）
+	[6 * 60 + 30, Color("#f0a07a")],  # 朝焼け
+	[8 * 60, Color("#8cc8ec")],       # 朝（水色）
+	[12 * 60, Color("#5aaef0")],      # 昼（青）
+	[16 * 60, Color("#7fbde6")],      # 午後
+	[17 * 60 + 30, Color("#f08a4b")], # 夕方（オレンジ）
+	[18 * 60 + 30, Color("#7a4a8c")], # 夕暮れ（紫）
+	[19 * 60 + 30, Color("#1f2a4d")], # 夜（紺）
+	[22 * 60, Color("#0b1026")],      # 深夜
+	[24 * 60, Color("#0b1026")],
+]
+
 var day := 1
 var minute := float(START_MINUTE) # その日の0:00からの経過分
 var last_advance := 0.0 # 直前のフレームで進んだゲーム内の分（清掃・食事などの残り時間を減らすのに使う）
@@ -33,6 +49,20 @@ func set_time(p_day: int, hour: int, min: int) -> void:
 # その日の経過分（整数）
 func minute_of_day() -> int:
 	return int(minute)
+
+# 今の時刻の空の色
+func sky_color() -> Color:
+	for i in SKY_COLORS.size() - 1:
+		var from = SKY_COLORS[i]
+		var to = SKY_COLORS[i + 1]
+		if minute >= from[0] and minute <= to[0]:
+			var t: float = (minute - from[0]) / float(to[0] - from[0])
+			return from[1].lerp(to[1], t)
+	return SKY_COLORS[0][1]
+
+# 夜の暗さ（0: 明るい昼 〜 1: 真っ暗な夜）。星の見え方に使う
+func darkness() -> float:
+	return clampf(1.0 - sky_color().get_luminance() * 2.5, 0.0, 1.0)
 
 # 曜日（0: 月 〜 6: 日）
 func weekday(d: int = day) -> int:

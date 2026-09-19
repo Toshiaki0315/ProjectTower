@@ -28,7 +28,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -63,11 +63,10 @@ func run_build_scenario() -> bool:
 	await capture("build_01_start")
 
 	# 1. 階段ボタンをクリック → 階段が[選択中]になる
-	await click_button(main.mode_buttons["stairs"])
-	check(main.current_mode == "stairs", "階段ボタンでモードがstairsになる")
-	check(main.mode_buttons["stairs"].text.begins_with("▶"), "階段ボタンに▶が付く")
-	check(main.mode_buttons["stairs"].button_pressed, "階段ボタンが押し込まれた表示になる")
-	check(not main.mode_buttons["office"].text.begins_with("▶"), "オフィスボタンから▶が外れる")
+	await choose_mode("stairs")
+	check(main.current_mode == "stairs", "建設メニューで階段を選ぶとモードがstairsになる")
+	check(main.mode_select.text == "階段", "建設メニューに「階段」が選ばれて表示される")
+	check(main.mode_info_label.text == "建設費 50,000円・横1マス", "選んだものの建設費と大きさが表示される")
 	await capture("build_02_stairs_selected")
 
 	# 2. 空マスを左クリック → 階段を建設（-5万円）
@@ -77,7 +76,7 @@ func run_build_scenario() -> bool:
 	check(main.funds == start_funds - 50000, "階段の建設費5万円が引かれる")
 
 	# 3. オフィスに切り替えて左クリック → オフィスを建設（-10万円）
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	var office_cell := Vector2i(2, 20)
 	await click_cell(office_cell, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(office_cell) == "office", "左クリックでオフィスが建つ")
@@ -110,9 +109,9 @@ func run_build_scenario() -> bool:
 # ---------------------------------------------------
 func run_stairs_scenario() -> bool:
 	print("[シナリオ] 階段による移動")
-	await click_button(main.mode_buttons["stairs"])
+	await choose_mode("stairs")
 	await click_cell(Vector2i(8, 15), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(5, 14), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=5〜8。右端が階段の真上）
 	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT) # どこにもつながらない孤立したオフィス
 	
@@ -123,7 +122,7 @@ func run_stairs_scenario() -> bool:
 	check(not main.can_move(Vector2i(8, 15), Vector2i(9, 15)), "空マスへは移動できない")
 	
 	# 住人を配置
-	await click_button(main.mode_buttons["resident"])
+	await choose_mode("resident")
 	var start := Vector2i(0, 15)
 	await click_cell(start, MOUSE_BUTTON_LEFT)
 	check(main.residents.size() == 1, "住人モードでクリックすると住人が配置される")
@@ -170,7 +169,7 @@ func run_camera_scenario() -> bool:
 	var screen_pos := Vector2(900, 500)
 	var world_before: Vector2 = cam.screen_to_world(screen_pos)
 	await scroll_wheel(screen_pos, MOUSE_BUTTON_WHEEL_UP, 3)
-	check(cam.zoom.x > cam.DEFAULT_ZOOM, "ホイール上でズームインする")
+	check(cam.zoom.x > cam.DEFAULT_ZOOM, "Ctrl+ホイール上でズームインする")
 	check(cam.screen_to_world(screen_pos).is_equal_approx(world_before), "ズームしてもカーソル下の位置がずれない")
 	check(main.funds == 1000000, "ホイール操作で建設されない")
 	
@@ -266,7 +265,7 @@ func run_elevator_scenario() -> bool:
 	print("[シナリオ] エレベーター")
 	var elevators = main.elevator_system
 	var x := 8
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 13, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
 	check(main.funds == 500000, "シャフト5マスで50万円かかる")
@@ -340,16 +339,16 @@ func run_ride_scenario() -> bool:
 	print("[シナリオ] 住人がエレベーターに乗る")
 	main.funds = 10000000 # 建設費を気にせず並べられるようにする
 	var x := 8
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var car = main.elevator_system.cars[0]
 	var arrivals: Array[int] = []
 	car.arrived.connect(func(y): arrivals.append(y))
 	
-	await click_button(main.mode_buttons["resident"])
+	await choose_mode("resident")
 	await click_cell(Vector2i(0, 15), MOUSE_BUTTON_LEFT)
 	var resident = main.residents.back()
 	var goal := Vector2i(5, 13)
@@ -375,10 +374,10 @@ func run_ride_scenario() -> bool:
 	
 	# 階段とエレベーターの使い分け
 	# x=9 に y=14〜18 の階段を積み、y=13 にオフィスを置く（x=8のシャフトと並ぶ）
-	await click_button(main.mode_buttons["stairs"])
+	await choose_mode("stairs")
 	for y in range(18, 13, -1):
 		await click_cell(Vector2i(9, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(9, 13), MOUSE_BUTTON_LEFT)
 	check(count_rides(main.find_path(Vector2i(8, 15), Vector2i(8, 14))) == 0, "1階だけの移動なら階段を使う")
 	check(count_rides(main.find_path(Vector2i(8, 18), Vector2i(8, 13))) == 1, "5階離れた移動ならエレベーターを使う")
@@ -392,14 +391,14 @@ func run_stress_scenario() -> bool:
 	print("[シナリオ] ストレス")
 	main.funds = 10000000
 	var x := 8
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var car = main.elevator_system.cars[0]
 	
-	await click_button(main.mode_buttons["resident"])
+	await choose_mode("resident")
 	await click_cell(Vector2i(0, 15), MOUSE_BUTTON_LEFT)
 	var resident = main.residents.back()
 	var goal := Vector2i(5, 13)
@@ -444,15 +443,15 @@ func run_collective_scenario() -> bool:
 	print("[シナリオ] 集合制御での乗り降り")
 	main.funds = 10000000
 	var x := 8
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var car = main.elevator_system.cars[0]
 	
 	# カゴを最上階(13)に上げてから、最下階(18)へ向かわせる
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	await click_cell(Vector2i(x, 13), MOUSE_BUTTON_LEFT)
 	await wait_until(func(): return car.floor_y == 13 and car.state == car.State.IDLE, 10.0)
 	var arrivals: Array[int] = []
@@ -460,7 +459,7 @@ func run_collective_scenario() -> bool:
 	await click_cell(Vector2i(x, 18), MOUSE_BUTTON_LEFT)
 	
 	# 上へ行きたい住人を、シャフトの隣(7,15)に置いて(5,13)へ向かわせる
-	await click_button(main.mode_buttons["resident"])
+	await choose_mode("resident")
 	await click_cell(Vector2i(7, 15), MOUSE_BUTTON_LEFT)
 	var resident = main.residents.back()
 	var goal := Vector2i(5, 13)
@@ -492,10 +491,10 @@ func run_commute_scenario() -> bool:
 	main.funds = 10000000
 	var commute = main.commute_system
 	var x := 8
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT) # 孤立したオフィス
 	check(main.get_entrance() == Vector2i(-8, 18), "地下にオフィスを建てても、入口は1階の左端のまま")
@@ -554,10 +553,10 @@ func run_economy_scenario() -> bool:
 	check(main.format_money(658000, true) == "+658,000", "収支にはプラス記号を付ける")
 	
 	main.funds = 10000000
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	await click_cell(Vector2i(-10, 14), MOUSE_BUTTON_LEFT) # 孤立したオフィス（賃料は入らない）
 	check(main.funds_label.text.contains("現在の資金: 8,600,000円"), "資金の表示もカンマ区切りになる")
@@ -594,10 +593,10 @@ func run_hotel_scenario() -> bool:
 	var hotel = main.hotel_system
 	var room_cells: Array[Vector2i] = [Vector2i(8, 18), Vector2i(10, 18), Vector2i(12, 18)]
 	focus_camera(Vector2i(10, 17))
-	await click_button(main.mode_buttons["hotel"])
+	await choose_mode("hotel")
 	for cell in room_cells:
 		await click_cell(cell, MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["housekeeping"])
+	await choose_mode("housekeeping")
 	await click_cell(Vector2i(14, 18), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 3 * 150000 - 200000, "客室15万円×3とハウスキーパー室20万円がかかる")
 	check(main.get_unit_cells(Vector2i(9, 18)) == [Vector2i(8, 18), Vector2i(9, 18)], "シングルは横2マスの部屋")
@@ -667,13 +666,13 @@ func run_lunch_scenario() -> bool:
 	main.funds = 10000000
 	var commute = main.commute_system
 	var commerce = main.commerce_system
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var restaurant := Vector2i(9, 18)
-	await click_button(main.mode_buttons["restaurant"])
+	await choose_mode("restaurant")
 	await click_cell(restaurant, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(restaurant) == "restaurant", "飲食店を建てられる（20万円）")
 	check(main.funds == 10000000 - 6 * 100000 - 400000 - 200000, "飲食店の建設費20万円がかかる")
@@ -725,13 +724,13 @@ func run_lunch_scenario() -> bool:
 func run_recycling_scenario() -> bool:
 	print("[シナリオ] ゴミ処理場")
 	main.funds = 10000000
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	focus_camera(Vector2i(8, 16))
-	await click_button(main.mode_buttons["recycling"])
+	await choose_mode("recycling")
 	for rx in [9, 12]:
 		await click_cell(Vector2i(rx, 18), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 6 * 100000 - 400000 - 2 * 150000, "ゴミ処理場の建設費15万円×2がかかる")
@@ -765,17 +764,17 @@ func run_rating_scenario() -> bool:
 	print("[シナリオ] ビルの評価")
 	main.funds = 10000000
 	var rating = main.rating_system
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	check(rating.stars == 1 and rating.population() == 68, "最初は★1、人口68（社員68人）")
 	check(rating.missing_for_next() == ["警備室"], "★2に足りないのは警備室だけ")
 	await wait_frames(2)
 	check(main.stats_label.text.begins_with("★1 人口68（★2まで: 警備室）"), "下部バーに評価と次の★に足りないものが出る")
 	
-	await click_button(main.mode_buttons["security"])
+	await choose_mode("security")
 	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
 	check(rating.missing_for_next().is_empty(), "警備室を置くと★2の条件を満たす")
 	check(rating.stars == 1, "★が上がるのは決算のとき")
@@ -797,7 +796,7 @@ func run_rating_scenario() -> bool:
 	
 	# ★3の条件
 	check(rating.missing_for_next() == ["人口120", "メディカルセンター", "ゴミ処理場"], "★3には人口120・メディカルセンター・ゴミ処理場が必要")
-	await click_button(main.mode_buttons["medical"])
+	await choose_mode("medical")
 	await click_cell(Vector2i(11, 18), MOUSE_BUTTON_LEFT) # 警備室（x=9〜10）の右隣
 	check(main.get_building_type(Vector2i(11, 18)) == "medical", "メディカルセンターを建てられる")
 	check(rating.missing_for_next() == ["人口120", "ゴミ処理場"], "メディカルセンターを置くと★3の条件から外れる")
@@ -813,7 +812,7 @@ func run_housing_scenario() -> bool:
 	var housing = main.housing_system
 	var homes: Array[Vector2i] = [Vector2i(8, 18), Vector2i(11, 18)] # 横3マスずつ（x=8〜10、11〜13）
 	focus_camera(Vector2i(8, 17))
-	await click_button(main.mode_buttons["housing"])
+	await choose_mode("housing")
 	for cell in homes:
 		await click_cell(cell, MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 2 * 400000, "住宅（横3マス）の建設費40万円×2がかかる")
@@ -878,11 +877,11 @@ func run_room_types_scenario() -> bool:
 	var twin := Vector2i(8, 18)
 	var suite := Vector2i(11, 18)
 	focus_camera(Vector2i(11, 17))
-	await click_button(main.mode_buttons["hotel_twin"])
+	await choose_mode("hotel_twin")
 	await click_cell(twin, MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["hotel_suite"])
+	await choose_mode("hotel_suite")
 	await click_cell(suite, MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["housekeeping"])
+	await choose_mode("housekeeping")
 	await click_cell(Vector2i(15, 18), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 200000 - 500000 - 200000, "ツイン20万円・スイート50万円がかかる")
 	check(main.get_unit_cells(twin).size() == 3 and main.get_unit_cells(suite).size() == 4, "ツインは横3マス、スイートは横4マス")
@@ -944,13 +943,13 @@ func run_weekday_scenario() -> bool:
 	var clock = main.clock
 	check(clock.weekday(1) == 0 and not clock.is_holiday(1), "1日目は月曜日で平日")
 	check(clock.is_holiday(6) and clock.is_holiday(7) and not clock.is_holiday(8), "6日目（土）・7日目（日）は休日、8日目（月）は平日")
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	var home := Vector2i(9, 18)
-	await click_button(main.mode_buttons["housing"])
+	await choose_mode("housing")
 	await click_cell(home, MOUSE_BUTTON_LEFT)
 	
 	# 5日目（金）: 社員は出勤し、夕方に入居者が入居する
@@ -997,15 +996,15 @@ func run_event_scenario() -> bool:
 	main.funds = 10000000
 	var events = main.event_system
 	var clock = main.clock
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	var wedding := Vector2i(9, 18)
 	var hall := Vector2i(2, 13)
 	focus_camera(Vector2i(6, 16))
-	await click_button(main.mode_buttons["wedding"])
+	await choose_mode("wedding")
 	await click_cell(wedding, MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["event_hall"])
+	await choose_mode("event_hall")
 	await click_cell(hall, MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 6 * 100000 - 1000000 - 800000, "結婚式場100万円・イベントホール80万円がかかる")
 	
@@ -1060,14 +1059,14 @@ func run_subway_scenario() -> bool:
 	print("[シナリオ] 地下鉄駅")
 	main.funds = 100000000
 	check(main.ground_y == 18, "起動時の一番下の階(y=18)が1階になる")
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(19, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	
 	# 地下鉄駅は地下にしか建てられない
-	await click_button(main.mode_buttons["subway"])
+	await choose_mode("subway")
 	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(9, 18)), "1階には地下鉄駅を建てられない")
 	check(main.message_label.text.contains("地下鉄駅は地下（1階より下）にしか建てられません"), "建てられない理由がメッセージで出る")
@@ -1117,10 +1116,10 @@ func run_subway_scenario() -> bool:
 func run_capacity_scenario() -> bool:
 	print("[シナリオ] カゴの定員")
 	main.funds = 10000000
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
 	var car = main.elevator_system.cars[0]
 	check(car.CAPACITY == 8, "カゴの定員は8人")
@@ -1178,16 +1177,16 @@ func run_multi_car_scenario() -> bool:
 	print("[シナリオ] 複数のカゴ")
 	main.funds = 10000000
 	var elevators = main.elevator_system
-	await click_button(main.mode_buttons["elevator"])
+	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	await click_button(main.mode_buttons["office"])
+	await choose_mode("office")
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
 	check(elevators.get_cars_at(Vector2i(8, 15)).size() == 1, "シャフトを建てるとカゴが1台できる")
 	
 	# カゴ追加モードでシャフトをクリックすると、その階にカゴが増える
 	var funds_before: int = main.funds
-	await click_button(main.mode_buttons["add_car"])
+	await choose_mode("add_car")
 	await click_cell(Vector2i(8, 13), MOUSE_BUTTON_LEFT)
 	var cars: Array = elevators.get_cars_at(Vector2i(8, 15))
 	check(cars.size() == 2, "カゴ追加でシャフトのカゴが2台になる")
@@ -1235,6 +1234,77 @@ func run_multi_car_scenario() -> bool:
 	check(main.economy_system.last_report.get("maintenance") == 12000 + 3 * 3000, "追加したカゴ3台の維持費9千円がかかる")
 	return true
 
+# ---------------------------------------------------
+# シナリオ22: 建設メニュー・上下スクロール・時刻で変わる空の色
+# ---------------------------------------------------
+func run_scroll_sky_scenario() -> bool:
+	print("[シナリオ] 建設メニュー・スクロール・空の色")
+	main.funds = 100000000
+	var cam = main.camera
+	
+	# 建設メニュー: 見出しごとに並び、クリックするとリストが開く
+	var select: OptionButton = main.mode_select
+	var headers: Array[String] = []
+	for i in select.item_count:
+		if select.is_item_separator(i):
+			headers.append(select.get_item_text(i))
+	check(headers == ["テナント", "移動", "設備", "その他"], "建設メニューは見出し（テナント・移動・設備・その他）ごとに並ぶ")
+	await click_at(select.get_global_rect().get_center(), MOUSE_BUTTON_LEFT)
+	check(select.get_popup().visible, "建設メニューをクリックするとリストが開く")
+	select.get_popup().hide()
+	await choose_mode("hotel_suite")
+	check(select.text == "スイート（横4マス）" and main.mode_info_label.text == "建設費 500,000円・横4マス", "選んだ建物の名前・建設費・大きさが出る")
+	
+	# マウスホイール: 上下スクロール（ズームはしない）
+	var screen_pos := Vector2(600, 400)
+	var zoom_before: float = cam.zoom.x
+	var y_before: float = cam.position.y
+	await scroll_wheel(screen_pos, MOUSE_BUTTON_WHEEL_UP, 3, false)
+	check(is_equal_approx(cam.zoom.x, zoom_before), "Ctrlなしのホイールではズームしない")
+	check(is_equal_approx(cam.position.y, y_before - 3 * cam.WHEEL_SCROLL / cam.zoom.y), "ホイール上で画面が上へスクロールする")
+	var x_before: float = cam.position.x
+	await scroll_wheel(screen_pos, MOUSE_BUTTON_WHEEL_DOWN, 2, false, true)
+	check(cam.position.x > x_before, "Shift+ホイールで左右にスクロールする")
+	
+	# 高く建てると、スクロールバーの範囲が上に広がる
+	var min_before: float = main.v_scroll.min_value
+	main.select_mode("elevator")
+	for y in range(18, 2, -1):
+		main.build_at(Vector2i(8, y))
+	await wait_frames(2)
+	check(main.v_scroll.min_value < min_before, "上へ建てるとスクロールできる範囲が上に広がる")
+	check(is_equal_approx(main.v_scroll.min_value, (3 - main.SCROLL_MARGIN_ROWS) * 16.0), "一番上の建物(y=3)の上に10行分スクロールできる")
+	# スクロールバーを一番上へ動かすと、カメラも一番上へ
+	main.v_scroll.value = main.v_scroll.min_value
+	await wait_frames(2)
+	check(is_equal_approx(cam.position.y - main.v_scroll.page / 2.0, main.v_scroll.min_value), "スクロールバーを動かすとカメラが動く")
+	await capture("scroll_01_top")
+	focus_camera(Vector2i(6, 15))
+	
+	# 空の色: 時刻とともに変わる
+	var clock = main.clock
+	var colors := {}
+	for t in [[3, 0, "night"], [6, 0, "dawn"], [12, 0, "noon"], [17, 45, "evening"], [21, 0, "late"]]:
+		clock.set_time(1, t[0], t[1])
+		colors[t[2]] = clock.sky_color()
+		await wait_frames(2)
+		await capture("sky_%02d%02d_%s" % [t[0], t[1], t[2]])
+	check(colors.night.get_luminance() < 0.1, "深夜の空は暗い")
+	check(colors.noon.b > colors.noon.r and colors.noon.get_luminance() > 0.5, "昼の空は明るい青")
+	check(colors.dawn.r > colors.dawn.b, "朝焼けは赤みがある")
+	check(colors.evening.r > colors.evening.g and colors.evening.r > colors.evening.b, "夕方の空はオレンジ")
+	check(clock.darkness() > 0.5, "夜は暗く、星が見える")
+	clock.set_time(1, 12, 0)
+	check(clock.darkness() == 0.0, "昼は星が見えない")
+	clock.set_time(1, 12, 1)
+	var c1: Color = clock.sky_color()
+	clock.set_time(1, 17, 0)
+	var c2: Color = clock.sky_color()
+	clock.set_time(1, 17, 1)
+	check(clock.sky_color().is_equal_approx(c2) == false and c2.lerp(clock.sky_color(), 0.5).is_equal_approx(c2.lerp(clock.sky_color(), 0.5)), "空の色は1分ごとに少しずつ変わる")
+	check(not c1.is_equal_approx(c2), "昼と夕方前で空の色が違う")
+	return true
+
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
 func run_day(day: int) -> void:
 	main.clock.set_time(day, 7, 59)
@@ -1252,6 +1322,15 @@ func count_rides(path: Array[Vector2i]) -> int:
 		if main.is_elevator_ride(path[i], path[i + 1]):
 			rides += 1
 	return rides
+
+# 建設メニューから選ぶ（プレイヤーがリストで項目を選んだときと同じく item_selected を送る）
+func choose_mode(mode: String) -> void:
+	var select: OptionButton = main.mode_select
+	for i in select.item_count:
+		if select.get_item_metadata(i) == mode:
+			select.select(i)
+			select.item_selected.emit(i)
+	await wait_frames(1)
 
 # 指定したマスが画面の中央に来るようにカメラを動かす
 func focus_camera(cell: Vector2i) -> void:
@@ -1297,12 +1376,15 @@ func click_at(pos: Vector2, button: MouseButton) -> void:
 		root.push_input(ev)
 	await wait_frames(1)
 
-func scroll_wheel(pos: Vector2, button: MouseButton, times: int) -> void:
+# ホイールを回す。zoom なら Ctrl を押しながら（ズーム）、shift なら Shift を押しながら（左右スクロール）
+func scroll_wheel(pos: Vector2, button: MouseButton, times: int, zoom := true, shift := false) -> void:
 	for i in times:
 		for pressed in [true, false]:
 			var ev := InputEventMouseButton.new()
 			ev.button_index = button
 			ev.pressed = pressed
+			ev.ctrl_pressed = zoom
+			ev.shift_pressed = shift
 			ev.position = pos
 			ev.global_position = pos
 			root.push_input(ev)

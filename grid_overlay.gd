@@ -96,17 +96,41 @@ func cells_rect(cells: Array[Vector2i], tile_size: Vector2) -> Rect2:
 func get_visible_rect() -> Rect2:
 	return get_global_transform_with_canvas().affine_inverse() * get_viewport_rect()
 
-# 地下の土の背景：1階の床より下を土の色で塗り、地面の線を引く（タイルより奥に描く）
+# 背景：地上は時刻で色が変わる空（夜は星が出る）、1階の床より下は土。タイルより奥に描く
 class SoilBackground extends Node2D:
 	var overlay # grid_overlay.gd
 
 	func _draw() -> void:
-		var tile_size := Vector2(overlay.world.tile_map.tile_set.tile_size)
+		var world = overlay.world
+		var tile_size := Vector2(world.tile_map.tile_set.tile_size)
 		var visible_rect: Rect2 = overlay.get_visible_rect()
-		var ground_bottom: float = (overlay.world.ground_y + 1) * tile_size.y # 1階の床の下端
-		if visible_rect.end.y <= ground_bottom:
+		var ground_bottom: float = (world.ground_y + 1) * tile_size.y # 1階の床の下端
+		
+		# 空
+		if visible_rect.position.y < ground_bottom:
+			var sky_bottom := minf(ground_bottom, visible_rect.end.y)
+			draw_rect(Rect2(visible_rect.position.x, visible_rect.position.y,
+				visible_rect.size.x, sky_bottom - visible_rect.position.y), world.clock.sky_color())
+			draw_stars(visible_rect, sky_bottom, tile_size, world.clock.darkness())
+		
+		# 土
+		if visible_rect.end.y > ground_bottom:
+			var top := maxf(ground_bottom, visible_rect.position.y)
+			draw_rect(Rect2(visible_rect.position.x, top, visible_rect.size.x, visible_rect.end.y - top), overlay.SOIL_COLOR)
+			draw_line(Vector2(visible_rect.position.x, ground_bottom), Vector2(visible_rect.end.x, ground_bottom),
+				overlay.GROUND_LINE_COLOR, 2.0)
+
+	# 星: マスごとに決まった乱数で、いくつかのマスに1つずつ置く（カメラを動かしても同じ場所に見える）
+	func draw_stars(visible_rect: Rect2, sky_bottom: float, tile_size: Vector2, darkness: float) -> void:
+		if darkness <= 0.0:
 			return
-		var top := maxf(ground_bottom, visible_rect.position.y)
-		draw_rect(Rect2(visible_rect.position.x, top, visible_rect.size.x, visible_rect.end.y - top), overlay.SOIL_COLOR)
-		draw_line(Vector2(visible_rect.position.x, ground_bottom), Vector2(visible_rect.end.x, ground_bottom),
-			overlay.GROUND_LINE_COLOR, 2.0)
+		var first := Vector2i((visible_rect.position / tile_size).floor())
+		var last := Vector2i((Vector2(visible_rect.end.x, sky_bottom) / tile_size).ceil())
+		for y in range(first.y, last.y):
+			for x in range(first.x, last.x + 1):
+				var h := hash(Vector2i(x, y))
+				if h % 19 != 0:
+					continue
+				var star := Vector2(x, y) * tile_size + Vector2(h % 13 + 1, (h / 13) % 13 + 1)
+				if star.y < sky_bottom - 2:
+					draw_rect(Rect2(star, Vector2.ONE), Color(1, 1, 0.9, darkness * 0.9))

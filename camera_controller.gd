@@ -2,7 +2,8 @@ extends Camera2D
 
 # ---------------------------------------------------
 # カメラ操作（ズームと移動）
-# - ズーム: マウスホイール / トラックパッドのピンチ（カーソル位置を中心に拡大縮小）
+# - スクロール: マウスホイールで上下、Shift+ホイール（または横ホイール）で左右
+# - ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ（カーソル位置を中心に拡大縮小）
 # - 移動:   トラックパッドの2本指スクロール / マウス中ボタンドラッグ / WASD・矢印キー
 # ---------------------------------------------------
 
@@ -11,6 +12,7 @@ const MIN_ZOOM := 1.0
 const MAX_ZOOM := 6.0
 const WHEEL_ZOOM_STEP := 1.15 # ホイール1回あたりの拡大率
 const KEY_PAN_SPEED := 600.0  # キー移動の速さ（画面上のpx/秒）
+const WHEEL_SCROLL := 48.0    # ホイール1回でスクロールする量（画面上のpx）
 
 var dragging := false
 
@@ -24,14 +26,10 @@ func focus_on(world_pos: Vector2) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		match event.button_index:
-			MOUSE_BUTTON_WHEEL_UP:
+			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT:
 				if event.pressed:
-					zoom_at(event.position, WHEEL_ZOOM_STEP)
-					get_viewport().set_input_as_handled()
-			MOUSE_BUTTON_WHEEL_DOWN:
-				if event.pressed:
-					zoom_at(event.position, 1.0 / WHEEL_ZOOM_STEP)
-					get_viewport().set_input_as_handled()
+					handle_wheel(event)
+				get_viewport().set_input_as_handled()
 			MOUSE_BUTTON_MIDDLE:
 				dragging = event.pressed
 				get_viewport().set_input_as_handled()
@@ -42,6 +40,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventPanGesture:
 		# deltaは画面上の移動量に近い値なので、見た目の速さが一定になるよう係数をかける
 		pan_by_screen(event.delta * 20.0)
+
+# ホイール: 上下スクロール。Shiftや横ホイールなら左右、Ctrl（⌘）ならズーム
+func handle_wheel(event: InputEventMouseButton) -> void:
+	var up := event.button_index == MOUSE_BUTTON_WHEEL_UP
+	var down := event.button_index == MOUSE_BUTTON_WHEEL_DOWN
+	if (up or down) and (event.ctrl_pressed or event.meta_pressed):
+		zoom_at(event.position, WHEEL_ZOOM_STEP if up else 1.0 / WHEEL_ZOOM_STEP)
+	elif event.button_index == MOUSE_BUTTON_WHEEL_LEFT or (up and event.shift_pressed):
+		pan_by_screen(Vector2(-WHEEL_SCROLL, 0))
+	elif event.button_index == MOUSE_BUTTON_WHEEL_RIGHT or (down and event.shift_pressed):
+		pan_by_screen(Vector2(WHEEL_SCROLL, 0))
+	else:
+		pan_by_screen(Vector2(0, -WHEEL_SCROLL if up else WHEEL_SCROLL))
 
 func _process(delta: float) -> void:
 	var dir := Vector2.ZERO

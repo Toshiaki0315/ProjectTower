@@ -42,13 +42,24 @@ const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
 const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴを追加するモード
 
+# 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
+const MODE_GROUPS := [
+	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
+	{"name": "移動", "modes": ["stairs", "elevator", "add_car"]},
+	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway"]},
+	{"name": "その他", "modes": ["resident"]},
+]
+const SCROLL_MARGIN_ROWS := 10 # スクロールできる範囲の、建物の上下に足す余白（行数）
+
 var funds: int = 1000000
 var current_mode: String = "office"
 var funds_label: Label # 資金表示用のUIラベル
 var message_label: Label # 操作結果のメッセージ表示用
 var hover_label: Label # カーソル下のマスの情報表示用
 var help_panel: Control # 操作説明（ボタンで表示/非表示）
-var mode_buttons: Dictionary = {} # モード名 -> Button
+var mode_select: OptionButton # 建設メニュー（リストから建物などを選ぶ）
+var mode_info_label: Label # 選んだものの費用・大きさの表示
+var v_scroll: VScrollBar # マップの上下スクロールバー
 var grid_overlay # マス目の表示
 var elevator_system # エレベーターのシャフトとカゴの管理
 var clock # ゲーム内の時計
@@ -126,6 +137,7 @@ func _ready() -> void:
 	update_funds_display()
 
 func _process(_delta: float) -> void:
+	update_scrollbar()
 	grid_overlay.update_hover()
 	update_hover_label()
 	clock_label.text = clock.get_time_text()
@@ -183,11 +195,9 @@ func create_ui():
 	var status_row = HBoxContainer.new()
 	status_row.add_theme_constant_override("separation", 8)
 	top_rows.add_child(status_row)
-	# モードのボタンは横幅に入りきらなければ自動で折り返す
-	var mode_row = HFlowContainer.new()
-	mode_row.add_theme_constant_override("h_separation", 8)
-	mode_row.add_theme_constant_override("v_separation", 4)
-	top_rows.add_child(mode_row)
+	var build_row = HBoxContainer.new()
+	build_row.add_theme_constant_override("separation", 8)
+	top_rows.add_child(build_row)
 	
 	funds_label = Label.new()
 	funds_label.add_theme_font_size_override("font_size", 20)
@@ -217,15 +227,24 @@ func create_ui():
 	help_button.toggled.connect(func(on): help_panel.visible = on)
 	status_row.add_child(help_button)
 	
-	# 同じグループのボタンは1つだけ押下状態になる（ラジオボタン的な挙動）
-	var group = ButtonGroup.new()
-	for mode in BUILDINGS.keys() + [MODE_ADD_CAR, MODE_RESIDENT]:
-		var btn = Button.new()
-		btn.toggle_mode = true
-		btn.button_group = group
-		btn.pressed.connect(func(): select_mode(mode))
-		mode_row.add_child(btn)
-		mode_buttons[mode] = btn
+	# 建設メニュー: リストから選んで、マップをクリックして建てる（見出しごとにまとめる）
+	var build_label = Label.new()
+	build_label.text = "建設:"
+	build_row.add_child(build_label)
+	mode_select = OptionButton.new()
+	mode_select.custom_minimum_size.x = 260
+	for group in MODE_GROUPS:
+		mode_select.add_separator(group.name)
+		for mode in group.modes:
+			mode_select.add_item(get_mode_label(mode))
+			mode_select.set_item_metadata(mode_select.item_count - 1, mode)
+	mode_select.item_selected.connect(func(index): select_mode(mode_select.get_item_metadata(index)))
+	for type in BUILDINGS:
+		assert(MODE_GROUPS.any(func(group): return group.modes.has(type)), "%s が建設メニュー（MODE_GROUPS）にありません" % type)
+	build_row.add_child(mode_select)
+	mode_info_label = Label.new()
+	mode_info_label.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
+	build_row.add_child(mode_info_label)
 	
 	# --- 操作説明（上部バーの下、右寄せ） ---
 	var help_row = HBoxContainer.new()
@@ -234,7 +253,7 @@ func create_ui():
 	help_row.add_child(make_spacer())
 	var help_label = Label.new()
 	help_label.text = "\n".join([
-		"左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）",
+		"建設: 上の「建設」メニューで選び、マップを左クリック / 右クリック: 撤去（建設費の半額を返金）",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
@@ -254,17 +273,24 @@ func create_ui():
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
 		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
-		"ズーム: マウスホイール / トラックパッドのピンチ",
+		"スクロール: マウスホイールで上下、Shift+ホイールで左右、右端のスクロールバー",
+		"ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 	])
 	help_panel = make_bar(help_label)
 	help_panel.visible = false
 	help_row.add_child(help_panel)
 	
-	# --- マップ部分（何も置かず、クリックを通す） ---
-	var map_space = make_spacer()
-	map_space.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	layout.add_child(map_space)
+	# --- マップ部分（クリックはそのまま通す）。右端に上下スクロールバー ---
+	var map_row = HBoxContainer.new()
+	map_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	map_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(map_row)
+	map_row.add_child(make_spacer())
+	v_scroll = VScrollBar.new()
+	v_scroll.custom_minimum_size.x = 14
+	v_scroll.value_changed.connect(func(value): camera.position.y = value + v_scroll.page / 2.0)
+	map_row.add_child(v_scroll)
 	
 	# --- 下部バー（2段） ---
 	#   1段目: 操作結果のメッセージ
@@ -294,7 +320,7 @@ func create_ui():
 	hover_label = Label.new()
 	info_row.add_child(hover_label)
 	
-	update_mode_buttons()
+	update_mode_select()
 
 # 半透明の背景を持つバーを作る（中身をcontentとして入れる）
 func make_bar(content: Control) -> PanelContainer:
@@ -320,29 +346,31 @@ func select_mode(mode: String):
 	current_mode = mode
 	if mode != MODE_RESIDENT:
 		select_resident(null)
-	update_mode_buttons()
+	update_mode_select()
 
-# ボタンに表示するモード名
+# 建設メニューに表示する名前
 func get_mode_label(mode: String) -> String:
 	if mode == MODE_RESIDENT:
-		return "住人 (テスト)"
+		return "住人（テスト）"
 	if mode == MODE_ADD_CAR:
-		return "カゴ追加 %d万" % (elevator_system.CAR_COST / 10000)
-	var data = BUILDINGS[mode]
-	return "%s %d万" % [data.name, data.cost / 10000]
+		return "カゴ追加"
+	var width := get_width(mode)
+	return BUILDINGS[mode].name + ("（横%dマス）" % width if width > 1 else "")
 
-# 選択中のボタンを強調表示する
-func update_mode_buttons():
-	for mode in mode_buttons:
-		var btn: Button = mode_buttons[mode]
-		var label = get_mode_label(mode)
-		if mode == current_mode:
-			btn.text = "▶ " + label
-			btn.button_pressed = true
-			btn.modulate = Color(1.0, 0.9, 0.3) # 黄色っぽく強調
-		else:
-			btn.text = label
-			btn.modulate = Color(1, 1, 1)
+# 選んだものの費用・大きさの説明
+func get_mode_info(mode: String) -> String:
+	if mode == MODE_RESIDENT:
+		return "建物をクリックで住人を置き、行き先をクリック"
+	if mode == MODE_ADD_CAR:
+		return "1台 %s円（シャフトをクリック。1本に%d台まで）" % [format_money(elevator_system.CAR_COST), elevator_system.MAX_CARS]
+	return "建設費 %s円・横%dマス" % [format_money(BUILDINGS[mode].cost), get_width(mode)]
+
+# 建設メニューの選択と説明を、今のモードに合わせる
+func update_mode_select():
+	for i in mode_select.item_count:
+		if mode_select.get_item_metadata(i) == current_mode:
+			mode_select.select(i)
+	mode_info_label.text = get_mode_info(current_mode)
 
 # 資金の表示を更新する関数
 func update_funds_display():
@@ -363,6 +391,26 @@ func format_money(amount: int, signed := false) -> String:
 	if amount < 0:
 		return "-" + result
 	return ("+" + result) if signed else result
+
+# 上下スクロールバーを、建物の高さとカメラの位置に合わせる
+# 範囲は、いちばん上の建物の上から一番下の建物の下まで（上下に SCROLL_MARGIN_ROWS 行の余白）
+func update_scrollbar():
+	var tile_h: float = tile_map.tile_set.tile_size.y
+	var top_row := ground_y
+	var bottom_row := ground_y
+	for cell: Vector2i in building_grid:
+		top_row = mini(top_row, cell.y)
+		bottom_row = maxi(bottom_row, cell.y)
+	var page: float = get_viewport_rect().size.y / camera.zoom.y # 画面に映っている高さ
+	var view_top: float = camera.position.y - page / 2.0
+	# 範囲を変えると値が範囲内に押し戻されて value_changed が出るので、合わせている間は通知を止める
+	# （通知でカメラが動くと、毎フレーム少しずつカメラがずれていってしまう）
+	v_scroll.set_block_signals(true)
+	v_scroll.min_value = minf((top_row - SCROLL_MARGIN_ROWS) * tile_h, view_top)
+	v_scroll.max_value = maxf((bottom_row + 1 + SCROLL_MARGIN_ROWS) * tile_h, view_top + page)
+	v_scroll.page = page
+	v_scroll.value = view_top
+	v_scroll.set_block_signals(false)
 
 # 下部バーにカーソル下のマスの座標と建物を表示する
 func update_hover_label():
