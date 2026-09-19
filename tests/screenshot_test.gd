@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario]:
 		await start_main()
 		await scenario.call()
 	Engine.time_scale = 1.0
@@ -56,14 +56,14 @@ func run_build_scenario() -> void:
 	await capture("build_02_stairs_selected")
 
 	# 2. 空マスを左クリック → 階段を建設（-5万円）
-	var stairs_cell := Vector2i(-2, 12)
+	var stairs_cell := Vector2i(-4, 20)
 	await click_cell(stairs_cell, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(stairs_cell) == "stairs", "左クリックで階段が建つ")
 	check(main.funds == start_funds - 50000, "階段の建設費5万円が引かれる")
 
 	# 3. オフィスに切り替えて左クリック → オフィスを建設（-10万円）
 	await click_button(main.mode_buttons["office"])
-	var office_cell := Vector2i(1, 12)
+	var office_cell := Vector2i(2, 20)
 	await click_cell(office_cell, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(office_cell) == "office", "左クリックでオフィスが建つ")
 	check(main.funds == start_funds - 150000, "オフィスの建設費10万円が引かれる")
@@ -82,7 +82,7 @@ func run_build_scenario() -> void:
 	check(main.funds == start_funds - 75000, "オフィスの半額5万円が払い戻される")
 
 	# 6. 空マスを右クリック → 何も起きない
-	await click_cell(Vector2i(-5, 5), MOUSE_BUTTON_RIGHT)
+	await click_cell(Vector2i(-10, 21), MOUSE_BUTTON_RIGHT)
 	check(main.funds == start_funds - 75000, "空マスの右クリックでは資金が変わらない")
 	await capture("build_04_demolished")
 
@@ -98,7 +98,7 @@ func run_stairs_scenario() -> void:
 	await click_button(main.mode_buttons["office"])
 	for x in range(4, 9):
 		await click_cell(Vector2i(x, 14), MOUSE_BUTTON_LEFT)
-	await click_cell(Vector2i(-12, 10), MOUSE_BUTTON_LEFT) # どこにもつながらない孤立したオフィス
+	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT) # どこにもつながらない孤立したオフィス
 	
 	# 移動ルール
 	check(main.can_move(Vector2i(8, 15), Vector2i(8, 14)), "階段マスから上の階へ移動できる")
@@ -115,7 +115,7 @@ func run_stairs_scenario() -> void:
 	check(resident.cell == start and resident.selected, "配置した住人が選択状態になる")
 	
 	# 経路のない行き先 → 移動しない
-	await click_cell(Vector2i(-12, 10), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(-10, 20), MOUSE_BUTTON_LEFT)
 	check(not resident.is_moving(), "経路のない行き先では移動しない")
 	check(main.message_label.text.contains("経路がありません"), "経路がないことがメッセージで表示される")
 	
@@ -138,6 +138,64 @@ func run_stairs_scenario() -> void:
 	await click_cell(goal, MOUSE_BUTTON_RIGHT)
 	await wait_frames(2)
 	check(not is_instance_valid(resident), "足元を撤去すると住人が退場する")
+
+# ---------------------------------------------------
+# シナリオ3: カメラのズームと移動
+# ---------------------------------------------------
+func run_camera_scenario() -> void:
+	print("[シナリオ] カメラ操作")
+	var cam = main.camera
+	check(is_equal_approx(cam.zoom.x, cam.DEFAULT_ZOOM), "起動時は%.0f倍にズームしている" % cam.DEFAULT_ZOOM)
+	check(cam.position.is_equal_approx(Vector2(0, 272)), "起動時はビルが画面中央に来る")
+	await capture("camera_01_default")
+	
+	# ホイールでズームイン → カーソル下の位置は動かない
+	var screen_pos := Vector2(900, 500)
+	var world_before: Vector2 = cam.screen_to_world(screen_pos)
+	await scroll_wheel(screen_pos, MOUSE_BUTTON_WHEEL_UP, 3)
+	check(cam.zoom.x > cam.DEFAULT_ZOOM, "ホイール上でズームインする")
+	check(cam.screen_to_world(screen_pos).is_equal_approx(world_before), "ズームしてもカーソル下の位置がずれない")
+	check(main.funds == 1000000, "ホイール操作で建設されない")
+	
+	# ズーム後もクリックしたマスに正しく建設できる
+	await click_cell(Vector2i(6, 14), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(6, 14)) == "office", "ズーム後もクリックしたマスに建設できる")
+	await capture("camera_02_zoomed_in")
+	
+	# ズームの上限・下限
+	await scroll_wheel(screen_pos, MOUSE_BUTTON_WHEEL_UP, 30)
+	check(is_equal_approx(cam.zoom.x, cam.MAX_ZOOM), "ズームインは%.0f倍で止まる" % cam.MAX_ZOOM)
+	await scroll_wheel(screen_pos, MOUSE_BUTTON_WHEEL_DOWN, 40)
+	check(is_equal_approx(cam.zoom.x, cam.MIN_ZOOM), "ズームアウトは%.0f倍で止まる" % cam.MIN_ZOOM)
+	
+	# トラックパッドのピンチ
+	var pinch := InputEventMagnifyGesture.new()
+	pinch.position = screen_pos
+	pinch.factor = 2.0
+	root.push_input(pinch)
+	await wait_frames(1)
+	check(is_equal_approx(cam.zoom.x, 2.0), "ピンチでズームする")
+	
+	# トラックパッドの2本指スクロール → 移動
+	var pos_before: Vector2 = cam.position
+	var pan := InputEventPanGesture.new()
+	pan.position = screen_pos
+	pan.delta = Vector2(3, 0)
+	root.push_input(pan)
+	await wait_frames(1)
+	check(cam.position.x > pos_before.x, "2本指スクロールで横に移動する")
+	
+	# 中ボタンドラッグ → 地図をつかんで動かす（右へドラッグするとカメラは左へ）
+	pos_before = cam.position
+	await middle_drag(screen_pos, Vector2(100, 0))
+	check(is_equal_approx(cam.position.x, pos_before.x - 100 / cam.zoom.x), "中ボタンドラッグで移動する")
+	check(main.funds == 900000, "中ボタンドラッグで建設・撤去されない")
+	
+	# キー操作 → 押している間移動する
+	pos_before = cam.position
+	await hold_key(KEY_W, 0.2)
+	check(cam.position.y < pos_before.y, "Wキーで上に移動する")
+	await capture("camera_03_moved")
 
 # ---------------------------------------------------
 # 操作・撮影のヘルパー
@@ -169,6 +227,46 @@ func click_at(pos: Vector2, button: MouseButton) -> void:
 		ev.global_position = pos
 		root.push_input(ev)
 		await wait_frames(1)
+
+func scroll_wheel(pos: Vector2, button: MouseButton, times: int) -> void:
+	for i in times:
+		for pressed in [true, false]:
+			var ev := InputEventMouseButton.new()
+			ev.button_index = button
+			ev.pressed = pressed
+			ev.position = pos
+			ev.global_position = pos
+			root.push_input(ev)
+	await wait_frames(1)
+
+func middle_drag(from: Vector2, amount: Vector2) -> void:
+	for pressed in [true, false]:
+		if not pressed:
+			var motion := InputEventMouseMotion.new()
+			motion.position = from + amount
+			motion.global_position = from + amount
+			motion.relative = amount
+			motion.button_mask = MOUSE_BUTTON_MASK_MIDDLE
+			root.push_input(motion)
+			await wait_frames(1)
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_MIDDLE
+		ev.pressed = pressed
+		ev.position = from + amount if not pressed else from
+		ev.global_position = ev.position
+		root.push_input(ev)
+		await wait_frames(1)
+
+func hold_key(keycode: Key, seconds: float) -> void:
+	for pressed in [true, false]:
+		var ev := InputEventKey.new()
+		ev.keycode = keycode
+		ev.physical_keycode = keycode
+		ev.pressed = pressed
+		Input.parse_input_event(ev)
+		if pressed:
+			await create_timer(seconds).timeout
+	await wait_frames(1)
 
 func capture(name: String) -> void:
 	await RenderingServer.frame_post_draw

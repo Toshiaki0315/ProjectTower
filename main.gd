@@ -3,6 +3,7 @@ extends Node2D
 const Resident := preload("res://resident.gd")
 
 @onready var tile_map = $TileMapLayer
+@onready var camera = $Camera2D
 
 # ---------------------------------------------------
 # 建物の定義（種類を増やすときはここに追記する）
@@ -34,8 +35,18 @@ var building_grid: Dictionary = {}
 func _ready() -> void:
 	apply_tile_types()
 	load_grid_from_tilemap()
+	tile_map.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST # 拡大してもタイルをぼかさない
+	focus_camera_on_building()
 	create_ui()
 	update_funds_display()
+
+# 建物全体が画面中央に来るようにカメラを合わせる
+func focus_camera_on_building():
+	var used: Rect2i = tile_map.get_used_rect()
+	if used.size == Vector2i.ZERO:
+		return
+	var center_local = (tile_map.map_to_local(used.position) + tile_map.map_to_local(used.end - Vector2i.ONE)) / 2.0
+	camera.focus_on(tile_map.to_global(center_local))
 
 # ---------------------------------------------------
 # UIの自動生成ロジック
@@ -47,6 +58,7 @@ func create_ui():
 	# 縦に並べるコンテナ（資金表示とボタン群を縦に分ける）
 	var vbox = VBoxContainer.new()
 	vbox.position = Vector2(20, 20)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE # ボタン以外の余白のクリックはマップに通す
 	canvas.add_child(vbox)
 
 	# 資金表示ラベルの作成
@@ -56,6 +68,7 @@ func create_ui():
 
 	# ボタンを横に並べるコンテナ
 	var hbox = HBoxContainer.new()
+	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(hbox)
 
 	# 同じグループのボタンは1つだけ押下状態になる（ラジオボタン的な挙動）
@@ -70,7 +83,7 @@ func create_ui():
 
 	# 操作説明
 	var help_label = Label.new()
-	help_label.text = "左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）\n住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動"
+	help_label.text = "左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）\n住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動\nカメラ: ホイール/ピンチでズーム、2本指スクロール/中ボタンドラッグ/WASDで移動"
 	vbox.add_child(help_label)
 
 	# 操作結果のメッセージ
