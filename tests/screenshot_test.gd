@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -352,6 +352,58 @@ func run_ride_scenario() -> bool:
 	await click_cell(Vector2i(9, 13), MOUSE_BUTTON_LEFT)
 	check(count_rides(main.find_path(Vector2i(8, 15), Vector2i(8, 14))) == 0, "1階だけの移動なら階段を使う")
 	check(count_rides(main.find_path(Vector2i(8, 18), Vector2i(8, 13))) == 1, "5階離れた移動ならエレベーターを使う")
+	return true
+
+# ---------------------------------------------------
+# シナリオ7: 待ち時間によるストレス蓄積と色の変化
+# シナリオ6と同じ建物で、カゴを止めて住人を長く待たせる。
+# ---------------------------------------------------
+func run_stress_scenario() -> bool:
+	print("[シナリオ] ストレス")
+	main.funds = 10000000
+	var x := 8
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	var car = main.elevator_system.cars[0]
+	
+	await click_button(main.mode_buttons["resident"])
+	await click_cell(Vector2i(0, 15), MOUSE_BUTTON_LEFT)
+	var resident = main.residents.back()
+	var goal := Vector2i(5, 13)
+	await click_cell(goal, MOUSE_BUTTON_LEFT)
+	check(resident.stress == 0.0 and resident.get_body_color() == Color.WHITE, "最初はストレス0で白")
+	
+	car.set_process(false) # カゴを止めて、住人を待たせ続ける
+	Engine.time_scale = 4.0
+	await wait_until(func(): return resident.state == resident.State.WAITING, 10.0)
+	var walking_stress: float = resident.stress
+	check(walking_stress == 0.0, "歩いている間はストレスがたまらない")
+	
+	await wait_until(func(): return resident.stress >= resident.STRESS_PINK, 10.0)
+	check(resident.get_body_color() == resident.PINK_COLOR, "ストレス40以上でピンクになる")
+	await hover_cell(resident.cell)
+	check(main.hover_label.text.contains("住人のストレス"), "カーソルを合わせると下部バーにストレスが出る")
+	await capture("stress_01_pink")
+	
+	await wait_until(func(): return resident.stress >= resident.STRESS_RED, 10.0)
+	check(resident.get_body_color() == resident.RED_COLOR, "ストレス70以上で赤になる")
+	await wait_until(func(): return resident.stress >= resident.MAX_STRESS, 10.0)
+	check(resident.stress == resident.MAX_STRESS, "ストレスは100で止まる")
+	await capture("stress_02_red")
+	
+	# カゴを動かす → 乗って目的地へ。着いたら回復していく
+	car.set_process(true)
+	await wait_until(func(): return not resident.is_moving(), 15.0)
+	check(resident.cell == goal, "カゴが動き出すと住人は目的地に着く")
+	var arrived_stress: float = resident.stress
+	check(arrived_stress == resident.MAX_STRESS, "乗車中はストレスが変わらない")
+	await wait_until(func(): return resident.stress < resident.STRESS_RED, 10.0)
+	check(resident.stress < arrived_stress and resident.get_body_color() == resident.PINK_COLOR, "目的地に着くとストレスが回復して赤からピンクに戻る")
+	Engine.time_scale = 1.0
 	return true
 
 func count_rides(path: Array[Vector2i]) -> int:

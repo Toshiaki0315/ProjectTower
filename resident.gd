@@ -9,6 +9,10 @@ extends Node2D
 #   WALKING  … 経路に沿って歩く（階段の上り下りを含む）
 #   WAITING  … シャフトの前でカゴを待つ（扉が開いたら乗る）
 #   RIDING   … カゴに乗っている（目的の階で扉が開いたら降りる）
+#
+# ストレス（0〜100）:
+#   カゴを待っている間たまり、目的地に着いて立ち止まっている間は回復する。
+#   体の色で表す: 白（平常）→ ピンク（40以上）→ 赤（70以上）
 # ---------------------------------------------------
 
 enum State { WALKING, WAITING, RIDING }
@@ -16,12 +20,21 @@ enum State { WALKING, WAITING, RIDING }
 const WALK_SPEED := 48.0   # 横移動の速さ（px/秒）
 const STAIRS_SPEED := 24.0 # 階段での上下移動の速さ（px/秒）
 
+const MAX_STRESS := 100.0
+const STRESS_WAIT_RATE := 10.0    # 待っている間に1秒でたまるストレス
+const STRESS_RECOVER_RATE := 5.0  # 目的地で1秒に回復するストレス
+const STRESS_PINK := 40.0         # これ以上でピンク
+const STRESS_RED := 70.0          # これ以上で赤
+const PINK_COLOR := Color(1.0, 0.55, 0.75)
+const RED_COLOR := Color(1.0, 0.2, 0.2)
+
 var world: Node2D              # main.gd（グリッド情報と経路探索を持つ）
 var cell: Vector2i             # 現在いるマス（乗車中は乗ったマス）
 var goal: Vector2i             # 目的地のマス
 var path: Array[Vector2i] = [] # これから進むマス（先頭が次のマス）
 var state := State.WALKING
 var car = null                 # 待っている／乗っているカゴ
+var stress := 0.0
 var selected := false:
 	set(value):
 		selected = value
@@ -51,6 +64,7 @@ func go_to(target: Vector2i) -> bool:
 	return true
 
 func _process(delta: float) -> void:
+	update_stress(delta)
 	match state:
 		State.WALKING:
 			process_walking(delta)
@@ -136,6 +150,20 @@ func process_riding() -> void:
 	else:
 		car.request_floor(dest.y) # 呼び出しが取り消されていたら押し直す
 
+func update_stress(delta: float) -> void:
+	if state == State.WAITING:
+		stress = minf(stress + STRESS_WAIT_RATE * delta, MAX_STRESS)
+	elif state == State.WALKING and path.is_empty():
+		stress = maxf(stress - STRESS_RECOVER_RATE * delta, 0.0)
+
+# ストレスに応じた体の色
+func get_body_color() -> Color:
+	if stress >= STRESS_RED:
+		return RED_COLOR
+	if stress >= STRESS_PINK:
+		return PINK_COLOR
+	return Color.WHITE
+
 func leave(message: String) -> void:
 	world.show_message(message)
 	queue_free()
@@ -148,8 +176,8 @@ func _draw() -> void:
 			points.append(world.tile_map.map_to_local(c) - position)
 		draw_polyline(points, Color(1.0, 1.0, 0.4, 0.8), 1.5)
 
-	# 体（黒い縁取り付きの人型）。選択中は黄色で表示する
-	var color := Color(1.0, 0.85, 0.1) if selected else Color.WHITE
+	# 体（黒い縁取り付きの人型）。選択中は黄色、それ以外はストレスに応じた色
+	var color := Color(1.0, 0.85, 0.1) if selected else get_body_color()
 	draw_circle(Vector2(0, -4), 3.5, Color.BLACK)
 	draw_rect(Rect2(-3, -1, 6, 9), Color.BLACK)
 	draw_circle(Vector2(0, -4), 2.5, color)

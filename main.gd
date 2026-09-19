@@ -216,7 +216,11 @@ func update_hover_label():
 		return
 	var cell: Vector2i = grid_overlay.hover_cell
 	var type = get_building_type(cell)
-	hover_label.text = "マス %s: %s" % [cell, BUILDINGS[type].name if type != "" else "空き"]
+	var text = "マス %s: %s" % [cell, BUILDINGS[type].name if type != "" else "空き"]
+	var resident = get_resident_at(cell)
+	if resident:
+		text += " / 住人のストレス: %d" % int(resident.stress)
+	hover_label.text = text
 
 # 画面とログにメッセージを出す
 func show_message(text: String):
@@ -400,6 +404,13 @@ func spawn_resident(cell: Vector2i):
 	residents = residents.filter(is_instance_valid) # 退場した住人を除く
 	residents.append(resident)
 	return resident
+
+# 指定マスにいる住人（乗車中の住人は除く。いなければnull）
+func get_resident_at(cell: Vector2i):
+	for resident in residents:
+		if is_instance_valid(resident) and resident.cell == cell and resident.state != resident.State.RIDING:
+			return resident
+	return null
 
 func select_resident(resident):
 	if is_instance_valid(selected_resident):
