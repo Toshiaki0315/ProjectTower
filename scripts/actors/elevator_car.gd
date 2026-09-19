@@ -4,6 +4,9 @@ extends Node2D
 # エレベーターのカゴ：1本のシャフトの中を上下に動き、呼ばれた階に停まる。
 # TileMapLayerの子として追加するので、positionはタイルマップ座標系。
 #
+# 待機階（ホーム）: 設定すると、呼び出しがなくなったカゴはその階に戻って待つ。
+# 稼働時間帯: 決めた時間帯の外では、呼び出しを受け付けず、待機階に戻って止まる。
+#
 # 集合制御（実際のエレベーターと同じ動かし方）:
 #   - 進んでいる方向の先に呼び出しがある限り、その方向へ進み続け、途中の呼ばれた階に寄る
 #   - 先に呼び出しがなくなったら折り返す
@@ -49,6 +52,9 @@ var car_calls := {}  # 階 -> true
 var up_calls := {}   # 階 -> true
 var down_calls := {} # 階 -> true
 var passengers: Array = [] # 乗っている住人
+var home_y := 0    # 待機階（呼び出しがなくなったら戻る階）
+var has_home_floor := false # 待機階を設定しているか
+var in_service := true # 稼働時間帯の中か（外では呼び出しを受け付けず、待機階へ戻って止まる）
 
 # start_y: カゴが最初にいる階（シャフトを建てたときは最下階、カゴを追加したときはクリックした階）
 func setup(p_world: Node2D, x: int, top: int, bottom: int, start_y: int) -> void:
@@ -103,14 +109,14 @@ func floor_position(y: int) -> Vector2:
 
 # カゴ呼び（行き先ボタン）。停まれない階（シャフトの範囲外・急行の途中の階）ならfalse
 func request_floor(y: int) -> bool:
-	if not is_stop_floor(y):
+	if not in_service or not is_stop_floor(y):
 		return false
 	car_calls[y] = true
 	return true
 
 # 乗り場呼び。dirはその人が行きたい方向
 func call_from_hall(y: int, dir: Direction) -> bool:
-	if not is_stop_floor(y):
+	if not in_service or not is_stop_floor(y):
 		return false
 	if dir == Direction.UP:
 		up_calls[y] = true
@@ -129,7 +135,7 @@ func is_full() -> bool:
 
 # dir方向へ行きたい人が、この階で乗れるか（扉が開いていて、同じ方向へ進むか行き先が未定で、満員でない）
 func can_board(y: int, dir: Direction) -> bool:
-	return is_doors_open_at(y) and (direction == dir or direction == Direction.NONE) and not is_full()
+	return in_service and is_doors_open_at(y) and (direction == dir or direction == Direction.NONE) and not is_full()
 
 # 乗り込んで行き先ボタンを押す。行き先が未定のカゴなら、その方向へ進むことにする
 func board(resident, dest_y: int) -> void:
@@ -203,6 +209,16 @@ func _process(delta: float) -> void:
 
 # 停まっているときに、この階で扉を開けるか、どちらへ動くかを決める
 func decide_next_action() -> void:
+	# 稼働時間帯の外: 呼び出しを捨てて、待機階に戻って止まる
+	if not in_service:
+		car_calls.clear()
+		up_calls.clear()
+		down_calls.clear()
+		direction = Direction.NONE
+		if wants_to_go_home():
+			direction = Direction.UP if home_y < floor_y else Direction.DOWN
+			start_moving()
+		return
 	var next_dir := choose_direction(floor_y)
 	if car_calls.has(floor_y) or wants_hall_stop(floor_y, next_dir) \
 			or (next_dir == Direction.NONE and wants_any_hall_stop(floor_y)):
@@ -212,6 +228,19 @@ func decide_next_action() -> void:
 		start_moving()
 	else:
 		direction = Direction.NONE
+		# 呼び出しがなくなったら、待機階へ戻る
+		if wants_to_go_home():
+			direction = Direction.UP if home_y < floor_y else Direction.DOWN
+			start_moving()
+
+# 待機階が設定されていて、そこから離れているか
+func wants_to_go_home() -> bool:
+	return has_home_floor and has_floor(home_y) and floor_y != home_y
+
+# 待機階を設定する（解除するときは set_home(0, false)）
+func set_home(y: int, enabled := true) -> void:
+	home_y = y
+	has_home_floor = enabled
 
 func start_moving() -> void:
 	target_y = floor_y + (-1 if direction == Direction.UP else 1)

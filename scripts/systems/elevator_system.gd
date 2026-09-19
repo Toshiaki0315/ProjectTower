@@ -18,9 +18,18 @@ const MAX_CARS := 4        # 1本のシャフトに置けるカゴの数
 const CAR_COST := 50000    # カゴを1台追加する費用
 const CAR_MAINTENANCE := 3000 # 追加したカゴ1台の1日の維持費
 
+# 稼働時間帯の選べる設定（クリックするたびにこの順に切り替わる）。start〜end は0時からの分
+const SERVICE_PRESETS := [
+	{"name": "終日", "start": 0, "end": 24 * 60},
+	{"name": "6時〜24時", "start": 6 * 60, "end": 24 * 60},
+	{"name": "8時〜20時", "start": 8 * 60, "end": 20 * 60},
+]
+
 var world: Node2D  # main.gd
 var cars: Array = [] # すべてのカゴ（シャフトは column と top_y〜bottom_y で分かる）
 var hall_assignments := {} # [乗り場のマス, 方向] -> 割り当てたカゴ
+var home_floors := {}      # [シャフトの種類, 列のx] -> 待機階のy
+var service_hours := {}    # [シャフトの種類, 列のx] -> SERVICE_PRESETS の番号（省略時は0＝終日）
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -46,6 +55,86 @@ func rebuild() -> void:
 	for c in remaining:
 		c.queue_free()
 	cars = new_cars
+	apply_home_floors()
+
+# ---------------------------------------------------
+# 待機階（ホーム）: 呼び出しがなくなったカゴが戻る階。シャフトごとに1つ設定できる
+# ---------------------------------------------------
+
+# シャフトを見分けるキー（同じ列に標準と急行が並ぶこともあるので、種類も見る）
+func shaft_key(cell: Vector2i) -> Array:
+	return [world.get_building_type(cell), cell.x]
+
+# 指定マスのシャフトの待機階（設定していなければnull）
+func get_home(cell: Vector2i):
+	return home_floors.get(shaft_key(cell))
+
+# 指定マスの階を待機階にする（すでにその階なら解除する）。メッセージを返す
+func set_home(cell: Vector2i) -> String:
+	if not is_shaft_type(world.get_building_type(cell)):
+		return "待機階はエレベーターのシャフトに設定します"
+	var car = get_car_at(cell)
+	if car != null and not car.is_stop_floor(cell.y):
+		return "急行エレベーターが停まらない階は待機階にできません"
+	var key := shaft_key(cell)
+	if home_floors.get(key) == cell.y:
+		home_floors.erase(key)
+		apply_home_floors()
+		return "待機階を解除しました %s" % cell
+	home_floors[key] = cell.y
+	apply_home_floors()
+	return "%sを待機階にしました（呼び出しがないとカゴが戻ります）" % world.get_floor_name(cell.y)
+
+# 待機階の設定をカゴに反映する。シャフトからなくなった階の設定は消す
+func apply_home_floors() -> void:
+	for key in home_floors.keys():
+		var found := false
+		for car in cars:
+			if is_instance_valid(car) and car.shaft_type == key[0] and car.column == key[1]:
+				if car.has_floor(home_floors[key]):
+					found = true
+		if not found:
+			home_floors.erase(key)
+	for car in cars:
+		if not is_instance_valid(car):
+			continue
+		var key := [car.shaft_type, car.column]
+		car.set_home(home_floors.get(key, 0), home_floors.has(key))
+
+# ---------------------------------------------------
+# 稼働時間帯: 決めた時間帯の外では、そのシャフトは動かない（呼べず、乗れず、経路にも使われない）
+# ---------------------------------------------------
+
+# 指定マスのシャフトの稼働時間帯の設定
+func get_service(cell: Vector2i) -> Dictionary:
+	return SERVICE_PRESETS[service_hours.get(shaft_key(cell), 0)]
+
+# 稼働時間帯を次の設定に切り替える。メッセージを返す
+func cycle_service(cell: Vector2i) -> String:
+	if not is_shaft_type(world.get_building_type(cell)):
+		return "稼働時間帯はエレベーターのシャフトに設定します"
+	var key := shaft_key(cell)
+	service_hours[key] = (service_hours.get(key, 0) + 1) % SERVICE_PRESETS.size()
+	return "このエレベーターの稼働時間帯を「%s」にしました" % SERVICE_PRESETS[service_hours[key]].name
+
+# 今この時刻に動いているシャフトか
+func is_in_service(type: String, column: int) -> bool:
+	var preset: Dictionary = SERVICE_PRESETS[service_hours.get([type, column], 0)]
+	var minute: int = world.clock.minute_of_day()
+	return minute >= preset.start and minute < preset.end
+
+# カゴに今の稼働状況を伝える（毎フレーム）
+func _process(_delta: float) -> void:
+	for car in cars:
+		if is_instance_valid(car):
+			car.in_service = is_in_service(car.shaft_type, car.column)
+
+# 待機階に設定されているマスの一覧（マス目の表示で印を描くのに使う）
+func get_home_cells() -> Array:
+	var cells: Array = []
+	for key in home_floors:
+		cells.append(Vector2i(key[1], home_floors[key]))
+	return cells
 
 func create_car(type: String, x: int, top: int, bottom: int, start_y: int):
 	var car = ElevatorCar.new()

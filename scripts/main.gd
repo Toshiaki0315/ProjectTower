@@ -54,11 +54,13 @@ const BUILDINGS := {
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
 const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴを追加するモード
+const MODE_SET_HOME := "set_home" # エレベーターの待機階（呼び出しがないとカゴが戻る階）を決めるモード
+const MODE_SERVICE := "service"   # エレベーターの稼働時間帯を切り替えるモード
 
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
-	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "add_car"]},
+	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "add_car", "set_home", "service"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway"]},
 	{"name": "その他", "modes": ["resident"]},
 ]
@@ -385,6 +387,10 @@ func get_mode_label(mode: String) -> String:
 		return "住人（テスト）"
 	if mode == MODE_ADD_CAR:
 		return "カゴ追加"
+	if mode == MODE_SET_HOME:
+		return "待機階を設定"
+	if mode == MODE_SERVICE:
+		return "稼働時間帯"
 	var width := get_width(mode)
 	return BUILDINGS[mode].name + ("（横%dマス）" % width if width > 1 else "")
 
@@ -392,6 +398,10 @@ func get_mode_label(mode: String) -> String:
 func get_mode_info(mode: String) -> String:
 	if mode == MODE_RESIDENT:
 		return "建物をクリックで住人を置き、行き先をクリック"
+	if mode == MODE_SET_HOME:
+		return "無料（シャフトをクリックでその階を待機階に。もう一度クリックで解除）"
+	if mode == MODE_SERVICE:
+		return "無料（シャフトをクリックで 終日 → 6時〜24時 → 8時〜20時 と切り替え）"
 	if mode == MODE_ADD_CAR:
 		return "1台 %s円（シャフトをクリック。1本に%d台まで）" % [format_money(elevator_system.CAR_COST), elevator_system.MAX_CARS]
 	var info := "建設費 %s円・横%dマス" % [format_money(BUILDINGS[mode].cost), get_width(mode)]
@@ -472,6 +482,11 @@ func update_hover_label():
 		if type == "express_elevator" and not is_express_stop_floor(cell.y):
 			text += "（この階には停まりません）"
 		elif not cars.is_empty():
+			if elevator_system.get_home(cell) == cell.y:
+				text += "（待機階）"
+			var service: Dictionary = elevator_system.get_service(cell)
+			if service.name != "終日":
+				text += "（稼働 %s%s）" % [service.name, "" if cars[0].in_service else "・今は停止中"]
 			var loads: Array[String] = []
 			for car in cars:
 				loads.append("%d/%d" % [car.passengers.size(), car.capacity])
@@ -711,7 +726,7 @@ func get_moves(cell: Vector2i) -> Array:
 		result.append({"to": cell - ESCALATOR_UP, "cost": ESCALATOR_COST})
 	if elevator_system.is_shaft_type(get_building_type(cell)):
 		var car = elevator_system.get_car_at(cell)
-		if car and car.is_stop_floor(cell.y):
+		if car and car.in_service and car.is_stop_floor(cell.y):
 			var floor_cost: float = ELEVATOR_FLOOR_COST * car.SPEED / car.speed
 			for y in range(car.top_y, car.bottom_y + 1):
 				if y != cell.y and car.is_stop_floor(y):
@@ -790,13 +805,16 @@ func can_click_cell(cell: Vector2i) -> bool:
 		return not is_cell_empty(cell)
 	if current_mode == MODE_ADD_CAR:
 		return elevator_system.get_add_car_problem(cell) == ""
+	if current_mode == MODE_SET_HOME or current_mode == MODE_SERVICE:
+		return elevator_system.is_shaft_type(get_building_type(cell))
 	if elevator_system.is_shaft_type(current_mode) and get_building_type(cell) == current_mode:
 		return elevator_system.get_car_at(cell) != null and elevator_system.get_car_at(cell).is_stop_floor(cell.y) # シャフトをクリックするとカゴを呼べる
 	return get_build_problem(cell, current_mode) == ""
 
 # カーソル下で強調表示するマス（建設モードなら、建てたときに使うマス全部）
 func get_hover_footprint(cell: Vector2i) -> Array[Vector2i]:
-	if current_mode == MODE_RESIDENT or current_mode == MODE_ADD_CAR or elevator_system.is_shaft_type(get_building_type(cell)):
+	if current_mode == MODE_RESIDENT or current_mode == MODE_ADD_CAR or current_mode == MODE_SET_HOME or current_mode == MODE_SERVICE \
+			or elevator_system.is_shaft_type(get_building_type(cell)):
 		return [cell]
 	return get_footprint(cell, current_mode)
 
@@ -896,6 +914,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			handle_resident_click(map_pos)
 		elif current_mode == MODE_ADD_CAR:
 			add_elevator_car(map_pos)
+		elif current_mode == MODE_SET_HOME:
+			show_message(elevator_system.set_home(map_pos))
+		elif current_mode == MODE_SERVICE:
+			show_message(elevator_system.cycle_service(map_pos))
 		elif elevator_system.is_shaft_type(current_mode) and get_building_type(map_pos) == current_mode:
 			call_elevator(map_pos)
 		else:

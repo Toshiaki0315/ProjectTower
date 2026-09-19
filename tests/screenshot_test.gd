@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2073,6 +2073,120 @@ func run_escalator_scenario() -> bool:
 	check(people.all(func(r): return r.cell == Vector2i(12, 16)), "12人全員が3階のオフィスに着いた")
 	check(not waited, "エスカレーターでは誰も待たされない（ストレスがたまらない）")
 	check(main.economy_system.MAINTENANCE["escalator"] == 2000, "エスカレーターの維持費は1基2,000円/日")
+	return true
+
+# ---------------------------------------------------
+# シナリオ35: エレベーターの待機階（呼び出しがないとカゴが戻る階）
+#   x=8 に 1階〜6階（y=18〜13）のシャフトを建て、3階（y=16）を待機階にする。
+# ---------------------------------------------------
+func run_home_floor_scenario() -> bool:
+	print("[シナリオ] エレベーターの待機階")
+	main.funds = 10000000
+	var elevators = main.elevator_system
+	focus_camera(Vector2i(8, 16))
+	await wait_frames(1)
+	await choose_mode("elevator")
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	var car = elevators.cars[0]
+	check(car.floor_y == 18 and not car.has_home_floor, "最初は待機階がなく、カゴは建てた階で止まったまま")
+	
+	await choose_mode("set_home")
+	check(main.mode_select.text == "待機階を設定" and main.mode_info_label.text.begins_with("無料"), "建設メニューに「待機階を設定」がある")
+	await click_cell(Vector2i(0, 17), MOUSE_BUTTON_LEFT)
+	check(main.message_label.text == "待機階はエレベーターのシャフトに設定します", "シャフト以外をクリックすると理由がメッセージで出る")
+	check(not main.can_click_cell(Vector2i(0, 17)) and main.can_click_cell(Vector2i(8, 16)), "シャフトのマスだけ操作できる（緑）")
+	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
+	check(elevators.get_home(Vector2i(8, 18)) == 16, "クリックした階がシャフトの待機階になる")
+	check(main.message_label.text.begins_with("3階を待機階にしました"), "何階を待機階にしたかがメッセージで出る")
+	check(car.has_home_floor and car.home_y == 16, "シャフトのカゴに待機階が伝わる")
+	check(elevators.get_home_cells() == [Vector2i(8, 16)], "待機階のマスに印を描く")
+	await hover_cell(Vector2i(8, 16))
+	check(main.hover_label.text.contains("エレベーター（待機階）"), "カーソルを合わせると待機階と出る")
+	
+	# 呼び出しがなくなると、カゴは待機階に戻る
+	Engine.time_scale = 4.0
+	await wait_until(func(): return car.floor_y == 16 and car.state == car.State.IDLE, 20.0)
+	check(car.floor_y == 16, "呼び出しがないカゴは待機階（3階）に戻って待つ")
+	await hover_cell(Vector2i(12, 16)) # 印が見えるように、カーソルはシャフトから外しておく
+	await capture("home_floor_01")
+	await choose_mode("elevator")
+	await click_cell(Vector2i(8, 13), MOUSE_BUTTON_LEFT) # 6階に呼ぶ
+	await wait_until(func(): return car.floor_y == 13, 20.0)
+	check(car.floor_y == 13, "呼ばれた階には行く")
+	await wait_until(func(): return car.floor_y == 16 and car.state == car.State.IDLE, 20.0)
+	check(car.floor_y == 16, "用事が済むとまた待機階に戻る")
+	Engine.time_scale = 1.0
+	
+	# 同じ階をもう一度クリックすると解除
+	await choose_mode("set_home")
+	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
+	check(elevators.get_home(Vector2i(8, 18)) == null and not car.has_home_floor, "同じ階をもう一度クリックすると待機階を解除する")
+	check(main.message_label.text.begins_with("待機階を解除しました"), "解除したことがメッセージで出る")
+	check(elevators.get_home_cells().is_empty(), "印も消える")
+	return true
+
+# ---------------------------------------------------
+# シナリオ36: エレベーターの稼働時間帯（決めた時間帯の外では動かない）
+#   x=8 に 1階〜6階（y=18〜13）のシャフト、6階（y=13）にオフィス。
+# ---------------------------------------------------
+func run_service_hours_scenario() -> bool:
+	print("[シナリオ] エレベーターの稼働時間帯")
+	main.funds = 10000000
+	var elevators = main.elevator_system
+	focus_camera(Vector2i(8, 16))
+	await wait_frames(1)
+	await choose_mode("elevator")
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await choose_mode("office")
+	build_support(cells_row(14, 4, 7))
+	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
+	var car = elevators.cars[0]
+	check(elevators.get_service(Vector2i(8, 16)).name == "終日" and car.in_service, "最初は終日動いている")
+	
+	# クリックするたびに 終日 → 6時〜24時 → 8時〜20時 と切り替わる
+	await choose_mode("service")
+	check(main.mode_select.text == "稼働時間帯", "建設メニューに「稼働時間帯」がある")
+	await click_cell(Vector2i(0, 17), MOUSE_BUTTON_LEFT)
+	check(main.message_label.text == "稼働時間帯はエレベーターのシャフトに設定します", "シャフト以外をクリックすると理由がメッセージで出る")
+	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
+	check(elevators.get_service(Vector2i(8, 16)).name == "6時〜24時", "1回クリックすると6時〜24時になる")
+	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
+	check(elevators.get_service(Vector2i(8, 16)).name == "8時〜20時", "もう1回クリックすると8時〜20時になる")
+	check(main.message_label.text.contains("「8時〜20時」にしました"), "切り替えた時間帯がメッセージで出る")
+	
+	# 時間帯の外（朝7時）: 呼べず、経路にも使われない
+	main.clock.set_time(1, 7, 0)
+	await wait_frames(2)
+	check(not car.in_service, "7時はシャフトが止まっている")
+	check(not main.can_move(Vector2i(8, 18), Vector2i(8, 13)), "止まっている間はエレベーターで移動できない")
+	check(main.find_path(Vector2i(-8, 18), Vector2i(5, 13)).is_empty(), "止まっている間は6階のオフィスへの経路がなくなる")
+	check(not car.request_floor(13), "止まっている間は行き先ボタンを受け付けない")
+	await hover_cell(Vector2i(8, 16))
+	check(main.hover_label.text.contains("（稼働 8時〜20時・今は停止中）"), "カーソルを合わせると稼働時間帯と停止中が出る")
+	await capture("service_hours_01_stopped")
+	
+	# 時間帯の中（昼12時）: いつもどおり動く
+	main.clock.set_time(1, 12, 0)
+	await wait_frames(2)
+	check(car.in_service, "12時はシャフトが動いている")
+	check(main.can_move(Vector2i(8, 18), Vector2i(8, 13)), "動いている間はエレベーターで移動できる")
+	check(not main.find_path(Vector2i(-8, 18), Vector2i(5, 13)).is_empty(), "6階のオフィスへも行ける")
+	await hover_cell(Vector2i(8, 16))
+	check(main.hover_label.text.contains("（稼働 8時〜20時）") and not main.hover_label.text.contains("停止中"), "動いている間は停止中と出ない")
+	
+	# 時間帯の外になると、カゴは待機階に戻って止まる
+	await choose_mode("set_home")
+	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_LEFT) # 2階を待機階に
+	await choose_mode("elevator")
+	await click_cell(Vector2i(8, 13), MOUSE_BUTTON_LEFT) # 6階にカゴを呼んでおく
+	Engine.time_scale = 4.0
+	await wait_until(func(): return car.floor_y == 13, 20.0)
+	main.clock.set_time(1, 21, 0)
+	await wait_until(func(): return car.floor_y == 17 and car.state == car.State.IDLE, 20.0)
+	Engine.time_scale = 1.0
+	check(car.floor_y == 17, "時間帯の外になると、カゴは待機階（2階）に戻って止まる")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

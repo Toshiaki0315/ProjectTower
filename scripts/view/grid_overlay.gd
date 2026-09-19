@@ -14,6 +14,7 @@ const BORDER_WIDTH := 1.5 # 画面上のpx（ズームしても太さが変わ�
 const HOVER_OK_COLOR := Color(0.3, 1.0, 0.4)
 const HOVER_NG_COLOR := Color(1.0, 0.3, 0.3)
 const ENTRANCE_COLOR := Color(0.3, 1.0, 0.4)
+const HOME_COLOR := Color(1.0, 0.85, 0.2) # エレベーターの待機階の印
 const SUBWAY_ENTRANCE_COLOR := Color(0.4, 0.85, 1.0)
 const SOIL_COLOR := Color(0.36, 0.26, 0.18)       # 地下（1階より下）の土
 const GROUND_LINE_COLOR := Color(0.55, 0.42, 0.28) # 地面の線
@@ -25,6 +26,7 @@ var hover_visible := false           # カーソル下のマスを強調表示�
 var hover_cell := Vector2i.ZERO      # カーソル下のマス
 
 var soil: Node2D # 地下の土を描く背景（タイルより奥）
+var home_markers: Node2D # エレベーターの待機階の印（カゴより手前）
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -33,10 +35,15 @@ func setup(p_world: Node2D) -> void:
 	soil.overlay = self
 	soil.z_index = -10 # マス目の表示(5)からの相対値。タイルより奥になる
 	add_child(soil)
+	home_markers = HomeMarkers.new()
+	home_markers.overlay = self
+	home_markers.z_index = 5 # カゴ(8)より手前に印を描く
+	add_child(home_markers)
 
 func _process(_delta: float) -> void:
 	queue_redraw() # カメラの移動・ズームに追従するため毎フレーム描き直す
 	soil.queue_redraw()
+	home_markers.queue_redraw()
 
 # カーソル下のマスを画面位置から計算し直す。
 # カメラが動いても正しく追えるよう、main.gdが毎フレーム呼ぶ。
@@ -97,6 +104,21 @@ func get_visible_rect() -> Rect2:
 	return get_global_transform_with_canvas().affine_inverse() * get_viewport_rect()
 
 # 背景：地上は時刻で色が変わる空（夜は星が出る）、1階の床より下は土。タイルより奥に描く
+# エレベーターの待機階の印（呼び出しがないとカゴが戻る階）。カゴに隠れないよう手前に描く
+class HomeMarkers extends Node2D:
+	var overlay # grid_overlay.gd
+
+	func _draw() -> void:
+		var world = overlay.world
+		var tile_size := Vector2(world.tile_map.tile_set.tile_size)
+		for cell in world.elevator_system.get_home_cells():
+			var pos := Vector2(cell) * tile_size
+			# マスの左端の黄色い帯と、その中の下向きの三角（「ここに戻る」の印）
+			draw_rect(Rect2(pos + Vector2(0.5, 2), Vector2(2, tile_size.y - 4)), overlay.HOME_COLOR)
+			var cx := pos.x + 4.0
+			var cy := pos.y + tile_size.y / 2.0
+			draw_colored_polygon([Vector2(cx - 1.5, cy - 2), Vector2(cx + 1.5, cy - 2), Vector2(cx, cy + 1)], overlay.HOME_COLOR)
+
 class SoilBackground extends Node2D:
 	var overlay # grid_overlay.gd
 
