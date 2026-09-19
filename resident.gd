@@ -7,7 +7,8 @@ extends Node2D
 #
 # 状態:
 #   WALKING  … 経路に沿って歩く（階段の上り下りを含む）
-#   WAITING  … シャフトの前でカゴを待つ（扉が開いたら乗る）
+#   WAITING  … シャフトの前で行きたい方向（上/下）のボタンを押してカゴを待つ。
+#              同じ方向へ進むカゴの扉が開いたら乗る（逆方向のカゴは見送る）
 #   RIDING   … カゴに乗っている（目的の階で扉が開いたら降りる）
 #
 # ストレス（0〜100）:
@@ -34,6 +35,7 @@ var goal: Vector2i             # 目的地のマス
 var path: Array[Vector2i] = [] # これから進むマス（先頭が次のマス）
 var state := State.WALKING
 var car = null                 # 待っている／乗っているカゴ
+var ride_dir := 0              # 乗りたい方向（カゴのDirection.UP / DOWN）
 var stress := 0.0
 var selected := false:
 	set(value):
@@ -95,7 +97,8 @@ func process_walking(delta: float) -> void:
 	# 次の一歩がエレベーターなら、カゴを呼んで待つ
 	if at_cell_center and world.is_elevator_ride(cell, next):
 		car = world.elevator_system.get_car_at(cell)
-		car.request_floor(cell.y)
+		ride_dir = car.Direction.UP if next.y < cell.y else car.Direction.DOWN
+		car.call_from_hall(cell.y, ride_dir)
 		state = State.WAITING
 		return
 
@@ -117,12 +120,12 @@ func process_waiting() -> void:
 			state = State.WALKING
 			world.show_message("経路が途切れたため、住人が立ち止まりました")
 		return
-	# この階でカゴの扉が開いたら乗り込み、行き先の階を押す
-	if car.is_doors_open_at(cell.y):
-		car.request_floor(path[0].y)
+	# 行きたい方向へ進むカゴがこの階で扉を開けたら、乗り込んで行き先の階を押す
+	if car.can_board(cell.y, ride_dir):
+		car.board(path[0].y)
 		state = State.RIDING
 	else:
-		car.request_floor(cell.y) # 呼び出しが取り消されていたら呼び直す
+		car.call_from_hall(cell.y, ride_dir) # 呼び出しが取り消されていたら押し直す
 
 func process_riding() -> void:
 	# 乗っているカゴがなくなったら退場する（シャフトごと撤去されたなど）

@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -278,17 +278,36 @@ func run_elevator_scenario() -> bool:
 	check(main.message_label.text.contains("到着"), "到着メッセージが出る")
 	await capture("elevator_02_arrived")
 	
-	# 続けて2つの階を呼ぶ → 呼んだ順に停まる
+	# 集合制御: 下(18)へ向かう途中で17を呼ぶ → 先に17に寄ってから18へ
+	Engine.time_scale = 1.0
+	await wait_until(func(): return car.state == car.State.IDLE, 5.0)
 	await click_cell(Vector2i(x, 18), MOUSE_BUTTON_LEFT)
-	await click_cell(Vector2i(x, 14), MOUSE_BUTTON_LEFT)
+	await wait_until(func(): return car.state == car.State.MOVING, 5.0)
+	check(car.direction == car.Direction.DOWN, "下の階を呼ぶと進行方向が「下」になる")
+	await capture("elevator_02b_direction")
+	await click_cell(Vector2i(x, 17), MOUSE_BUTTON_LEFT)
+	Engine.time_scale = 4.0
 	await wait_until(func(): return arrivals.size() >= 3, 15.0)
-	check(arrivals == [15, 18, 14], "呼んだ順(y=18→14)に停まる")
+	check(arrivals == [15, 17, 18], "下へ向かう途中で呼ばれた階(17)に寄ってから18に停まる")
+	
+	# 進行方向を保つ: 上(14)へ向かう途中、通り過ぎた後ろの階(17)を呼んでも引き返さない
+	Engine.time_scale = 1.0
+	await wait_until(func(): return car.state == car.State.IDLE, 5.0)
+	await click_cell(Vector2i(x, 14), MOUSE_BUTTON_LEFT)
+	await wait_until(func(): return car.current_floor() <= 16, 5.0)
+	await click_cell(Vector2i(x, 17), MOUSE_BUTTON_LEFT)
+	Engine.time_scale = 4.0
+	await wait_until(func(): return arrivals.size() >= 5, 15.0)
+	check(arrivals.slice(3) == [14, 17], "上へ進んでいる間は後ろの階に引き返さず、14の後に17へ向かう")
+	await wait_until(func(): return car.state == car.State.IDLE, 5.0)
+	check(car.direction == car.Direction.NONE, "呼び出しがなくなると進行方向が消える")
 	Engine.time_scale = 1.0
 	
 	# シャフトの最下段を撤去 → 同じカゴのまま範囲が縮む
 	await click_cell(Vector2i(x, 18), MOUSE_BUTTON_RIGHT)
 	check(elevators.cars.size() == 1 and elevators.cars[0] == car, "シャフトを縮めても同じカゴが残る")
 	check(car.bottom_y == 17, "シャフトの範囲がy=14〜17になる")
+	var other_cell := Vector2i(x, 14)
 	
 	# 途中を撤去 → シャフトが2本に分かれ、カゴも2台になる
 	await click_cell(Vector2i(x, 16), MOUSE_BUTTON_RIGHT)
@@ -296,7 +315,7 @@ func run_elevator_scenario() -> bool:
 	check(elevators.cars.has(car), "元のカゴは今いる階のシャフトに残る")
 	
 	# 範囲外の階は呼べない
-	check(not car.request_floor(17), "シャフトの範囲外の階には呼べない")
+	check(not car.request_floor(other_cell.y), "別のシャフトになった階には呼べない")
 	await capture("elevator_03_split")
 	return true
 
@@ -404,6 +423,54 @@ func run_stress_scenario() -> bool:
 	await wait_until(func(): return resident.stress < resident.STRESS_RED, 10.0)
 	check(resident.stress < arrived_stress and resident.get_body_color() == resident.PINK_COLOR, "目的地に着くとストレスが回復して赤からピンクに戻る")
 	Engine.time_scale = 1.0
+	return true
+
+# ---------------------------------------------------
+# シナリオ8: 逆方向のカゴは見送る（集合制御での乗り降り）
+# カゴが下(18)へ向かっている間に、(8,15)で上へ行きたい住人が待つ。
+# 住人は下りのカゴには乗らず、18で折り返して上ってきたカゴに乗る。
+# ---------------------------------------------------
+func run_collective_scenario() -> bool:
+	print("[シナリオ] 集合制御での乗り降り")
+	main.funds = 10000000
+	var x := 8
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	var car = main.elevator_system.cars[0]
+	
+	# カゴを最上階(13)に上げてから、最下階(18)へ向かわせる
+	await click_button(main.mode_buttons["elevator"])
+	await click_cell(Vector2i(x, 13), MOUSE_BUTTON_LEFT)
+	await wait_until(func(): return car.floor_y == 13 and car.state == car.State.IDLE, 10.0)
+	var arrivals: Array[int] = []
+	car.arrived.connect(func(y): arrivals.append(y))
+	await click_cell(Vector2i(x, 18), MOUSE_BUTTON_LEFT)
+	
+	# 上へ行きたい住人を、シャフトの隣(7,15)に置いて(5,13)へ向かわせる
+	await click_button(main.mode_buttons["resident"])
+	await click_cell(Vector2i(7, 15), MOUSE_BUTTON_LEFT)
+	var resident = main.residents.back()
+	var goal := Vector2i(5, 13)
+	await click_cell(goal, MOUSE_BUTTON_LEFT)
+	
+	# 住人が目的地に着くまで、下りのカゴに乗っていないか毎フレーム見張る
+	var boarded_going_down := false
+	var captured := false
+	var limit := Time.get_ticks_msec() + 20000
+	while resident.is_moving() and Time.get_ticks_msec() < limit:
+		if resident.state == resident.State.RIDING and car.direction == car.Direction.DOWN:
+			boarded_going_down = true
+		if not captured and resident.state == resident.State.WAITING and car.direction == car.Direction.DOWN and car.current_floor() > 15:
+			await capture("collective_01_let_pass")
+			captured = true
+		await process_frame
+	check(not boarded_going_down, "上へ行きたい住人は下りのカゴに乗らない")
+	check(arrivals == [18, 15, 13], "カゴは18で折り返し、上りで15に寄って住人を乗せ、13で降ろす")
+	check(resident.cell == goal, "住人が目的地に着く")
 	return true
 
 func count_rides(path: Array[Vector2i]) -> int:

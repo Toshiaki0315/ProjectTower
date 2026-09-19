@@ -2,68 +2,107 @@ extends Node2D
 
 # ---------------------------------------------------
 # エレベーターのカゴ：1本のシャフトの中を上下に動き、呼ばれた階に停まる。
-# 呼ばれた順（先着順）に各階へ向かう。
 # TileMapLayerの子として追加するので、positionはタイルマップ座標系。
+#
+# 集合制御（実際のエレベーターと同じ動かし方）:
+#   - 進んでいる方向の先に呼び出しがある限り、その方向へ進み続け、途中の呼ばれた階に寄る
+#   - 先に呼び出しがなくなったら折り返す
+# 呼び出しの種類:
+#   カゴ呼び  (car_calls)            … 乗っている人が押した行き先。方向に関係なく停まる
+#   乗り場呼び(up_calls / down_calls) … 待っている人の呼び出し。その方向へ進むときに停まる
+# ※ yが小さいほど上の階なので、「上へ」はyが減る方向。
 # ---------------------------------------------------
 
-signal arrived(floor_y: int) # 階に到着して扉を開けたとき
+signal arrived(floor_y: int) # 階に停まって扉を開けたとき
 
 enum State { IDLE, MOVING, DOORS_OPEN }
+enum Direction { NONE, UP, DOWN }
 
 const SPEED := 48.0    # 昇降の速さ（px/秒）
 const DOOR_TIME := 1.0 # 停車して扉を開けている時間（秒）
 
 var world: Node2D  # main.gd
 var column: int    # シャフトのx座標
-var top_y: int     # シャフトの最上階（yが小さいほど上）
+var top_y: int     # シャフトの最上階
 var bottom_y: int  # シャフトの最下階
-var requests: Array[int] = [] # 向かう予定の階（先頭から順に向かう）
+var floor_y: int   # 最後に通過・停車した階
+var target_y: int  # 移動中に向かっている隣の階
 var state := State.IDLE
+var direction := Direction.NONE
 var door_timer := 0.0
+var car_calls := {}  # 階 -> true
+var up_calls := {}   # 階 -> true
+var down_calls := {} # 階 -> true
 
 func setup(p_world: Node2D, x: int, top: int, bottom: int) -> void:
 	world = p_world
 	column = x
 	top_y = top
 	bottom_y = bottom
-	position = world.tile_map.map_to_local(Vector2i(column, bottom_y)) # 最下階からスタート
+	floor_y = bottom_y # 最下階からスタート
+	target_y = floor_y
+	position = floor_position(floor_y)
 	z_index = 8 # マス目の表示より手前、住人より奥
 
 # シャフトの範囲が変わったときに呼ぶ。範囲外になった呼び出しは取り消す
 func set_shaft(top: int, bottom: int) -> void:
 	top_y = top
 	bottom_y = bottom
-	requests = requests.filter(func(y): return y >= top_y and y <= bottom_y)
-	if requests.is_empty() and state == State.MOVING:
-		state = State.IDLE
+	for calls in [car_calls, up_calls, down_calls]:
+		for y in calls.keys():
+			if not has_floor(y):
+				calls.erase(y)
+	if not has_floor(target_y):
+		target_y = floor_y # 向かっていた階がなくなったら、元の階に戻る
 
 func has_floor(y: int) -> bool:
 	return y >= top_y and y <= bottom_y
-
-# 指定した階で停車して扉を開けているか（住人の乗り降りの判定に使う）
-func is_doors_open_at(y: int) -> bool:
-	return state == State.DOORS_OPEN and current_floor() == y
 
 # 今いる階（移動中は、カゴの中心があるマスの階）
 func current_floor() -> int:
 	return world.tile_map.local_to_map(position).y
 
-# 指定した階への呼び出しを受け付ける。シャフトの範囲外ならfalse
+func floor_position(y: int) -> Vector2:
+	return world.tile_map.map_to_local(Vector2i(column, y))
+
+# ---------------------------------------------------
+# 呼び出しの受け付け
+# ---------------------------------------------------
+
+# カゴ呼び（行き先ボタン）。シャフトの範囲外ならfalse
 func request_floor(y: int) -> bool:
 	if not has_floor(y):
 		return false
-	if requests.has(y):
-		return true
-	if y == current_floor() and state != State.MOVING:
-		open_doors() # すでにその階に停まっている
-		return true
-	requests.append(y)
+	car_calls[y] = true
 	return true
 
-func open_doors() -> void:
-	state = State.DOORS_OPEN
-	door_timer = DOOR_TIME
-	arrived.emit(current_floor())
+# 乗り場呼び。dirはその人が行きたい方向
+func call_from_hall(y: int, dir: Direction) -> bool:
+	if not has_floor(y):
+		return false
+	if dir == Direction.UP:
+		up_calls[y] = true
+	else:
+		down_calls[y] = true
+	return true
+
+# 指定した階で停車して扉を開けているか
+func is_doors_open_at(y: int) -> bool:
+	return state == State.DOORS_OPEN and floor_y == y
+
+# dir方向へ行きたい人が、この階で乗れるか（扉が開いていて、同じ方向へ進むか行き先が未定）
+func can_board(y: int, dir: Direction) -> bool:
+	return is_doors_open_at(y) and (direction == dir or direction == Direction.NONE)
+
+# 乗り込んで行き先ボタンを押す。行き先が未定のカゴなら、その方向へ進むことにする
+func board(dest_y: int) -> void:
+	request_floor(dest_y)
+	if direction == Direction.NONE:
+		direction = Direction.UP if dest_y < floor_y else Direction.DOWN
+
+# ---------------------------------------------------
+# 動かし方
+# ---------------------------------------------------
 
 func _process(delta: float) -> void:
 	match state:
@@ -72,18 +111,98 @@ func _process(delta: float) -> void:
 			if door_timer <= 0.0:
 				state = State.IDLE
 		State.IDLE:
-			if not requests.is_empty():
-				state = State.MOVING
+			decide_next_action()
 		State.MOVING:
-			if requests.is_empty():
-				state = State.IDLE
-			else:
-				var target: Vector2 = world.tile_map.map_to_local(Vector2i(column, requests[0]))
-				position = position.move_toward(target, SPEED * delta)
-				if position == target:
-					requests.pop_front()
-					open_doors()
+			position = position.move_toward(floor_position(target_y), SPEED * delta)
+			if position == floor_position(target_y):
+				floor_y = target_y
+				if should_stop_at(floor_y):
+					stop_here()
+				elif has_calls_beyond(floor_y, direction):
+					start_moving() # 停まらずに次の階へ
+				else:
+					state = State.IDLE
 	queue_redraw()
+
+# 停まっているときに、この階で扉を開けるか、どちらへ動くかを決める
+func decide_next_action() -> void:
+	var next_dir := choose_direction(floor_y)
+	if car_calls.has(floor_y) or has_hall_call(floor_y, next_dir) \
+			or (next_dir == Direction.NONE and has_any_hall_call(floor_y)):
+		stop_here()
+	elif next_dir != Direction.NONE:
+		direction = next_dir
+		start_moving()
+	else:
+		direction = Direction.NONE
+
+func start_moving() -> void:
+	target_y = floor_y + (-1 if direction == Direction.UP else 1)
+	state = State.MOVING
+
+# 移動中に階に着いたとき、ここで停まるか
+func should_stop_at(y: int) -> bool:
+	if car_calls.has(y) or has_hall_call(y, direction):
+		return true
+	# この先に呼び出しがないなら、逆方向の乗り場呼びでも停まって折り返す
+	return not has_calls_beyond(y, direction) and has_any_hall_call(y)
+
+# この階で停車する。次に進む方向を決め、その方向の乗り場呼びを取り消して扉を開ける
+func stop_here() -> void:
+	direction = choose_direction(floor_y)
+	car_calls.erase(floor_y)
+	if direction != Direction.DOWN:
+		up_calls.erase(floor_y)
+	if direction != Direction.UP:
+		down_calls.erase(floor_y)
+	state = State.DOORS_OPEN
+	door_timer = DOOR_TIME
+	arrived.emit(floor_y)
+
+# y階にいるとき、次に進む方向
+func choose_direction(y: int) -> Direction:
+	if direction != Direction.NONE:
+		var opposite := Direction.DOWN if direction == Direction.UP else Direction.UP
+		if has_calls_beyond(y, direction):
+			return direction # この先に呼び出しがある限り進み続ける
+		if has_hall_call(y, opposite) or has_calls_beyond(y, opposite):
+			return opposite  # 折り返す
+		if has_hall_call(y, direction):
+			return direction
+		return Direction.NONE
+	# 方向が決まっていないとき: この階の乗り場呼び → 一番近い呼び出しの方向
+	if up_calls.has(y):
+		return Direction.UP
+	if down_calls.has(y):
+		return Direction.DOWN
+	var nearest = null
+	for calls in [car_calls, up_calls, down_calls]:
+		for c in calls:
+			if c != y and (nearest == null or absi(c - y) < absi(nearest - y)):
+				nearest = c
+	if nearest == null:
+		return Direction.NONE
+	return Direction.UP if nearest < y else Direction.DOWN
+
+# y階よりdir方向の先に、何か呼び出しがあるか
+func has_calls_beyond(y: int, dir: Direction) -> bool:
+	if dir == Direction.NONE:
+		return false
+	for calls in [car_calls, up_calls, down_calls]:
+		for c in calls:
+			if (dir == Direction.UP and c < y) or (dir == Direction.DOWN and c > y):
+				return true
+	return false
+
+func has_hall_call(y: int, dir: Direction) -> bool:
+	return (dir == Direction.UP and up_calls.has(y)) or (dir == Direction.DOWN and down_calls.has(y))
+
+func has_any_hall_call(y: int) -> bool:
+	return up_calls.has(y) or down_calls.has(y)
+
+# ---------------------------------------------------
+# 描画
+# ---------------------------------------------------
 
 func _draw() -> void:
 	var body := Rect2(-6, -7, 12, 14)
@@ -97,3 +216,9 @@ func _draw() -> void:
 		# 扉が閉まっている：銀色の扉と中央の合わせ目
 		draw_rect(body, Color(0.75, 0.78, 0.85))
 		draw_line(Vector2(0, -7), Vector2(0, 7), Color(0.3, 0.3, 0.35), 1.0)
+	# 進行方向の表示（▲ 上へ / ▼ 下へ）
+	var arrow_color := Color(0.3, 1.0, 0.4)
+	if direction == Direction.UP:
+		draw_colored_polygon(PackedVector2Array([Vector2(0, -12), Vector2(-3, -9), Vector2(3, -9)]), arrow_color)
+	elif direction == Direction.DOWN:
+		draw_colored_polygon(PackedVector2Array([Vector2(0, -9), Vector2(-3, -12), Vector2(3, -12)]), arrow_color)
