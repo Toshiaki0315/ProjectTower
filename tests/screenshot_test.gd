@@ -583,7 +583,7 @@ func run_economy_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ11: ホテルとハウスキーパー
-# ブロック最下段(y=18)の右隣に、シングル3室（横2マスずつ、x=8・10・12から）とハウスキーパー室(x=14)を並べる。
+# ブロック最下段(y=18)の右隣に、シングル3室（横2マスずつ、x=8・10・12から）とハウスキーパー室（横2マス、x=14〜15）を並べる。
 # 入口(-8,18)から同じ階を歩いて行き来できる。右側が画面に入るようにカメラを動かしておく。
 # ---------------------------------------------------
 func run_hotel_scenario() -> bool:
@@ -597,10 +597,10 @@ func run_hotel_scenario() -> bool:
 		await click_cell(cell, MOUSE_BUTTON_LEFT)
 	await click_button(main.mode_buttons["housekeeping"])
 	await click_cell(Vector2i(14, 18), MOUSE_BUTTON_LEFT)
-	check(main.funds == 10000000 - 3 * 150000 - 100000, "客室15万円×3とハウスキーパー室10万円がかかる")
+	check(main.funds == 10000000 - 3 * 150000 - 200000, "客室15万円×3とハウスキーパー室20万円がかかる")
 	check(main.get_unit_cells(Vector2i(9, 18)) == [Vector2i(8, 18), Vector2i(9, 18)], "シングルは横2マスの部屋")
 	check(hotel.rooms.size() == 3 and hotel.count_rooms(hotel.RoomState.CLEAN) == 3, "客室が3室でき、最初はきれいな空室")
-	check(hotel.housekeepers.size() == 1, "ハウスキーパー室に清掃員が1人いる")
+	check(hotel.housekeepers.size() == 2, "ハウスキーパー室（横2マス）に清掃員が2人いる")
 	var keeper = hotel.housekeepers.values()[0].resident
 	check(keeper.base_color == hotel.HOUSEKEEPER_COLOR, "清掃員は水色")
 	
@@ -651,7 +651,7 @@ func run_hotel_scenario() -> bool:
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
 	check(main.economy_system.last_report.get("hotel") == 60000, "2日目の決算に宿泊料6万円が入る")
-	check(main.economy_system.last_report.get("maintenance") == 5000, "ハウスキーパー室の維持費5千円がかかる")
+	check(main.economy_system.last_report.get("maintenance") == 10000, "ハウスキーパー室の維持費1万円がかかる")
 	check(main.message_label.text.contains("宿泊料 +60,000円"), "決算のメッセージに宿泊料が出る")
 	return true
 
@@ -717,7 +717,7 @@ func run_lunch_scenario() -> bool:
 
 # ---------------------------------------------------
 # シナリオ13: ゴミ処理場
-# シナリオ10と同じ建物＋1階のシャフトの右隣にゴミ処理場2マス（処理能力40）。
+# シナリオ10と同じ建物＋1階のシャフトの右隣にゴミ処理場2施設（横3マスずつ、x=9・12から。処理能力40）。
 # ゴミ68のうち40を処理し、残り28を外部委託（2.8万円）。維持費はエレベーター1.2万＋ゴミ処理場1万。
 # ---------------------------------------------------
 func run_recycling_scenario() -> bool:
@@ -728,11 +728,12 @@ func run_recycling_scenario() -> bool:
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await click_button(main.mode_buttons["office"])
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
+	focus_camera(Vector2i(8, 16))
 	await click_button(main.mode_buttons["recycling"])
-	for rx in [9, 10]:
+	for rx in [9, 12]:
 		await click_cell(Vector2i(rx, 18), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 6 * 100000 - 400000 - 2 * 150000, "ゴミ処理場の建設費15万円×2がかかる")
-	check(main.economy_system.recycling_capacity() == 40, "ゴミ処理場2マスで処理能力40/日になる")
+	check(main.economy_system.recycling_capacity() == 40, "ゴミ処理場2施設で処理能力40/日になる")
 	await hover_cell(Vector2i(9, 18))
 	check(main.hover_label.text.contains("処理能力 40/日"), "カーソルを合わせると処理能力が出る")
 	await capture("recycling_01_built")
@@ -795,8 +796,8 @@ func run_rating_scenario() -> bool:
 	# ★3の条件
 	check(rating.missing_for_next() == ["人口120", "メディカルセンター", "ゴミ処理場"], "★3には人口120・メディカルセンター・ゴミ処理場が必要")
 	await click_button(main.mode_buttons["medical"])
-	await click_cell(Vector2i(10, 18), MOUSE_BUTTON_LEFT)
-	check(main.get_building_type(Vector2i(10, 18)) == "medical", "メディカルセンターを建てられる")
+	await click_cell(Vector2i(11, 18), MOUSE_BUTTON_LEFT) # 警備室（x=9〜10）の右隣
+	check(main.get_building_type(Vector2i(11, 18)) == "medical", "メディカルセンターを建てられる")
 	check(rating.missing_for_next() == ["人口120", "ゴミ処理場"], "メディカルセンターを置くと★3の条件から外れる")
 	return true
 
@@ -866,7 +867,7 @@ func run_housing_scenario() -> bool:
 # ---------------------------------------------------
 # シナリオ16: ホテルのツイン・スイート
 # ブロック最下段(y=18)の右隣に、ツイン（横3マス、x=8〜10）・スイート（横4マス、x=11〜14）・
-# ハウスキーパー室(x=15)を並べる。
+# ハウスキーパー室（横2マス、x=15〜16）を並べる。
 # ---------------------------------------------------
 func run_room_types_scenario() -> bool:
 	print("[シナリオ] ツイン・スイート")
@@ -881,7 +882,7 @@ func run_room_types_scenario() -> bool:
 	await click_cell(suite, MOUSE_BUTTON_LEFT)
 	await click_button(main.mode_buttons["housekeeping"])
 	await click_cell(Vector2i(15, 18), MOUSE_BUTTON_LEFT)
-	check(main.funds == 10000000 - 200000 - 500000 - 100000, "ツイン20万円・スイート50万円がかかる")
+	check(main.funds == 10000000 - 200000 - 500000 - 200000, "ツイン20万円・スイート50万円がかかる")
 	check(main.get_unit_cells(twin).size() == 3 and main.get_unit_cells(suite).size() == 4, "ツインは横3マス、スイートは横4マス")
 	check(hotel.total_capacity() == 4, "ツインとスイートは2人ずつ、定員の合計は4人")
 	var others: int = main.commute_system.workers.size() - main.commute_system.count_unreachable()

@@ -28,15 +28,15 @@ const BUILDINGS := {
 	"hotel": {"name": "シングル", "cost": 150000, "source_id": 3, "width": 2},
 	"hotel_twin": {"name": "ツイン", "cost": 200000, "source_id": 10, "width": 3},
 	"hotel_suite": {"name": "スイート", "cost": 500000, "source_id": 11, "width": 4},
-	"housekeeping": {"name": "ハウスキーパー室", "cost": 100000, "source_id": 4},
+	"housekeeping": {"name": "ハウスキーパー室", "cost": 200000, "source_id": 4, "width": 2},
 	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5, "width": 3},
-	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6},
-	"security": {"name": "警備室", "cost": 100000, "source_id": 7},
-	"medical": {"name": "メディカルセンター", "cost": 200000, "source_id": 8},
+	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6, "width": 3},
+	"security": {"name": "警備室", "cost": 100000, "source_id": 7, "width": 2},
+	"medical": {"name": "メディカルセンター", "cost": 200000, "source_id": 8, "width": 3},
 	"housing": {"name": "住宅", "cost": 400000, "source_id": 9, "width": 3},
 	"wedding": {"name": "結婚式場", "cost": 1000000, "source_id": 12, "width": 6},
 	"event_hall": {"name": "イベントホール", "cost": 800000, "source_id": 13, "width": 6},
-	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14},
+	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14, "width": 4},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -245,10 +245,10 @@ func create_ui():
 		"イベントホール（横6マス）: 休日の13〜14時に15人が来て17時まで（1人3千円）",
 		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料を払って帰る。清掃が済むまで次の客は泊まれない",
 		"　シングル（横2マス）: 1人・2万円・清掃20分 / ツイン（横3マス）: 2人・3.5万円・清掃30分 / スイート（横4マス）: 2人・8万円・清掃45分",
-		"ハウスキーパー室: 清掃員が1人。清掃待ちの部屋を近い順に掃除する",
+		"ハウスキーパー室（横2マス）: 清掃員が2人。清掃待ちの部屋を近い順に掃除する",
 		"飲食店（横3マス）: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1千円の売上）",
 		"住宅（横3マス・3人家族）: 17〜20時に入居者が来て入居（販売収入70万円、1回だけ）。毎朝7〜9時に出かけ、17〜20時に帰る",
-		"ゴミ処理場: 1マスで1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
+		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
 		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
@@ -492,6 +492,14 @@ func get_build_problem(origin: Vector2i, type: String) -> String:
 		return "資金不足です！"
 	return ""
 
+# 指定した種類の建物の左端のマス（= 建物1つにつき1マス）をすべて返す
+func find_units_of_type(type: String) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for cell in building_grid:
+		if building_grid[cell].type == type and building_grid[cell].origin == cell:
+			result.append(cell)
+	return result
+
 # 指定した種類の建物がある座標をすべて返す（住人AIの目的地探索用）
 func find_cells_of_type(type: String) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
@@ -624,13 +632,13 @@ func get_entrance():
 			entrance = cell
 	return entrance
 
-# 入口の一覧：1階の入口と、地下鉄駅のマス。人はビルの外からここに現れ、ここから帰る
+# 入口の一覧：1階の入口と、地下鉄駅（左端のマス）。人はビルの外からここに現れ、ここから帰る
 func get_entrances() -> Array[Vector2i]:
 	var entrances: Array[Vector2i] = []
 	var main_entrance = get_entrance()
 	if main_entrance != null:
 		entrances.append(main_entrance)
-	entrances.append_array(find_cells_of_type("subway"))
+	entrances.append_array(find_units_of_type("subway"))
 	return entrances
 
 func is_entrance(cell: Vector2i) -> bool:

@@ -10,24 +10,24 @@ extends Node
 #   住宅販売: その日に入居が決まった住宅の販売収入（housing_system が記録する）
 #   イベント: その日に結婚式場・イベントホールに来た客の料金（event_system が記録する）
 #   評価ボーナス: 賃料と宿泊料に、ビルの評価（★）に応じた割合を上乗せ（rating_system）
-#   維持費:   建物ごとの MAINTENANCE × マス数
+#   維持費:   建物ごとの MAINTENANCE × 建物（ユニット）の数
 #   ゴミ処理: その日の活動で出たゴミのうち、ゴミ処理場で処理しきれない分を外部に委託する費用
 #             ゴミの量 = 出勤があったオフィス数 + チェックアウトした客室数 + 飲食店の客数 / 10
 #                        + 入居済みの住宅数 + 会場の来客数 / 10
-#             処理能力 = ゴミ処理場のマス数 × RECYCLING_CAPACITY
+#             処理能力 = ゴミ処理場の数 × RECYCLING_CAPACITY
 # ---------------------------------------------------
 
 const OFFICE_RENT := 10000 # オフィス1マスの1日の賃料
-const MAINTENANCE := {     # 1マスの1日の維持費
+const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーターは1マスが1つ）
 	"elevator": 2000,
-	"housekeeping": 5000,
+	"housekeeping": 10000,
 	"recycling": 5000,
 	"security": 5000,
 	"medical": 10000,
 	"subway": 10000,
 }
 const MEALS_PER_GARBAGE := 10   # 飲食店の客・会場の来客の何人分でゴミ1になるか
-const RECYCLING_CAPACITY := 20  # ゴミ処理場1マスが1日に処理できるゴミの量
+const RECYCLING_CAPACITY := 20  # ゴミ処理場1施設が1日に処理できるゴミの量
 const OUTSOURCE_COST := 1000    # 処理しきれないゴミ1あたりの外部委託費
 
 var world: Node2D # main.gd
@@ -56,7 +56,7 @@ func settle(day: int) -> void:
 	var rent := rent_offices * OFFICE_RENT
 	var maintenance := 0
 	for type in MAINTENANCE:
-		maintenance += MAINTENANCE[type] * world.find_cells_of_type(type).size()
+		maintenance += MAINTENANCE[type] * world.find_units_of_type(type).size()
 	var hotel: int = world.hotel_system.revenue_by_day.get(day, 0)
 	var food: int = world.commerce_system.revenue_by_day.get(day, 0)
 	var checkouts: int = world.hotel_system.checkouts_by_day.get(day, 0)
@@ -99,4 +99,4 @@ func count_reachable_offices() -> int:
 
 # ビル全体のゴミ処理能力（1日あたり）
 func recycling_capacity() -> int:
-	return world.find_cells_of_type("recycling").size() * RECYCLING_CAPACITY
+	return world.find_units_of_type("recycling").size() * RECYCLING_CAPACITY
