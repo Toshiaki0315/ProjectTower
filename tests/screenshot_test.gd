@@ -22,7 +22,7 @@ func _init() -> void:
 	root.mouse_passthrough = true
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -511,7 +511,7 @@ func run_commute_scenario() -> bool:
 	check(main.clock_label.text != "", "上部バーに時刻が出る")
 	Engine.time_scale = 8.0
 	await wait_until(func(): return main.clock.minute_of_day() >= 8 * 60 + 30, 20.0)
-	check(main.clock_label.text.begins_with("1日目 08:"), "時刻の表示が進む（1日目 08:xx）")
+	check(main.clock_label.text.begins_with("1日目（月） 08:"), "時刻の表示が進む（1日目（月） 08:xx）")
 	check(commute.count_in_building() > 0, "8時台に社員が入口から出勤してくる")
 	await capture("commute_01_rush")
 	var max_stress := 0.0
@@ -912,6 +912,61 @@ func run_room_types_scenario() -> bool:
 		check(absf(suite_minutes - 45.0) <= 2.0, "スイートの清掃は約45分（%.1f分）" % suite_minutes)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
+	return true
+
+# ---------------------------------------------------
+# シナリオ17: 平日・休日のサイクル
+# シナリオ10と同じ建物（社員67人）＋ 1階の右隣に住宅1戸(9,18)。
+# 5日目（金）→ 6日目（土・休日）→ 8日目（月）と進めて違いを確かめる。
+# ---------------------------------------------------
+func run_weekday_scenario() -> bool:
+	print("[シナリオ] 平日・休日")
+	main.funds = 10000000
+	var clock = main.clock
+	check(clock.weekday(1) == 0 and not clock.is_holiday(1), "1日目は月曜日で平日")
+	check(clock.is_holiday(6) and clock.is_holiday(7) and not clock.is_holiday(8), "6日目（土）・7日目（日）は休日、8日目（月）は平日")
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	var home := Vector2i(9, 18)
+	await click_button(main.mode_buttons["housing"])
+	await click_cell(home, MOUSE_BUTTON_LEFT)
+	
+	# 5日目（金）: 社員は出勤し、夕方に入居者が入居する
+	clock.set_time(5, 7, 59)
+	clock.set_process(true)
+	Engine.time_scale = 8.0
+	await wait_until(func(): return clock.minute_of_day() >= 10 * 60, 30.0)
+	check(main.commute_system.count_at_office() == 67, "金曜日は67人が出勤する")
+	clock.set_time(5, 16, 59)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.housing_system.count_at_home() == 1 and clock.minute_of_day() >= 20 * 60, 30.0)
+	
+	# 6日目（土）: 休日。社員は来ない。入居者は遅めに出かける
+	clock.set_time(6, 7, 59)
+	await wait_until(func(): return clock.minute_of_day() >= 9 * 60 + 45, 30.0)
+	check(main.clock_label.text.begins_with("6日目（土）休日"), "上部バーに曜日と休日が出る")
+	check(main.commute_system.count_in_building() == 0, "休日は社員が出勤しない")
+	check(main.housing_system.count_at_home() == 1, "休日の入居者は9時45分にはまだ家にいる（平日なら9時までに出かける）")
+	await capture("weekday_01_holiday")
+	await wait_until(func(): return clock.minute_of_day() >= 12 * 60 + 10, 30.0)
+	check(main.housing_system.count_at_home() == 0, "休日の入居者は12時までに出かける")
+	clock.set_time(6, 23, 58)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == 6, 10.0)
+	var report = main.economy_system.last_report
+	check(report.get("rent") == 670000, "休日もたどり着けるオフィス67マスの賃料は入る")
+	check(report.get("garbage") == 1, "休日はオフィスからゴミが出ない（住宅の1だけ）")
+	
+	# 8日目（月）: また出勤する
+	clock.set_time(8, 7, 59)
+	Engine.time_scale = 8.0
+	await wait_until(func(): return clock.minute_of_day() >= 10 * 60, 30.0)
+	Engine.time_scale = 1.0
+	clock.set_process(false)
+	check(main.commute_system.count_at_office() == 67, "月曜日はまた67人が出勤する")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

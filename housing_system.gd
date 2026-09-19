@@ -6,6 +6,8 @@ extends Node
 #             家に着いたら入居が決まり、販売収入 SALE_PRICE が1回だけ入る。
 #   毎日:     朝 LEAVE_START〜LEAVE_END に家から入口へ出かけ（ビルの外に出る）、
 #             夕方 RETURN_START〜RETURN_END に入口から家に帰ってくる。
+#   休日:     ゆっくり HOLIDAY_LEAVE_START〜HOLIDAY_LEAVE_END に出かけ、
+#             HOLIDAY_RETURN_START〜HOLIDAY_RETURN_END に帰ってくる。
 # 建設・撤去のたびに rebuild() を呼んで、住宅と入居者の対応を更新する。
 # ---------------------------------------------------
 
@@ -13,6 +15,10 @@ const LEAVE_START := 7 * 60
 const LEAVE_END := 9 * 60
 const RETURN_START := 17 * 60
 const RETURN_END := 20 * 60
+const HOLIDAY_LEAVE_START := 10 * 60
+const HOLIDAY_LEAVE_END := 12 * 60
+const HOLIDAY_RETURN_START := 15 * 60
+const HOLIDAY_RETURN_END := 18 * 60
 const SALE_PRICE := 250000
 const RESIDENT_COLOR := Color(0.65, 1.0, 0.6)
 
@@ -51,7 +57,7 @@ func _process(_delta: float) -> void:
 			home.resident = null
 			home.leaving = false
 			# 夕方になったら入口に現れて家に向かう（まだ入居前なら、入居しに来る）
-			if home.back_day != day and now >= random_minute(cell, day, RETURN_START, RETURN_END) and now < RETURN_END:
+			if home.back_day != day and now >= return_minute(cell, day) and now < return_end(day):
 				home.back_day = day
 				spawn_at_entrance(cell, home)
 			continue
@@ -73,8 +79,7 @@ func _process(_delta: float) -> void:
 			revenue_by_day[day] = revenue_by_day.get(day, 0) + SALE_PRICE
 			world.show_message("住宅 %s に入居者が決まりました（販売収入 +%s円）" % [cell, world.format_money(SALE_PRICE)])
 		# 朝になったら入口へ出かける（家に着いてから）
-		if at_home and home.out_day != day and now >= random_minute(cell, day + 1000, LEAVE_START, LEAVE_END) \
-				and now < RETURN_START:
+		if at_home and home.out_day != day and now >= leave_minute(cell, day) and now < return_start(day):
 			home.out_day = day
 			var entrance = world.get_entrance()
 			if entrance != null and resident.go_to(entrance):
@@ -88,6 +93,21 @@ func spawn_at_entrance(cell: Vector2i, home: Dictionary) -> void:
 	resident.base_color = RESIDENT_COLOR
 	resident.go_to(cell)
 	home.resident = resident
+
+# 出かける・帰る時刻（平日と休日で時間帯が違う）
+func leave_minute(cell: Vector2i, day: int) -> int:
+	if world.clock.is_holiday(day):
+		return random_minute(cell, day + 1000, HOLIDAY_LEAVE_START, HOLIDAY_LEAVE_END)
+	return random_minute(cell, day + 1000, LEAVE_START, LEAVE_END)
+
+func return_minute(cell: Vector2i, day: int) -> int:
+	return random_minute(cell, day, return_start(day), return_end(day))
+
+func return_start(day: int) -> int:
+	return HOLIDAY_RETURN_START if world.clock.is_holiday(day) else RETURN_START
+
+func return_end(day: int) -> int:
+	return HOLIDAY_RETURN_END if world.clock.is_holiday(day) else RETURN_END
 
 # 住宅と日ごとに決まった乱数で時刻を決める（毎回同じ結果になり、テストしやすい）
 func random_minute(cell: Vector2i, salt: int, from: int, to: int) -> int:

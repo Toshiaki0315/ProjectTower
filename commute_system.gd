@@ -4,6 +4,7 @@ extends Node
 # オフィスの通勤：オフィス1マスにつき社員1人。
 #   出勤: ARRIVE_START〜ARRIVE_END の間のランダムな時刻に入口に現れ、自分のオフィスへ向かう
 #   退勤: LEAVE_START〜LEAVE_END の間のランダムな時刻に入口へ向かい、着いたら帰る（消える）
+# 休日（土日）はオフィスが休みで、社員は出勤しない。
 # 入口からたどり着けないオフィスの社員は出勤できない（通勤不可として数える）。
 # 建設・撤去のたびに rebuild() を呼んで、オフィスと社員の対応を更新する。
 # ---------------------------------------------------
@@ -57,8 +58,8 @@ func _process(_delta: float) -> void:
 	var now: int = world.clock.minute_of_day()
 	for cell in workers:
 		var w = workers[cell]
-		# 出勤の時刻になったら、入口に現れてオフィスへ向かう
-		if w.arrived_day != day and now >= w.arrive and now < w.leave:
+		# 出勤の時刻になったら、入口に現れてオフィスへ向かう（休日は出勤しない）
+		if w.arrived_day != day and now >= w.arrive and now < w.leave and not world.clock.is_holiday():
 			w.arrived_day = day
 			w.unreachable = not start_commute(cell, w)
 		var resident = w.resident

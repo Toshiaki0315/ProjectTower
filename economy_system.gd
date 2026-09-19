@@ -4,6 +4,7 @@ extends Node
 # 収支：毎日0:00に前日分の決算をして、資金に反映する。
 #   賃料収入: その日に社員が出勤したオフィス1マスにつき OFFICE_RENT
 #             （社員が通勤できない空きオフィスからは入らない）
+#             休日はオフィスが休みだが、入口からたどり着けるオフィスからは契約どおり入る
 #   宿泊料:   その日にチェックアウトした客の宿泊料（hotel_system が記録する）
 #   飲食売上: その日に飲食店で食事をした客の代金（commerce_system が記録する）
 #   住宅販売: その日に入居が決まった住宅の販売収入（housing_system が記録する）
@@ -47,7 +48,10 @@ func settle(day: int) -> void:
 	for cell in world.commute_system.workers:
 		if world.commute_system.workers[cell].arrived_day == day and not world.commute_system.workers[cell].unreachable:
 			active_offices += 1
-	var rent := active_offices * OFFICE_RENT
+	var rent_offices := active_offices
+	if world.clock.is_holiday(day):
+		rent_offices = count_reachable_offices()
+	var rent := rent_offices * OFFICE_RENT
 	var maintenance := 0
 	for type in MAINTENANCE:
 		maintenance += MAINTENANCE[type] * world.find_cells_of_type(type).size()
@@ -79,6 +83,17 @@ func settle(day: int) -> void:
 	if world.rating_system.evaluate():
 		message = "ビルの評価が★%dに上がりました！ %s" % [world.rating_system.stars, message]
 	world.show_message(message)
+
+# 入口からたどり着けるオフィスの数（休日の賃料の計算用）
+func count_reachable_offices() -> int:
+	var entrance = world.get_entrance()
+	if entrance == null:
+		return 0
+	var n := 0
+	for cell in world.commute_system.workers:
+		if not world.find_path(entrance, cell).is_empty():
+			n += 1
+	return n
 
 # ビル全体のゴミ処理能力（1日あたり）
 func recycling_capacity() -> int:
