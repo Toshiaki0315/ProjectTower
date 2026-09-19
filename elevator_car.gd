@@ -40,6 +40,10 @@ func set_shaft(top: int, bottom: int) -> void:
 func has_floor(y: int) -> bool:
 	return y >= top_y and y <= bottom_y
 
+# 指定した階で停車して扉を開けているか（住人の乗り降りの判定に使う）
+func is_doors_open_at(y: int) -> bool:
+	return state == State.DOORS_OPEN and current_floor() == y
+
 # 今いる階（移動中は、カゴの中心があるマスの階）
 func current_floor() -> int:
 	return world.tile_map.local_to_map(position).y

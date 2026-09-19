@@ -295,42 +295,71 @@ func find_cells_of_type(type: String) -> Array[Vector2i]:
 # 移動ルールと経路探索
 # ---------------------------------------------------
 
-# 隣り合う2マス間を移動できるか（住人の移動可否はすべてこの関数で判断する）
-# - 横移動: 両方のマスに建物があれば通れる
-# - 上下移動: 下側のマスが階段なら通れる（階段はそのマスと1つ上の階をつなぐ）
-func can_move(from: Vector2i, to: Vector2i) -> bool:
-	if is_cell_empty(from) or is_cell_empty(to):
-		return false
-	var diff := to - from
-	if diff.y == 0:
-		return absi(diff.x) == 1
-	if diff.x != 0 or absi(diff.y) != 1:
-		return false
-	var lower := from if from.y > to.y else to # yが大きい方が下の階
-	return get_building_type(lower) == "stairs"
+# 移動の手間（コスト）。経路探索はこの合計が一番小さい経路を選ぶ。
+# 1〜2階の移動なら階段、3階以上ならエレベーターの方が得になるよう調整している。
+const WALK_COST := 1.0           # 横に1マス歩く
+const STAIRS_COST := 2.0         # 階段で1階分上り下りする
+const ELEVATOR_WAIT_COST := 4.0  # エレベーターに乗る（待ち時間の見込み）
+const ELEVATOR_FLOOR_COST := 0.5 # エレベーターで1階分移動する
 
-# 指定マスから1歩で移動できるマスの一覧
-func get_neighbors(cell: Vector2i) -> Array[Vector2i]:
-	var result: Array[Vector2i] = []
-	for dir in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
-		if can_move(cell, cell + dir):
-			result.append(cell + dir)
+# 指定マスから1回で移動できる先とそのコストの一覧（住人の移動ルールはすべてここで決まる）
+# - 横移動:       隣のマスに建物があれば歩ける（エレベーターの扉の前も通り抜けられる）
+# - 階段:         階段マスは、そのマスと1つ上の階をつなぐ
+# - エレベーター: シャフトのマスから、同じシャフトの別の階へ乗って移動できる
+# 戻り値: [{"to": Vector2i, "cost": float}, ...]
+func get_moves(cell: Vector2i) -> Array:
+	var result: Array = []
+	if is_cell_empty(cell):
+		return result
+	for dir in [Vector2i.LEFT, Vector2i.RIGHT]:
+		if not is_cell_empty(cell + dir):
+			result.append({"to": cell + dir, "cost": WALK_COST})
+	if get_building_type(cell) == "stairs" and not is_cell_empty(cell + Vector2i.UP):
+		result.append({"to": cell + Vector2i.UP, "cost": STAIRS_COST})
+	if get_building_type(cell + Vector2i.DOWN) == "stairs":
+		result.append({"to": cell + Vector2i.DOWN, "cost": STAIRS_COST})
+	if get_building_type(cell) == "elevator":
+		var car = elevator_system.get_car_at(cell)
+		if car:
+			for y in range(car.top_y, car.bottom_y + 1):
+				if y != cell.y:
+					var cost := ELEVATOR_WAIT_COST + ELEVATOR_FLOOR_COST * absi(y - cell.y)
+					result.append({"to": Vector2i(cell.x, y), "cost": cost})
 	return result
 
-# 幅優先探索で最短経路を求める
+# fromからtoへ1回で移動できるか
+func can_move(from: Vector2i, to: Vector2i) -> bool:
+	for move in get_moves(from):
+		if move.to == to:
+			return true
+	return false
+
+# fromからtoへの移動がエレベーターに乗る移動か（同じシャフト内の別の階への移動）
+func is_elevator_ride(from: Vector2i, to: Vector2i) -> bool:
+	return from.x == to.x and from.y != to.y \
+		and get_building_type(from) == "elevator" and get_building_type(to) == "elevator"
+
+# ダイクストラ法でコストが最小の経路を求める
 # 戻り値: [from, ..., to] のマス配列。経路がなければ空配列。
 func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	if is_cell_empty(from) or is_cell_empty(to):
 		return result
-
-	var came_from := {} # マス -> 1つ前のマス
+	
+	var cost_so_far := {} # マス -> スタートからの最小コスト
+	var came_from := {}   # マス -> 1つ前のマス
+	cost_so_far[from] = 0.0
 	came_from[from] = from
-	var queue: Array[Vector2i] = [from]
-	var head := 0
-	while head < queue.size():
-		var current: Vector2i = queue[head]
-		head += 1
+	var open: Array[Vector2i] = [from] # これから調べるマス
+	var done := {}                     # 最小コストが確定したマス
+	while not open.is_empty():
+		# まだ調べていないマスのうち、コストが一番小さいものを取り出す
+		var best := 0
+		for i in range(1, open.size()):
+			if cost_so_far[open[i]] < cost_so_far[open[best]]:
+				best = i
+		var current: Vector2i = open[best]
+		open.remove_at(best)
 		if current == to:
 			# ゴールからスタートまで逆にたどって経路を組み立てる
 			var c := to
@@ -339,10 +368,17 @@ func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 				c = came_from[c]
 			result.push_front(from)
 			return result
-		for next in get_neighbors(current):
-			if not came_from.has(next):
+		done[current] = true
+		for move in get_moves(current):
+			var next: Vector2i = move.to
+			if done.has(next):
+				continue
+			var new_cost: float = cost_so_far[current] + move.cost
+			if not cost_so_far.has(next) or new_cost < cost_so_far[next]:
+				cost_so_far[next] = new_cost
 				came_from[next] = current
-				queue.append(next)
+				if not open.has(next):
+					open.append(next)
 	return result
 
 # 今のモードでそのマスを左クリックしたときに操作が成立するか（強調表示の色分けに使う）

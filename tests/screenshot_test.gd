@@ -19,9 +19,12 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario]:
 		await start_main()
-		await scenario.call()
+		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
+		var finished = await scenario.call()
+		if finished != true:
+			failures.append("%s が途中で中断した（スクリプトエラーを確認）" % scenario.get_method())
 	Engine.time_scale = 1.0
 
 	if failures.is_empty():
@@ -43,7 +46,7 @@ func start_main() -> void:
 # ---------------------------------------------------
 # シナリオ1: 建設・撤去とモード表示
 # ---------------------------------------------------
-func run_build_scenario() -> void:
+func run_build_scenario() -> bool:
 	print("[シナリオ] 建設・撤去")
 	var start_funds: int = main.funds
 	await capture("build_01_start")
@@ -85,13 +88,14 @@ func run_build_scenario() -> void:
 	await click_cell(Vector2i(-10, 21), MOUSE_BUTTON_RIGHT)
 	check(main.funds == start_funds - 75000, "空マスの右クリックでは資金が変わらない")
 	await capture("build_04_demolished")
+	return true
 
 # ---------------------------------------------------
 # シナリオ2: 階段による移動
 # 事前配置のブロック（y=15〜18）の右隣に階段を置き、その上の階にオフィスを並べる。
 # 住人はブロック上段(0,15)から、階段(8,15)→(8,14)を通って上の階(4,14)へ向かう。
 # ---------------------------------------------------
-func run_stairs_scenario() -> void:
+func run_stairs_scenario() -> bool:
 	print("[シナリオ] 階段による移動")
 	await click_button(main.mode_buttons["stairs"])
 	await click_cell(Vector2i(8, 15), MOUSE_BUTTON_LEFT)
@@ -138,11 +142,12 @@ func run_stairs_scenario() -> void:
 	await click_cell(goal, MOUSE_BUTTON_RIGHT)
 	await wait_frames(2)
 	check(not is_instance_valid(resident), "足元を撤去すると住人が退場する")
+	return true
 
 # ---------------------------------------------------
 # シナリオ3: カメラのズームと移動
 # ---------------------------------------------------
-func run_camera_scenario() -> void:
+func run_camera_scenario() -> bool:
 	print("[シナリオ] カメラ操作")
 	var cam = main.camera
 	check(is_equal_approx(cam.zoom.x, cam.DEFAULT_ZOOM), "起動時は%.0f倍にズームしている" % cam.DEFAULT_ZOOM)
@@ -196,11 +201,12 @@ func run_camera_scenario() -> void:
 	await hold_key(KEY_W, 0.2)
 	check(cam.position.y < pos_before.y, "Wキーで上に移動する")
 	await capture("camera_03_moved")
+	return true
 
 # ---------------------------------------------------
 # シナリオ4: UIバーとマス目の表示
 # ---------------------------------------------------
-func run_ui_scenario() -> void:
+func run_ui_scenario() -> bool:
 	print("[シナリオ] UIバーとマス目")
 	var overlay = main.grid_overlay
 	
@@ -238,12 +244,13 @@ func run_ui_scenario() -> void:
 	await capture("ui_02_help_open")
 	await click_button(help_button)
 	check(not main.help_panel.visible, "もう一度押すと説明が閉じる")
+	return true
 
 # ---------------------------------------------------
 # シナリオ5: エレベーター（1本のシャフトで1台のカゴが指定階に停まる）
 # 事前配置のブロック（x=-8〜7, y=15〜18）の右隣 x=8 に、y=14〜18 のシャフトを建てる。
 # ---------------------------------------------------
-func run_elevator_scenario() -> void:
+func run_elevator_scenario() -> bool:
 	print("[シナリオ] エレベーター")
 	var elevators = main.elevator_system
 	var x := 8
@@ -291,6 +298,68 @@ func run_elevator_scenario() -> void:
 	# 範囲外の階は呼べない
 	check(not car.request_floor(17), "シャフトの範囲外の階には呼べない")
 	await capture("elevator_03_split")
+	return true
+
+# ---------------------------------------------------
+# シナリオ6: 住人がエレベーターに乗って移動する
+# x=8 に y=13〜18 のシャフト、上の階 y=13 に x=5〜7 のオフィスを建てる。
+# 住人はブロック上段(0,15)から、シャフト(8,15)でカゴを待って乗り、(8,13)で降りて(5,13)へ向かう。
+# ---------------------------------------------------
+func run_ride_scenario() -> bool:
+	print("[シナリオ] 住人がエレベーターに乗る")
+	main.funds = 10000000 # 建設費を気にせず並べられるようにする
+	var x := 8
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	var car = main.elevator_system.cars[0]
+	var arrivals: Array[int] = []
+	car.arrived.connect(func(y): arrivals.append(y))
+	
+	await click_button(main.mode_buttons["resident"])
+	await click_cell(Vector2i(0, 15), MOUSE_BUTTON_LEFT)
+	var resident = main.residents.back()
+	var goal := Vector2i(5, 13)
+	await click_cell(goal, MOUSE_BUTTON_LEFT)
+	check(resident.is_moving(), "エレベーターのある上の階を指定すると移動を始める")
+	var path: Array[Vector2i] = [resident.cell]
+	path.append_array(resident.path)
+	check(count_rides(path) == 1, "経路にエレベーターの乗車が1回含まれる")
+	
+	Engine.time_scale = 4.0
+	await wait_until(func(): return resident.state == resident.State.WAITING, 10.0)
+	check(resident.cell == Vector2i(x, 15), "シャフトの前(8,15)でカゴを待つ")
+	await capture("ride_01_waiting")
+	await wait_until(func(): return resident.state == resident.State.RIDING, 10.0)
+	check(car.current_floor() == 15, "カゴが住人の階に来てから乗り込む")
+	await wait_until(func(): return car.state == car.State.MOVING, 10.0)
+	await capture("ride_02_riding")
+	await wait_until(func(): return not resident.is_moving(), 15.0)
+	Engine.time_scale = 1.0
+	check(arrivals.has(15) and arrivals.has(13), "カゴが乗る階(15)と降りる階(13)に停まる")
+	check(resident.cell == goal, "住人がエレベーターを使って目的地に着く")
+	await capture("ride_03_arrived")
+	
+	# 階段とエレベーターの使い分け
+	# x=9 に y=14〜18 の階段を積み、y=13 にオフィスを置く（x=8のシャフトと並ぶ）
+	await click_button(main.mode_buttons["stairs"])
+	for y in range(18, 13, -1):
+		await click_cell(Vector2i(9, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	await click_cell(Vector2i(9, 13), MOUSE_BUTTON_LEFT)
+	check(count_rides(main.find_path(Vector2i(8, 15), Vector2i(8, 14))) == 0, "1階だけの移動なら階段を使う")
+	check(count_rides(main.find_path(Vector2i(8, 18), Vector2i(8, 13))) == 1, "5階離れた移動ならエレベーターを使う")
+	return true
+
+func count_rides(path: Array[Vector2i]) -> int:
+	var rides := 0
+	for i in path.size() - 1:
+		if main.is_elevator_ride(path[i], path[i + 1]):
+			rides += 1
+	return rides
 
 func hover_cell(cell: Vector2i) -> void:
 	var tile_map: TileMapLayer = main.tile_map

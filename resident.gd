@@ -1,18 +1,27 @@
 extends Node2D
 
 # ---------------------------------------------------
-# 住人：グリッド上を1マスずつ歩き、階段で上下の階へ移動する。
+# 住人：グリッド上を1マスずつ歩き、階段やエレベーターで上下の階へ移動する。
 # 移動できるかどうかの判断と経路探索は world（main.gd）に任せる。
 # TileMapLayerの子として追加するので、positionはタイルマップ座標系。
+#
+# 状態:
+#   WALKING  … 経路に沿って歩く（階段の上り下りを含む）
+#   WAITING  … シャフトの前でカゴを待つ（扉が開いたら乗る）
+#   RIDING   … カゴに乗っている（目的の階で扉が開いたら降りる）
 # ---------------------------------------------------
+
+enum State { WALKING, WAITING, RIDING }
 
 const WALK_SPEED := 48.0   # 横移動の速さ（px/秒）
 const STAIRS_SPEED := 24.0 # 階段での上下移動の速さ（px/秒）
 
 var world: Node2D              # main.gd（グリッド情報と経路探索を持つ）
-var cell: Vector2i             # 現在いるマス
+var cell: Vector2i             # 現在いるマス（乗車中は乗ったマス）
 var goal: Vector2i             # 目的地のマス
 var path: Array[Vector2i] = [] # これから進むマス（先頭が次のマス）
+var state := State.WALKING
+var car = null                 # 待っている／乗っているカゴ
 var selected := false:
 	set(value):
 		selected = value
@@ -23,7 +32,7 @@ func setup(p_world: Node2D, start_cell: Vector2i) -> void:
 	cell = start_cell
 	goal = start_cell
 	position = world.tile_map.map_to_local(cell)
-	z_index = 10 # タイルより手前に描く
+	z_index = 10 # タイルやカゴより手前に描く
 
 func is_moving() -> bool:
 	return not path.is_empty()
@@ -36,35 +45,100 @@ func go_to(target: Vector2i) -> bool:
 	new_path.pop_front() # 先頭は現在地なので除く
 	path = new_path
 	goal = target
+	state = State.WALKING
+	car = null
 	queue_redraw()
 	return true
 
 func _process(delta: float) -> void:
+	match state:
+		State.WALKING:
+			process_walking(delta)
+		State.WAITING:
+			process_waiting()
+		State.RIDING:
+			process_riding()
+	queue_redraw()
+
+func process_walking(delta: float) -> void:
 	# 立っているマスが撤去されたら退場する
 	if world.is_cell_empty(cell):
-		world.show_message("住人の足元が撤去されたため、住人が退場しました")
-		queue_free()
+		leave("住人の足元が撤去されたため、住人が退場しました")
 		return
 	if path.is_empty():
 		return
 
 	var next: Vector2i = path[0]
-	var target_pos: Vector2 = world.tile_map.map_to_local(next)
+	var at_cell_center: bool = position == world.tile_map.map_to_local(cell)
 
 	# マスの中心から次の一歩を踏み出す前に、まだ通れるか確認する
-	if position == world.tile_map.map_to_local(cell) and not world.can_move(cell, next):
+	if at_cell_center and not world.can_move(cell, next):
 		if not go_to(goal):
 			path.clear()
 			world.show_message("経路が途切れたため、住人が立ち止まりました")
-			queue_redraw()
 		return
 
+	# 次の一歩がエレベーターなら、カゴを呼んで待つ
+	if at_cell_center and world.is_elevator_ride(cell, next):
+		car = world.elevator_system.get_car_at(cell)
+		car.request_floor(cell.y)
+		state = State.WAITING
+		return
+
+	var target_pos: Vector2 = world.tile_map.map_to_local(next)
 	var speed := STAIRS_SPEED if next.y != cell.y else WALK_SPEED
 	position = position.move_toward(target_pos, speed * delta)
 	if position == target_pos:
 		cell = next
 		path.pop_front()
-	queue_redraw()
+
+func process_waiting() -> void:
+	if world.is_cell_empty(cell):
+		leave("住人の足元が撤去されたため、住人が退場しました")
+		return
+	# シャフトが変わってカゴがなくなった／行き先の階に行けなくなったら経路を探し直す
+	if not is_instance_valid(car) or not world.can_move(cell, path[0]):
+		if not go_to(goal):
+			path.clear()
+			state = State.WALKING
+			world.show_message("経路が途切れたため、住人が立ち止まりました")
+		return
+	# この階でカゴの扉が開いたら乗り込み、行き先の階を押す
+	if car.is_doors_open_at(cell.y):
+		car.request_floor(path[0].y)
+		state = State.RIDING
+	else:
+		car.request_floor(cell.y) # 呼び出しが取り消されていたら呼び直す
+
+func process_riding() -> void:
+	# 乗っているカゴがなくなったら退場する（シャフトごと撤去されたなど）
+	if not is_instance_valid(car):
+		leave("乗っていたエレベーターが撤去されたため、住人が退場しました")
+		return
+	position = car.position # カゴと一緒に動く
+	var dest: Vector2i = path[0]
+	if not car.has_floor(dest.y):
+		dest = Vector2i(car.column, car.current_floor()) # 行き先の階がなくなったら、今の階で降りる
+		if not car.is_doors_open_at(dest.y):
+			car.request_floor(dest.y)
+			return
+	# 目的の階で扉が開いたら降りる
+	if car.is_doors_open_at(dest.y):
+		cell = dest
+		position = world.tile_map.map_to_local(cell)
+		car = null
+		state = State.WALKING
+		if path[0] == dest:
+			path.pop_front()
+		elif not go_to(goal):
+			path.clear()
+			world.show_message("経路が途切れたため、住人が立ち止まりました")
+	else:
+		car.request_floor(dest.y) # 呼び出しが取り消されていたら押し直す
+
+func leave(message: String) -> void:
+	world.show_message(message)
+	queue_free()
 
 func _draw() -> void:
 	# 残りの経路を線で表示する
@@ -80,3 +154,8 @@ func _draw() -> void:
 	draw_rect(Rect2(-3, -1, 6, 9), Color.BLACK)
 	draw_circle(Vector2(0, -4), 2.5, color)
 	draw_rect(Rect2(-2, 0, 4, 7), color)
+
+	# カゴを待っている間は頭の上に「…」を出す
+	if state == State.WAITING:
+		for i in 3:
+			draw_circle(Vector2(-3 + i * 3, -10), 1.0, Color.WHITE)
