@@ -19,9 +19,10 @@ const EventSystem := preload("res://event_system.gd")
 # ---------------------------------------------------
 # 建物の定義（種類を増やすときはここに追記する）
 # 見た目は pixel_art.gd のドット絵（TILES に同じ名前で描く）
+# width: 横のマス数（省略時は1）。建設・撤去はこのまとまり（ユニット）ごとに行い、cost はユニット1つ分
 # ---------------------------------------------------
 const BUILDINGS := {
-	"office": {"name": "オフィス", "cost": 100000, "source_id": 0},
+	"office": {"name": "オフィス", "cost": 400000, "source_id": 0, "width": 4},
 	"stairs": {"name": "階段", "cost": 50000, "source_id": 1},
 	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2},
 	"hotel": {"name": "シングル", "cost": 150000, "source_id": 3},
@@ -235,7 +236,8 @@ func create_ui():
 		"左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
-		"社員: オフィス1マスに1人。8〜9時に入口から出勤し、17〜18時に帰る",
+		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
+		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
 		"入口: 1階の左端と地下鉄駅（地下にだけ建てられる）。人は近い方の入口から出入りする",
 		"速度: 1x / 4x / 16x で時間の進みを早送り",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
@@ -404,11 +406,14 @@ func apply_pixel_art_tiles():
 			var grid: Vector2i = source.get_atlas_grid_size()
 			source.texture = ImageTexture.create_from_image(PixelArt.make_atlas_image(type, grid.x, grid.y))
 		else:
+			# 横に複数マスの建物は、絵の区画ごとにタイル (0,0), (1,0), ... を作る
 			var source := TileSetAtlasSource.new()
 			source.texture = ImageTexture.create_from_image(PixelArt.make_tile_image(type))
 			source.texture_region_size = tile_set.tile_size
-			source.create_tile(Vector2i.ZERO)
+			for i in get_width(type):
+				source.create_tile(Vector2i(i, 0))
 			tile_set.add_source(source, id)
+		assert(PixelArt.tile_width(type) == get_width(type), "%s のドット絵の横幅が BUILDINGS の width と違います" % type)
 
 # BUILDINGSの定義をもとに、TileSetのカスタムデータ「type」を設定する
 # （メモリ上のみ。.tscnには保存されないため、エディタ上では空のまま見える）
@@ -421,12 +426,26 @@ func apply_tile_types():
 			source.get_tile_data(coords, 0).set_custom_data("type", type)
 
 # エディタで事前に置いたタイルをグリッド情報に取り込む
+# 同じ行で左右につながった同じ種類のマスを、左から建物の横幅ずつユニットにまとめる
 func load_grid_from_tilemap():
 	building_grid.clear()
+	var cells: Array[Vector2i] = []
 	for cell in tile_map.get_used_cells():
-		var type = get_type_from_tile(cell)
-		if BUILDINGS.has(type):
-			building_grid[cell] = {"type": type}
+		if BUILDINGS.has(get_type_from_tile(cell)):
+			cells.append(cell)
+	cells.sort_custom(func(a, b): return a.y < b.y or (a.y == b.y and a.x < b.x))
+	for cell in cells:
+		var type := get_type_from_tile(cell)
+		var left := cell + Vector2i.LEFT
+		var origin := cell
+		# 左隣が同じ種類で、そのユニットにまだ空きがあれば、同じユニットに入れる
+		if building_grid.has(left) and building_grid[left].type == type:
+			var left_origin: Vector2i = building_grid[left].origin
+			if cell.x - left_origin.x < get_width(type):
+				origin = left_origin
+		building_grid[cell] = {"type": type, "origin": origin}
+		# ユニットの何マス目かに合わせて、ドット絵の区画を置き直す
+		tile_map.set_cell(cell, BUILDINGS[type].source_id, Vector2i(cell.x - origin.x, 0))
 
 # タイルのカスタムデータ「type」から建物の種類を取得する（空マスなら ""）
 func get_type_from_tile(cell: Vector2i) -> String:
@@ -443,6 +462,34 @@ func get_building_type(cell: Vector2i) -> String:
 
 func is_cell_empty(cell: Vector2i) -> bool:
 	return not building_grid.has(cell)
+
+# 建物の横幅（マス数）
+func get_width(type: String) -> int:
+	return BUILDINGS[type].get("width", 1)
+
+# 左端 origin から建物を建てたときに使うマスの一覧
+func get_footprint(origin: Vector2i, type: String) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for i in get_width(type):
+		cells.append(origin + Vector2i(i, 0))
+	return cells
+
+# 指定マスを含む建物（ユニット）の全マス
+func get_unit_cells(cell: Vector2i) -> Array[Vector2i]:
+	if not building_grid.has(cell):
+		return []
+	return get_footprint(building_grid[cell].origin, building_grid[cell].type)
+
+# 左端 origin に type の建物を建てられない理由（建てられるなら ""）
+func get_build_problem(origin: Vector2i, type: String) -> String:
+	for cell in get_footprint(origin, type):
+		if not is_cell_empty(cell):
+			return "ほかの建物と重なるため建てられません"
+	if type == "subway" and origin.y <= ground_y:
+		return "地下鉄駅は地下（1階より下）にしか建てられません"
+	if funds < BUILDINGS[type].cost:
+		return "資金不足です！"
+	return ""
 
 # 指定した種類の建物がある座標をすべて返す（住人AIの目的地探索用）
 func find_cells_of_type(type: String) -> Array[Vector2i]:
@@ -546,11 +593,15 @@ func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 func can_click_cell(cell: Vector2i) -> bool:
 	if current_mode == MODE_RESIDENT:
 		return not is_cell_empty(cell)
-	if current_mode == "subway" and cell.y <= ground_y:
-		return false # 地下鉄駅は地下にしか建てられない
 	if current_mode == "elevator" and get_building_type(cell) == "elevator":
 		return true # シャフトをクリックするとカゴを呼べる
-	return is_cell_empty(cell) and funds >= BUILDINGS[current_mode].cost
+	return get_build_problem(cell, current_mode) == ""
+
+# カーソル下で強調表示するマス（建設モードなら、建てたときに使うマス全部）
+func get_hover_footprint(cell: Vector2i) -> Array[Vector2i]:
+	if current_mode == MODE_RESIDENT or get_building_type(cell) == "elevator":
+		return [cell]
+	return get_footprint(cell, current_mode)
 
 # ---------------------------------------------------
 # 住人の管理
@@ -666,37 +717,38 @@ func rebuild_systems():
 	housing_system.rebuild()
 	event_system.rebuild()
 
-# 建設処理
+# 建設処理（クリックしたマスを左端として、建物の横幅ぶんのマスに建てる）
 func build_at(map_pos: Vector2i):
 	if not is_cell_empty(map_pos):
 		return
-
+	var problem := get_build_problem(map_pos, current_mode)
+	if problem != "":
+		show_message(problem)
+		return
+	
 	var data = BUILDINGS[current_mode]
-	if current_mode == "subway" and map_pos.y <= ground_y:
-		show_message("地下鉄駅は地下（1階より下）にしか建てられません")
-		return
-	if funds < data.cost:
-		show_message("資金不足です！")
-		return
-
 	funds -= data.cost
-	tile_map.set_cell(map_pos, data.source_id, Vector2i(0, 0))
-	building_grid[map_pos] = {"type": current_mode}
+	var cells := get_footprint(map_pos, current_mode)
+	for i in cells.size():
+		tile_map.set_cell(cells[i], data.source_id, Vector2i(i, 0)) # ドット絵の i 番目の区画
+		building_grid[cells[i]] = {"type": current_mode, "origin": map_pos}
 	rebuild_systems()
 	update_funds_display()
 	show_message("%sを建設しました %s" % [data.name, map_pos])
 
-# 撤去（売却）処理
+# 撤去（売却）処理（建物のどのマスをクリックしても、その建物全体を撤去する）
 func demolish_at(map_pos: Vector2i):
 	if is_cell_empty(map_pos):
 		return
-
+	
 	var type = get_building_type(map_pos)
+	var origin: Vector2i = building_grid[map_pos].origin
 	var refund = int(BUILDINGS[type].cost * REFUND_RATE)
-
+	
 	funds += refund
-	tile_map.erase_cell(map_pos)
-	building_grid.erase(map_pos)
+	for cell in get_unit_cells(map_pos):
+		tile_map.erase_cell(cell)
+		building_grid.erase(cell)
 	rebuild_systems()
 	update_funds_display()
-	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, map_pos, refund])
+	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, origin, refund])

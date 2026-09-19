@@ -59,10 +59,11 @@ func _draw() -> void:
 	for y in range(first.y, last.y + 1):
 		draw_line(Vector2(visible_rect.position.x, y * tile_size.y), Vector2(visible_rect.end.x, y * tile_size.y), GRID_COLOR, -1)
 
-	# 建物ごとの枠線
+	# 建物（ユニット）ごとの枠線。横に複数マスの建物は、まとめて1つの枠で囲む
 	var width := BORDER_WIDTH * px
 	for cell in world.building_grid:
-		draw_rect(cell_rect(cell, tile_size).grow(-width / 2.0), BORDER_COLOR, false, width)
+		if world.building_grid[cell].origin == cell:
+			draw_rect(cells_rect(world.get_unit_cells(cell), tile_size).grow(-width / 2.0), BORDER_COLOR, false, width)
 
 	# 入口（マスの左端に扉と、中へ向かう矢印。1階の入口は緑、地下鉄駅は水色）
 	for entrance in world.get_entrances():
@@ -73,14 +74,22 @@ func _draw() -> void:
 		draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -3), mid + Vector2(4, 0), mid + Vector2(0, 3)]), color)
 	
 	# カーソル下のマス
+	# 建設モードなら、建てたときに使うマス全体を強調する
 	if hover_visible:
 		var color := HOVER_OK_COLOR if world.can_click_cell(hover_cell) else HOVER_NG_COLOR
-		var rect := cell_rect(hover_cell, tile_size)
+		var rect := cells_rect(world.get_hover_footprint(hover_cell), tile_size)
 		draw_rect(rect, Color(color, 0.25))
 		draw_rect(rect.grow(-px), color, false, 2.0 * px)
 
 func cell_rect(cell: Vector2i, tile_size: Vector2) -> Rect2:
 	return Rect2(Vector2(cell) * tile_size, tile_size)
+
+# 複数マスをまとめて囲む四角形
+func cells_rect(cells: Array[Vector2i], tile_size: Vector2) -> Rect2:
+	var rect := cell_rect(cells[0], tile_size)
+	for cell in cells:
+		rect = rect.merge(cell_rect(cell, tile_size))
+	return rect
 
 
 # 画面に映っている範囲（タイルマップ座標系）

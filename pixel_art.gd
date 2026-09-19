@@ -1,8 +1,9 @@
 extends RefCounted
 
 # ---------------------------------------------------
-# ドット絵：建物のタイル（16×16ドット）を文字で描き、起動時に画像にする。
+# ドット絵：建物のタイル（1マス = 16×16ドット）を文字で描き、起動時に画像にする。
 # 1文字 = 1ドット。文字と色の対応は PALETTE、"." は透明。
+# 横に何マスかにまたがる建物は、横幅 16×マス数 の絵として描く（例: オフィスは4マス = 64ドット）。
 # 画像ファイルを用意しなくても、ここを書き換えるだけで見た目を変えられる。
 # ---------------------------------------------------
 
@@ -58,22 +59,22 @@ const PALETTE := {
 
 const TILES := {
 	"office": [
-		"KKKKKKKKKKKKKKKK",
-		"WWWWWWWWWWWWWWWW",
-		"WBBBBBBWWBBBBBBW",
-		"WBwwwvBWWBwwwvBW",
-		"WBwwvwBWWBwwvwBW",
-		"WBwwwwBWWBwwwwBW",
-		"WBBBBBBWWBBBBBBW",
-		"WWWWWWWWWWWWWWWW",
-		"WWWMMMMWWWWWWWWW",
-		"WWWMmmMWWWWCCCWW",
-		"WWWMMMMWWWWCCCWW",
-		"WDDDDDDDDWWWCWWW",
-		"WdWWWWWWdWWCCCWW",
-		"WdWWWWWWdWWCWCWW",
-		"FFFFFFFFFFFFFFFF",
-		"KKKKKKKKKKKKKKKK",
+		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+		"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWB",
+		"WWWWWWWWWWWWWWWWWBBBBBBWWBBBBBBWWBBBBBBWWBBBBBBWWBBBBBBWWBBBBBBB",
+		"WWKKKKKKKWWWWWWWWBwwwvBWWBwwwvBWWBwwwvBWWBwwwvBWWBwwwvBWWBwwwvBB",
+		"WWKaaaaaKWWWWWWWWBwwvwBWWBwwvwBWWBwwvwBWWBwwvwBWWBwwvwBWWBwwvwBB",
+		"WWKKKKKKKWWWWWWWWBwwwwBWWBwwwwBWWBwwwwBWWBwwwwBWWBwwwwBWWBwwwwBB",
+		"WWWWWWWWWWWWWWWWWBBBBBBWWBBBBBBWWBBBBBBWWBBBBBBWWBBBBBBWWBBBBBBB",
+		"WWBBBBBWWWWWWppWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWB",
+		"WWBoooBWWWWWppppWWWMMMMWWWWWWWWWWWWMMMMWWWWWWWWWWWWMMMMWWWWWWWWB",
+		"WWBoooBWWWWWWppWWWWMmmMWWWWCCCWWWWWMmmMWWWWCCCWWWWWMvvMWWWWCCCWB",
+		"WWBoooBWWWWWWOWWWWWMMMMWWWWCCCWWWWWMMMMPPWWCCCWWWWWMMMMWWWWCCCWB",
+		"WWBoaoBWWWWWWOWWWDDDDDDDDWWWCWWWWDDDDDDDDWWWCWWWWDDDDDDDDWWWCWWB",
+		"WWBoooBWWWWWeeeWWdWWWWWWdWWCCCWWWdWWWWWWdWWCCCWWWdWWWWWWdWWCCCWB",
+		"WWBoooBWWWWWWeWWWdWWWWWWdWWCWCWWWdWWWWWWdWWCWCWWWdWWWWWWdWWCWCWB",
+		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 	],
 	"stairs": [
 		"KKKKKKKKKKKKKKKK",
@@ -329,21 +330,29 @@ const TILES := {
 	],
 }
 
-# 指定した建物のタイル画像（16×16）を作る
+# 建物の横幅（マス数）
+static func tile_width(type: String) -> int:
+	return TILES[type][0].length() / SIZE
+
+# 指定した建物の絵全体の画像（横 16×マス数、縦 16）を作る
 static func make_tile_image(type: String) -> Image:
-	var image := Image.create(SIZE, SIZE, false, Image.FORMAT_RGBA8)
 	var rows: Array = TILES[type]
+	var width: int = rows[0].length()
+	var image := Image.create(width, SIZE, false, Image.FORMAT_RGBA8)
 	for y in SIZE:
-		for x in SIZE:
+		for x in width:
 			var ch: String = rows[y][x]
 			image.set_pixel(x, y, PALETTE.get(ch, Color.TRANSPARENT))
 	return image
 
 # タイルを columns × rows 個並べた画像（1枚の画像を複数タイルに分けているTileSetのソース用）
+# 横に複数マスの建物は、左から順に絵の区画を並べる（列 x には区画 x % マス数）
 static func make_atlas_image(type: String, columns: int, rows: int) -> Image:
-	var tile := make_tile_image(type)
+	var sprite := make_tile_image(type)
+	var width := tile_width(type)
 	var atlas := Image.create(SIZE * columns, SIZE * rows, false, Image.FORMAT_RGBA8)
 	for ty in rows:
 		for tx in columns:
-			atlas.blit_rect(tile, Rect2i(0, 0, SIZE, SIZE), Vector2i(tx * SIZE, ty * SIZE))
+			var segment := tx % width
+			atlas.blit_rect(sprite, Rect2i(segment * SIZE, 0, SIZE, SIZE), Vector2i(tx * SIZE, ty * SIZE))
 	return atlas
