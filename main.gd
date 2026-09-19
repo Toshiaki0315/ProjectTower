@@ -1,5 +1,7 @@
 extends Node2D
 
+const Resident := preload("res://resident.gd")
+
 @onready var tile_map = $TileMapLayer
 
 # ---------------------------------------------------
@@ -10,11 +12,16 @@ const BUILDINGS := {
 	"stairs": {"name": "階段", "cost": 50000, "source_id": 1},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
+const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
 
 var funds: int = 1000000
 var current_mode: String = "office"
 var funds_label: Label # 資金表示用のUIラベル
+var message_label: Label # 操作結果のメッセージ表示用
 var mode_buttons: Dictionary = {} # モード名 -> Button
+
+var residents: Array = [] # 配置済みの住人
+var selected_resident = null # 行き先の指示を待っている住人
 
 # ---------------------------------------------------
 # グリッド情報（建物のマップデータ）
@@ -53,7 +60,7 @@ func create_ui():
 
 	# 同じグループのボタンは1つだけ押下状態になる（ラジオボタン的な挙動）
 	var group = ButtonGroup.new()
-	for mode in BUILDINGS:
+	for mode in BUILDINGS.keys() + [MODE_RESIDENT]:
 		var btn = Button.new()
 		btn.toggle_mode = true
 		btn.button_group = group
@@ -63,22 +70,35 @@ func create_ui():
 
 	# 操作説明
 	var help_label = Label.new()
-	help_label.text = "左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）"
+	help_label.text = "左クリック: 建設 / 右クリック: 撤去（建設費の半額を返金）\n住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動"
 	vbox.add_child(help_label)
+
+	# 操作結果のメッセージ
+	message_label = Label.new()
+	message_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	vbox.add_child(message_label)
 
 	update_mode_buttons()
 
 # モードを切り替える
 func select_mode(mode: String):
 	current_mode = mode
+	if mode != MODE_RESIDENT:
+		select_resident(null)
 	update_mode_buttons()
+
+# ボタンに表示するモード名
+func get_mode_label(mode: String) -> String:
+	if mode == MODE_RESIDENT:
+		return "住人 (テスト)"
+	var data = BUILDINGS[mode]
+	return "%s (%d万円)" % [data.name, data.cost / 10000]
 
 # 選択中のボタンを強調表示する
 func update_mode_buttons():
 	for mode in mode_buttons:
 		var btn: Button = mode_buttons[mode]
-		var data = BUILDINGS[mode]
-		var label = "%s (%d万円)" % [data.name, data.cost / 10000]
+		var label = get_mode_label(mode)
 		if mode == current_mode:
 			btn.text = "▶ " + label + " [選択中]"
 			btn.button_pressed = true
@@ -91,6 +111,12 @@ func update_mode_buttons():
 func update_funds_display():
 	if funds_label:
 		funds_label.text = "現在の資金: " + str(funds) + "円"
+
+# 画面とログにメッセージを出す
+func show_message(text: String):
+	if message_label:
+		message_label.text = text
+	print(text)
 
 # ---------------------------------------------------
 # グリッド情報の管理
@@ -139,6 +165,97 @@ func find_cells_of_type(type: String) -> Array[Vector2i]:
 	return result
 
 # ---------------------------------------------------
+# 移動ルールと経路探索
+# ---------------------------------------------------
+
+# 隣り合う2マス間を移動できるか（住人の移動可否はすべてこの関数で判断する）
+# - 横移動: 両方のマスに建物があれば通れる
+# - 上下移動: 下側のマスが階段なら通れる（階段はそのマスと1つ上の階をつなぐ）
+func can_move(from: Vector2i, to: Vector2i) -> bool:
+	if is_cell_empty(from) or is_cell_empty(to):
+		return false
+	var diff := to - from
+	if diff.y == 0:
+		return absi(diff.x) == 1
+	if diff.x != 0 or absi(diff.y) != 1:
+		return false
+	var lower := from if from.y > to.y else to # yが大きい方が下の階
+	return get_building_type(lower) == "stairs"
+
+# 指定マスから1歩で移動できるマスの一覧
+func get_neighbors(cell: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for dir in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		if can_move(cell, cell + dir):
+			result.append(cell + dir)
+	return result
+
+# 幅優先探索で最短経路を求める
+# 戻り値: [from, ..., to] のマス配列。経路がなければ空配列。
+func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if is_cell_empty(from) or is_cell_empty(to):
+		return result
+
+	var came_from := {} # マス -> 1つ前のマス
+	came_from[from] = from
+	var queue: Array[Vector2i] = [from]
+	var head := 0
+	while head < queue.size():
+		var current: Vector2i = queue[head]
+		head += 1
+		if current == to:
+			# ゴールからスタートまで逆にたどって経路を組み立てる
+			var c := to
+			while c != from:
+				result.push_front(c)
+				c = came_from[c]
+			result.push_front(from)
+			return result
+		for next in get_neighbors(current):
+			if not came_from.has(next):
+				came_from[next] = current
+				queue.append(next)
+	return result
+
+# ---------------------------------------------------
+# 住人の管理
+# ---------------------------------------------------
+
+func spawn_resident(cell: Vector2i):
+	var resident = Resident.new()
+	resident.setup(self, cell)
+	tile_map.add_child(resident)
+	residents = residents.filter(is_instance_valid) # 退場した住人を除く
+	residents.append(resident)
+	return resident
+
+func select_resident(resident):
+	if is_instance_valid(selected_resident):
+		selected_resident.selected = false
+	selected_resident = resident
+	if resident:
+		resident.selected = true
+
+# 住人モードでのクリック処理
+# 1回目: 住人を配置 / 2回目: その住人の行き先を指定
+func handle_resident_click(cell: Vector2i):
+	if is_cell_empty(cell):
+		show_message("建物のあるマスをクリックしてください")
+		return
+
+	if not is_instance_valid(selected_resident):
+		select_resident(spawn_resident(cell))
+		show_message("住人を配置しました。行き先のマスをクリックしてください")
+		return
+
+	if selected_resident.go_to(cell):
+		show_message("住人が %s へ移動を始めました（%dマス）" % [cell, selected_resident.path.size()])
+		select_resident(null)
+	else:
+		show_message("そこへの経路がありません（上の階へ行くには階段が必要です）")
+
+# ---------------------------------------------------
 # クリックして建設・撤去するロジック
 # ---------------------------------------------------
 func _unhandled_input(event: InputEvent) -> void:
@@ -149,7 +266,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	var local_event = tile_map.make_input_local(event)
 	var map_pos: Vector2i = tile_map.local_to_map(local_event.position)
 	if event.button_index == MOUSE_BUTTON_LEFT:
-		build_at(map_pos)
+		if current_mode == MODE_RESIDENT:
+			handle_resident_click(map_pos)
+		else:
+			build_at(map_pos)
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
 		demolish_at(map_pos)
 
@@ -160,14 +280,14 @@ func build_at(map_pos: Vector2i):
 
 	var data = BUILDINGS[current_mode]
 	if funds < data.cost:
-		print("資金不足です！")
+		show_message("資金不足です！")
 		return
 
 	funds -= data.cost
 	tile_map.set_cell(map_pos, data.source_id, Vector2i(0, 0))
 	building_grid[map_pos] = {"type": current_mode}
 	update_funds_display()
-	print(data.name, "を建設しました ", map_pos)
+	show_message("%sを建設しました %s" % [data.name, map_pos])
 
 # 撤去（売却）処理
 func demolish_at(map_pos: Vector2i):
@@ -181,4 +301,4 @@ func demolish_at(map_pos: Vector2i):
 	tile_map.erase_cell(map_pos)
 	building_grid.erase(map_pos)
 	update_funds_display()
-	print(BUILDINGS[type].name, "を撤去しました ", map_pos, " 払い戻し: ", refund, "円")
+	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, map_pos, refund])
