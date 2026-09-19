@@ -19,7 +19,7 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -213,9 +213,9 @@ func run_ui_scenario() -> bool:
 	var overlay = main.grid_overlay
 	
 	# 上部バーの上をクリックしても、その下のマスには建設されない
-	# 最後のモードボタンの右隣（ボタンのない位置）
-	var last_button: Button = main.mode_buttons.values().back()
-	var bar_pos := Vector2(last_button.get_global_rect().end.x + 40, last_button.get_global_rect().get_center().y)
+	# 上部バー1段目の、時刻の右隣（速度ボタンとの間の、ボタンのない位置）
+	var clock_rect: Rect2 = main.clock_label.get_global_rect()
+	var bar_pos := Vector2(clock_rect.end.x + 40, clock_rect.get_center().y)
 	var cell_under_bar: Vector2i = main.tile_map.local_to_map(main.camera.screen_to_world(bar_pos))
 	await click_at(bar_pos, MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(cell_under_bar) and main.funds == 1000000, "上部バーの上をクリックしても建設されない")
@@ -646,6 +646,67 @@ func run_hotel_scenario() -> bool:
 	check(main.economy_system.last_report.get("hotel") == 60000, "2日目の決算に宿泊料6万円が入る")
 	check(main.economy_system.last_report.get("maintenance") == 5000, "ハウスキーパー室の維持費5千円がかかる")
 	check(main.message_label.text.contains("宿泊料 +60,000円"), "決算のメッセージに宿泊料が出る")
+	return true
+
+# ---------------------------------------------------
+# シナリオ12: 飲食店（社員の昼食）
+# シナリオ9と同じ建物（孤立したオフィスなし）＋ 1階のシャフトの右隣(9,18)に飲食店。
+# 上の階の社員はエレベーターで1階に降りて食事をし、また戻る。
+# ---------------------------------------------------
+func run_lunch_scenario() -> bool:
+	print("[シナリオ] 飲食店")
+	main.funds = 10000000
+	var commute = main.commute_system
+	var commerce = main.commerce_system
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["office"])
+	for ox in range(5, 8):
+		await click_cell(Vector2i(ox, 13), MOUSE_BUTTON_LEFT)
+	var restaurant := Vector2i(9, 18)
+	await click_button(main.mode_buttons["restaurant"])
+	await click_cell(restaurant, MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(restaurant) == "restaurant", "飲食店を建てられる（20万円）")
+	check(main.funds == 10000000 - 6 * 100000 - 3 * 100000 - 200000, "飲食店の建設費20万円がかかる")
+	
+	# 朝のうちに全員出勤させる
+	main.clock.set_time(1, 7, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 8.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
+	check(commute.count_at_office() == 67, "10時には67人全員がオフィスにいる")
+	
+	# 昼休み
+	var car = main.elevator_system.cars[0]
+	var lunch_stops := [0]
+	car.arrived.connect(func(_y): lunch_stops[0] += 1)
+	main.clock.set_time(1, 11, 59)
+	Engine.time_scale = 16.0
+	var max_eating := [0]
+	var captured := [false]
+	await wait_until(func():
+		var eating: int = commerce.count_eating_at(restaurant)
+		max_eating[0] = maxi(max_eating[0], eating)
+		return eating >= 10, 30.0)
+	await hover_cell(restaurant)
+	check(main.hover_label.text.contains("飲食店（客 "), "カーソルを合わせると店にいる客の数が出る")
+	await capture("lunch_01_crowd")
+	await wait_until(func():
+		max_eating[0] = maxi(max_eating[0], commerce.count_eating_at(restaurant))
+		return main.clock.minute_of_day() >= 14 * 60 + 30, 30.0)
+	check(max_eating[0] > 0, "昼に社員が飲食店で食事をする")
+	check(lunch_stops[0] > 0, "上の階の社員はエレベーターで飲食店へ行き来する")
+	check(commerce.revenue_by_day.get(1, 0) == 67000, "67人が食事をして売上6.7万円になる")
+	check(commute.count_at_office() == 67, "14時半には全員がオフィスに戻っている")
+	
+	# 1日目の決算に飲食店の売上が入る
+	main.clock.set_time(1, 23, 59)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == 1, 10.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(main.economy_system.last_report.get("food") == 67000, "決算に飲食店の売上6.7万円が入る")
+	check(main.message_label.text.contains("飲食 +67,000円"), "決算のメッセージに飲食の売上が出る")
 	return true
 
 func count_rides(path: Array[Vector2i]) -> int:

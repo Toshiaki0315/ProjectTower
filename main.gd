@@ -7,6 +7,7 @@ const GameClock := preload("res://game_clock.gd")
 const CommuteSystem := preload("res://commute_system.gd")
 const EconomySystem := preload("res://economy_system.gd")
 const HotelSystem := preload("res://hotel_system.gd")
+const CommerceSystem := preload("res://commerce_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
@@ -21,6 +22,7 @@ const BUILDINGS := {
 	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2, "color": Color(0.33, 0.35, 0.4), "rails": true},
 	"hotel": {"name": "ホテル客室", "cost": 150000, "source_id": 3, "color": Color(0.55, 0.4, 0.75)},
 	"housekeeping": {"name": "ハウスキーパー室", "cost": 100000, "source_id": 4, "color": Color(0.25, 0.6, 0.6)},
+	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5, "color": Color(0.85, 0.45, 0.2)},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -38,6 +40,7 @@ var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
 var hotel_system # ホテルの客室・宿泊客・清掃員
+var commerce_system # 飲食店（社員の昼食）
 var clock_label: Label # 日付と時刻の表示
 var stats_label: Label # 社員の人数の表示
 
@@ -70,6 +73,9 @@ func _ready() -> void:
 	hotel_system.setup(self)
 	tile_map.add_child(hotel_system)
 	hotel_system.rebuild()
+	commerce_system = CommerceSystem.new()
+	commerce_system.setup(self)
+	add_child(commerce_system)
 	economy_system = EconomySystem.new()
 	economy_system.setup(self)
 	add_child(economy_system)
@@ -194,7 +200,8 @@ func create_ui():
 		"速度: 1x / 4x / 16x で時間の進みを早送り",
 		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料2万円を払って帰る。清掃が済むまで次の客は泊まれない",
 		"ハウスキーパー室: 清掃員が1人。清掃待ちの部屋を近い順に掃除する",
-		"収支: 毎日0時に決算。賃料1万円/オフィス、宿泊料、維持費（エレベーター2千円・ハウスキーパー室5千円/マス）",
+		"飲食店: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1千円の売上）",
+		"収支: 毎日0時に決算。賃料1万円/オフィス、宿泊料、飲食店の売上、維持費（エレベーター2千円・ハウスキーパー室5千円/マス）",
 		"ズーム: マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 	])
@@ -316,6 +323,8 @@ func update_hover_label():
 	var text = "マス %s: %s" % [cell, BUILDINGS[type].name if type != "" else "空き"]
 	if type == "hotel":
 		text += "（%s）" % hotel_system.get_room_state_text(cell)
+	elif type == "restaurant":
+		text += "（客 %d人）" % commerce_system.count_eating_at(cell)
 	var resident = get_resident_at(cell)
 	if resident:
 		text += " / 住人のストレス: %d" % int(resident.stress)
