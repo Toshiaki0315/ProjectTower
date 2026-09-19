@@ -287,34 +287,50 @@ godot --path . -s res://tools/generate_readme_images.gd
 
 ## ファイル構成
 
-UIやゲームの仕組みはすべてコード（GDScript）で作っています（コードファースト）。エディタで作ったのは `main.tscn`（タイルマップとカメラ）だけです。
+UIやゲームの仕組みはすべてコード（GDScript）で作っています（コードファースト）。エディタで作ったのは `scenes/main.tscn`（タイルマップとカメラ）だけです。
+
+```
+ProjectTower/
+├── README.md / Tasks.md / Claude.md   … このファイル・タスク一覧・AIアシスタント向けのルール
+├── project.godot / icon.svg           … Godot のプロジェクト設定とアイコン
+├── scenes/     main.tscn               … メインのシーン（タイルマップとカメラ）
+├── scripts/
+│   ├── main.gd                         … ゲーム全体
+│   ├── systems/                        … ゲームの仕組み（時計・エレベーター・テナント・お金など）
+│   ├── actors/                         … 動くもの（人・エレベーターのカゴ）
+│   └── view/                           … 見た目と操作（ドット絵・背景・明かり・カメラ）
+├── assets/     stairs.svg              … シーンのタイルの元画像（起動時にドット絵に差し替える）
+├── docs/       仕様書などのドキュメントと、README の画像（images/）
+├── tests/      画面確認テスト
+└── tools/      README の画像を作るスクリプト
+```
 
 | ファイル | 役割 |
 |---|---|
-| `main.tscn` / `main.gd` | ゲーム全体。建物の定義（`BUILDINGS`、建てられる階の決まり）、建設・撤去、UI、移動ルールと経路探索（ダイクストラ法） |
-| `pixel_art.gd` | 建物のドット絵（文字で描いた絵と色の表） |
-| `resident.gd` | 人（歩く・エレベーターを待つ・乗る、ストレス、ドット絵） |
-| `elevator_car.gd` | エレベーターのカゴ（集合制御・定員・手間の見積もり） |
-| `elevator_system.gd` | シャフトとカゴの管理、カゴの追加、群管理 |
-| `game_clock.gd` | 時計・曜日、空の色、太陽と月 |
-| `commute_system.gd` | 社員の出勤・退社 |
-| `commerce_system.gd` | 飲食店の昼食 |
-| `hotel_system.gd` | ホテルの客室・宿泊客・清掃員 |
-| `housing_system.gd` | 住宅と入居者の家族 |
-| `event_system.gd` | 結婚式場・イベントホールの来客 |
-| `economy_system.gd` | 毎日の決算（収入・維持費・ゴミ） |
-| `rating_system.gd` | ビルの評価（★） |
-| `tenant_system.gd` | オフィスの評価（良い・普通・悪い）と、退去・入居 |
-| `lighting.gd` | 夜の建物の暗さと部屋の明かり、街灯・入口の照明 |
-| `grid_overlay.gd` | マス目・枠線・カーソル表示、空・星・太陽と月・街灯の柱・土の背景 |
-| `camera_controller.gd` | カメラ（スクロール・ズーム） |
+| `scripts/main.gd` | ゲーム全体。建物の定義（`BUILDINGS`、建てられる階の決まり）、建設・撤去、UI、移動ルールと経路探索（ダイクストラ法） |
+| `scripts/systems/game_clock.gd` | 時計・曜日、空の色、太陽と月 |
+| `scripts/systems/elevator_system.gd` | シャフトとカゴの管理、カゴの追加、群管理 |
+| `scripts/systems/commute_system.gd` | 社員の出勤・退社 |
+| `scripts/systems/commerce_system.gd` | 飲食店の昼食 |
+| `scripts/systems/hotel_system.gd` | ホテルの客室・宿泊客・清掃員 |
+| `scripts/systems/housing_system.gd` | 住宅と入居者の家族 |
+| `scripts/systems/event_system.gd` | 結婚式場・イベントホールの来客 |
+| `scripts/systems/economy_system.gd` | 毎日の決算（収入・維持費・ゴミ） |
+| `scripts/systems/rating_system.gd` | ビルの評価（★） |
+| `scripts/systems/tenant_system.gd` | オフィスの評価（良い・普通・悪い）と、退去・入居 |
+| `scripts/actors/resident.gd` | 人（歩く・エレベーターを待つ・乗る、ストレス、ドット絵） |
+| `scripts/actors/elevator_car.gd` | エレベーターのカゴ（集合制御・定員・手間の見積もり） |
+| `scripts/view/pixel_art.gd` | 建物のドット絵（文字で描いた絵と色の表） |
+| `scripts/view/grid_overlay.gd` | マス目・枠線・カーソル表示、空・星・太陽と月・街灯の柱・土の背景 |
+| `scripts/view/lighting.gd` | 夜の建物の暗さと部屋の明かり、街灯・入口の照明 |
+| `scripts/view/camera_controller.gd` | カメラ（スクロール・ズーム） |
 | `tests/screenshot_test.gd` | 画面確認テスト（クリック操作を再現して確かめ、スクリーンショットを保存） |
 | `tools/generate_readme_images.gd` | README の画像を作るスクリプト |
 
 ## 開発の進め方
 
-- [Project_Overview.md](Project_Overview.md): ゲームのコンセプトと登場アイテム
-- [Game_Spec.md](Game_Spec.md): 目標とするゲームの仕様と、今の実装の状況（実装済み・一部・未実装）
+- [docs/Project_Overview.md](docs/Project_Overview.md): ゲームのコンセプトと登場アイテム
+- [docs/Game_Spec.md](docs/Game_Spec.md): 目標とするゲームの仕様と、今の実装の状況（実装済み・一部・未実装）
 - [Tasks.md](Tasks.md): 開発のフェーズとタスク（完了したものにチェック）
-- [Tech_Stack.md](Tech_Stack.md): 技術選定
+- [docs/Tech_Stack.md](docs/Tech_Stack.md): 技術選定
 - [Claude.md](Claude.md): AIアシスタントに開発を依頼するときのルール

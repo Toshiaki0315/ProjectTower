@@ -1,9 +1,9 @@
 [gd_scene format=4 uid="uid://decu21e68vmlk"]
 
-[ext_resource type="Script" uid="uid://otxychyk4lxj" path="res://main.gd" id="1_ig7tw"]
+[ext_resource type="Script" uid="uid://otxychyk4lxj" path="res://scripts/main.gd" id="1_ig7tw"]
 [ext_resource type="Texture2D" uid="uid://cfu6ciqmhrxl8" path="res://icon.svg" id="2_0xm2m"]
-[ext_resource type="Texture2D" uid="uid://cq3vhixvswhxv" path="res://stairs.svg" id="3_h2yge"]
-[ext_resource type="Script" path="res://camera_controller.gd" id="4_camera"]
+[ext_resource type="Texture2D" uid="uid://cq3vhixvswhxv" path="res://assets/stairs.svg" id="3_h2yge"]
+[ext_resource type="Script" path="res://scripts/view/camera_controller.gd" id="4_camera"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_h2yge"]
 texture = ExtResource("2_0xm2m")

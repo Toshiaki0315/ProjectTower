@@ -1,6 +1,6 @@
 extends SceneTree
 
-const ElevatorCar := preload("res://elevator_car.gd")
+const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 
 # ---------------------------------------------------
 # 画面確認用テスト
@@ -50,7 +50,7 @@ func start_main(standard_block := true) -> void:
 	if main:
 		main.queue_free()
 		await wait_frames(1)
-	main = load("res://main.tscn").instantiate()
+	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	Engine.time_scale = 1.0
 	await wait_frames(3) # _ready()が済むまで待つ

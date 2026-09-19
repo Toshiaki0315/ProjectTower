@@ -1,6 +1,6 @@
 extends Node2D
 
-const ElevatorCar := preload("res://elevator_car.gd")
+const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 
 # ---------------------------------------------------
 # 住人：グリッド上を1マスずつ歩き、階段やエレベーターで上下の階へ移動する。

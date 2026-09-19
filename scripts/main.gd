@@ -1,19 +1,19 @@
 extends Node2D
 
-const Resident := preload("res://resident.gd")
-const PixelArt := preload("res://pixel_art.gd")
-const GridOverlay := preload("res://grid_overlay.gd")
-const ElevatorSystem := preload("res://elevator_system.gd")
-const GameClock := preload("res://game_clock.gd")
-const CommuteSystem := preload("res://commute_system.gd")
-const EconomySystem := preload("res://economy_system.gd")
-const HotelSystem := preload("res://hotel_system.gd")
-const CommerceSystem := preload("res://commerce_system.gd")
-const RatingSystem := preload("res://rating_system.gd")
-const HousingSystem := preload("res://housing_system.gd")
-const EventSystem := preload("res://event_system.gd")
-const Lighting := preload("res://lighting.gd")
-const TenantSystem := preload("res://tenant_system.gd")
+const Resident := preload("res://scripts/actors/resident.gd")
+const PixelArt := preload("res://scripts/view/pixel_art.gd")
+const GridOverlay := preload("res://scripts/view/grid_overlay.gd")
+const ElevatorSystem := preload("res://scripts/systems/elevator_system.gd")
+const GameClock := preload("res://scripts/systems/game_clock.gd")
+const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
+const EconomySystem := preload("res://scripts/systems/economy_system.gd")
+const HotelSystem := preload("res://scripts/systems/hotel_system.gd")
+const CommerceSystem := preload("res://scripts/systems/commerce_system.gd")
+const RatingSystem := preload("res://scripts/systems/rating_system.gd")
+const HousingSystem := preload("res://scripts/systems/housing_system.gd")
+const EventSystem := preload("res://scripts/systems/event_system.gd")
+const Lighting := preload("res://scripts/view/lighting.gd")
+const TenantSystem := preload("res://scripts/systems/tenant_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D

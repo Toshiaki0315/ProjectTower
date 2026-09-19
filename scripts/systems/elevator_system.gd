@@ -10,7 +10,7 @@ extends Node
 #   （ElevatorCar.estimate_cost）が一番小さいカゴに割り当てる。割り当てたカゴが満員になったら割り当て直す。
 # ---------------------------------------------------
 
-const ElevatorCar := preload("res://elevator_car.gd")
+const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 const TYPE := "elevator"
 const MAX_CARS := 4        # 1本のシャフトに置けるカゴの数
 const CAR_COST := 50000    # カゴを1台追加する費用

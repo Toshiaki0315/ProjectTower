@@ -13,11 +13,11 @@ extends SceneTree
 #   screenshots/*.png      … サンプルのビルのゲーム画面（昼・夜）
 # ---------------------------------------------------
 
-const PixelArt := preload("res://pixel_art.gd")
-const Resident := preload("res://resident.gd")
-const HotelSystem := preload("res://hotel_system.gd")
-const HousingSystem := preload("res://housing_system.gd")
-const EventSystem := preload("res://event_system.gd")
+const PixelArt := preload("res://scripts/view/pixel_art.gd")
+const Resident := preload("res://scripts/actors/resident.gd")
+const HotelSystem := preload("res://scripts/systems/hotel_system.gd")
+const HousingSystem := preload("res://scripts/systems/housing_system.gd")
+const EventSystem := preload("res://scripts/systems/event_system.gd")
 
 const OUT := "res://docs/images"
 const BUILDING_SCALE := 4
@@ -96,7 +96,7 @@ func save_elevator_images() -> void:
 
 # サンプルのビルを建てて、昼と夜のゲーム画面を撮る
 func save_screenshots() -> void:
-	var m = load("res://main.tscn").instantiate()
+	var m = load("res://scenes/main.tscn").instantiate()
 	root.add_child(m)
 	for i in 3:
 		await process_frame
