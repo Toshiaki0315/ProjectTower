@@ -68,7 +68,9 @@ func _process(_delta: float) -> void:
 			w.leaving = false
 			continue
 		# 退勤の時刻になったら入口へ向かう（エレベーターに乗っている間は降りてから）
-		if not w.leaving and now >= w.leave and resident.state != resident.State.RIDING:
+		# 出勤した日から日付が変わっていたら（時間を飛ばしたときなど）、時刻に関係なく帰る
+		var time_to_leave: bool = now >= w.leave or w.arrived_day != day
+		if not w.leaving and time_to_leave and resident.state != resident.State.RIDING:
 			w.leaving = true
 			send_home(w)
 		# 帰宅中に入口に着いたら帰る。経路が途切れて立ち止まったら探し直す

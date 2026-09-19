@@ -8,11 +8,12 @@ extends Node
 #   宿泊料:   その日にチェックアウトした客の宿泊料（hotel_system が記録する）
 #   飲食売上: その日に飲食店で食事をした客の代金（commerce_system が記録する）
 #   住宅販売: その日に入居が決まった住宅の販売収入（housing_system が記録する）
+#   イベント: その日に結婚式場・イベントホールに来た客の料金（event_system が記録する）
 #   評価ボーナス: 賃料と宿泊料に、ビルの評価（★）に応じた割合を上乗せ（rating_system）
 #   維持費:   建物ごとの MAINTENANCE × マス数
 #   ゴミ処理: その日の活動で出たゴミのうち、ゴミ処理場で処理しきれない分を外部に委託する費用
 #             ゴミの量 = 出勤があったオフィス数 + チェックアウトした客室数 + 飲食店の客数 / 10
-#                        + 入居済みの住宅数
+#                        + 入居済みの住宅数 + 会場の来客数 / 10
 #             処理能力 = ゴミ処理場のマス数 × RECYCLING_CAPACITY
 # ---------------------------------------------------
 
@@ -24,13 +25,13 @@ const MAINTENANCE := {     # 1マスの1日の維持費
 	"security": 5000,
 	"medical": 10000,
 }
-const MEALS_PER_GARBAGE := 10   # 飲食店の客何人分でゴミ1になるか
+const MEALS_PER_GARBAGE := 10   # 飲食店の客・会場の来客の何人分でゴミ1になるか
 const RECYCLING_CAPACITY := 20  # ゴミ処理場1マスが1日に処理できるゴミの量
 const OUTSOURCE_COST := 1000    # 処理しきれないゴミ1あたりの外部委託費
 
 var world: Node2D # main.gd
 var last_day := 1 # 最後に決算した日の翌日（= 今日）
-var last_report := {} # 最後の決算: {"day", "rent", "hotel", "food", "housing", "bonus", "maintenance", "garbage", "garbage_cost", "total"}
+var last_report := {} # 最後の決算: {"day", "rent", "hotel", "food", "housing", "event", "bonus", "maintenance", "garbage", "garbage_cost", "total"}
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -60,17 +61,20 @@ func settle(day: int) -> void:
 	var checkouts: int = world.hotel_system.checkouts_by_day.get(day, 0)
 	var meals: int = food / world.commerce_system.MEAL_PRICE
 	var housing: int = world.housing_system.revenue_by_day.get(day, 0)
-	var garbage: int = active_offices + checkouts + meals / MEALS_PER_GARBAGE + world.housing_system.count_moved_in()
+	var event: int = world.event_system.revenue_by_day.get(day, 0)
+	var event_visitors: int = world.event_system.visitors_by_day.get(day, 0)
+	var garbage: int = active_offices + checkouts + meals / MEALS_PER_GARBAGE + world.housing_system.count_moved_in() \
+		+ event_visitors / MEALS_PER_GARBAGE
 	var garbage_cost := maxi(garbage - recycling_capacity(), 0) * OUTSOURCE_COST
 	var bonus := int((rent + hotel) * world.rating_system.bonus_rate())
-	var total := rent + hotel + food + housing + bonus - maintenance - garbage_cost
-	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "housing": housing, "bonus": bonus, "maintenance": maintenance,
+	var total := rent + hotel + food + housing + event + bonus - maintenance - garbage_cost
+	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "housing": housing, "event": event, "bonus": bonus, "maintenance": maintenance,
 		"garbage": garbage, "garbage_cost": garbage_cost, "total": total}
 	world.funds += total
 	world.update_funds_display() # last_reportを更新してから表示する（前日の収支も表示されるため）
 	# 0円の項目は省いて短くする
 	var items: Array[String] = []
-	for item in [["賃料", rent], ["宿泊料", hotel], ["飲食", food], ["住宅販売", housing], ["評価ボーナス", bonus]]:
+	for item in [["賃料", rent], ["宿泊料", hotel], ["飲食", food], ["住宅販売", housing], ["イベント", event], ["評価ボーナス", bonus]]:
 		if item[1] > 0:
 			items.append("%s +%s円" % [item[0], world.format_money(item[1])])
 	if maintenance > 0:

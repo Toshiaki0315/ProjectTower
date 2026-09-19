@@ -22,7 +22,7 @@ func _init() -> void:
 	root.mouse_passthrough = true
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -967,6 +967,64 @@ func run_weekday_scenario() -> bool:
 	Engine.time_scale = 1.0
 	clock.set_process(false)
 	check(main.commute_system.count_at_office() == 67, "月曜日はまた67人が出勤する")
+	return true
+
+# ---------------------------------------------------
+# シナリオ18: 結婚式場・イベントホール（休日の大勢の来客）
+# x=8 に y=13〜18 のシャフト、1階の右隣(9,18)に結婚式場、上の階(7,13)にイベントホール。
+# イベントホールの来客はエレベーターで上がる。
+# ---------------------------------------------------
+func run_event_scenario() -> bool:
+	print("[シナリオ] 結婚式場・イベントホール")
+	main.funds = 10000000
+	var events = main.event_system
+	var clock = main.clock
+	await click_button(main.mode_buttons["elevator"])
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	var wedding := Vector2i(9, 18)
+	var hall := Vector2i(7, 13)
+	await click_button(main.mode_buttons["wedding"])
+	await click_cell(wedding, MOUSE_BUTTON_LEFT)
+	await click_button(main.mode_buttons["event_hall"])
+	await click_cell(hall, MOUSE_BUTTON_LEFT)
+	check(main.funds == 10000000 - 6 * 100000 - 1000000 - 800000, "結婚式場100万円・イベントホール80万円がかかる")
+	
+	# 平日（月曜日）は催しがない
+	clock.set_time(1, 9, 59)
+	clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return clock.minute_of_day() >= 14 * 60 + 30, 30.0)
+	check(events.count_in_building() == 0, "平日は結婚式場・イベントホールに来客がない")
+	
+	# 休日（土曜日）: 午前は結婚式、午後はイベント
+	var car = main.elevator_system.cars[0]
+	var stops := [0]
+	car.arrived.connect(func(_y): stops[0] += 1)
+	clock.set_time(6, 9, 59)
+	await wait_until(func(): return clock.minute_of_day() >= 11 * 60 + 40, 30.0)
+	check(main.commute_system.count_in_building() == 0, "月曜日に出勤した社員は、日付が変わったら帰っている")
+	check(events.count_at_hall(wedding) == 12, "休日の結婚式には12人が来ている")
+	await hover_cell(wedding)
+	check(main.hover_label.text.contains("結婚式場（来客 12人）"), "カーソルを合わせると来客の人数が出る")
+	await capture("event_01_wedding")
+	await wait_until(func(): return clock.minute_of_day() >= 14 * 60 + 40, 30.0)
+	check(events.count_at_hall(wedding) == 0, "結婚式が終わると来客は帰っている")
+	check(events.count_at_hall(hall) == 15, "午後のイベントには15人が来ている")
+	check(stops[0] > 0, "上の階のイベントホールへはエレベーターで上がる")
+	await capture("event_02_hall")
+	# 早送り中にフレームレートが下がると移動が遅れるので、判定は余裕をもって18時半にする
+	await wait_until(func(): return clock.minute_of_day() >= 18 * 60 + 30, 30.0)
+	check(events.count_in_building() == 0, "イベントが終わると来客は全員帰っている")
+	check(events.revenue_by_day.get(6, 0) == 12 * 10000 + 15 * 3000, "来客の料金は12万円＋4.5万円")
+	
+	clock.set_time(6, 23, 58)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == 6, 10.0)
+	Engine.time_scale = 1.0
+	clock.set_process(false)
+	check(main.economy_system.last_report.get("event") == 165000, "決算にイベントの売上16.5万円が入る")
+	check(main.message_label.text.contains("イベント +165,000円"), "決算のメッセージにイベントの売上が出る")
+	check(main.economy_system.last_report.get("garbage") == 2, "来客27人分のゴミ2が出る")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

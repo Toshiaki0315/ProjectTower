@@ -11,6 +11,7 @@ const HotelSystem := preload("res://hotel_system.gd")
 const CommerceSystem := preload("res://commerce_system.gd")
 const RatingSystem := preload("res://rating_system.gd")
 const HousingSystem := preload("res://housing_system.gd")
+const EventSystem := preload("res://event_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
@@ -32,6 +33,8 @@ const BUILDINGS := {
 	"security": {"name": "警備室", "cost": 100000, "source_id": 7},
 	"medical": {"name": "メディカルセンター", "cost": 200000, "source_id": 8},
 	"housing": {"name": "住宅", "cost": 150000, "source_id": 9},
+	"wedding": {"name": "結婚式場", "cost": 1000000, "source_id": 12},
+	"event_hall": {"name": "イベントホール", "cost": 800000, "source_id": 13},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -52,6 +55,7 @@ var hotel_system # ホテルの客室・宿泊客・清掃員
 var commerce_system # 飲食店（社員の昼食）
 var rating_system # ビルの評価（★）
 var housing_system # 住宅と入居者
+var event_system # 結婚式場・イベントホール（休日の来客）
 var clock_label: Label # 日付と時刻の表示
 var stats_label: Label # 社員の人数の表示
 
@@ -91,6 +95,10 @@ func _ready() -> void:
 	housing_system.setup(self)
 	add_child(housing_system)
 	housing_system.rebuild()
+	event_system = EventSystem.new()
+	event_system.setup(self)
+	add_child(event_system)
+	event_system.rebuild()
 	rating_system = RatingSystem.new()
 	rating_system.setup(self)
 	add_child(rating_system)
@@ -220,6 +228,7 @@ func create_ui():
 		"社員: オフィス1マスに1人。8〜9時に入口（1階の左端）から出勤し、17〜18時に帰る",
 		"速度: 1x / 4x / 16x で時間の進みを早送り",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
+		"結婚式場: 休日の10〜11時に12人が来て13時まで（1人1万円） / イベントホール: 休日の13〜14時に15人が来て17時まで（1人3千円）",
 		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料を払って帰る。清掃が済むまで次の客は泊まれない",
 		"　シングル: 1人・2万円・清掃20分 / ツイン: 2人・3.5万円・清掃30分 / スイート: 2人・8万円・清掃45分",
 		"ハウスキーパー室: 清掃員が1人。清掃待ちの部屋を近い順に掃除する",
@@ -351,6 +360,8 @@ func update_hover_label():
 		text += "（%s）" % hotel_system.get_room_state_text(cell)
 	elif type == "restaurant":
 		text += "（客 %d人）" % commerce_system.count_eating_at(cell)
+	elif event_system.is_hall_type(type):
+		text += "（来客 %d人）" % event_system.count_at_hall(cell)
 	elif type == "housing":
 		text += "（%s）" % housing_system.get_home_state_text(cell)
 	elif type == "recycling":
@@ -613,6 +624,14 @@ func call_elevator(cell: Vector2i):
 	if elevator_system.call_car(cell):
 		show_message("エレベーターを %s に呼びました" % cell)
 
+# 建物が増減したときに、建物に対応する仕組み（エレベーター・社員・客室・住宅・会場）を更新する
+func rebuild_systems():
+	elevator_system.rebuild()
+	commute_system.rebuild()
+	hotel_system.rebuild()
+	housing_system.rebuild()
+	event_system.rebuild()
+
 # 建設処理
 func build_at(map_pos: Vector2i):
 	if not is_cell_empty(map_pos):
@@ -626,10 +645,7 @@ func build_at(map_pos: Vector2i):
 	funds -= data.cost
 	tile_map.set_cell(map_pos, data.source_id, Vector2i(0, 0))
 	building_grid[map_pos] = {"type": current_mode}
-	elevator_system.rebuild()
-	commute_system.rebuild()
-	hotel_system.rebuild()
-	housing_system.rebuild()
+	rebuild_systems()
 	update_funds_display()
 	show_message("%sを建設しました %s" % [data.name, map_pos])
 
@@ -644,9 +660,6 @@ func demolish_at(map_pos: Vector2i):
 	funds += refund
 	tile_map.erase_cell(map_pos)
 	building_grid.erase(map_pos)
-	elevator_system.rebuild()
-	commute_system.rebuild()
-	hotel_system.rebuild()
-	housing_system.rebuild()
+	rebuild_systems()
 	update_funds_display()
 	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, map_pos, refund])

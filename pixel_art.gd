@@ -52,7 +52,8 @@ const PALETTE := {
 	"p": Color("#3c9a4a"), # 観葉植物
 	"y": Color("#c0504d"), # ソファ
 	"J": Color("#d8c08a"), # スイートの壁
-	"j": Color("#8a2a3a"), # スイートの掛け布団
+	"j": Color("#8a2a3a"), # スイートの掛け布団・イベントホールの壁
+	"I": Color("#f7a8c0"), # 結婚式場の花・バージンロード
 }
 
 const TILES := {
@@ -161,6 +162,42 @@ const TILES := {
 		"ePPPPjjjjjjjeyyy",
 		"eeeeeeeeeeeeeyJy",
 		"eJJJJJJJJJJJeJJJ",
+		"FFFFFFFFFFFFFFFF",
+		"KKKKKKKKKKKKKKKK",
+	],
+	"wedding": [
+		"KKKKKKKKKKKKKKKK",
+		"VVVVVVVVVVVVVVVV",
+		"VVVVVVLLLLVVVVVV",
+		"VVVVVLLVVLLVVVVV",
+		"VVVVVLVVVVLVVVVV",
+		"VVVVLVVIIVVLVVVV",
+		"VVVVLVIIIIVLVVVV",
+		"VIVVLVVIIVVLVVIV",
+		"IpIVLVVVVVVLVIpI",
+		"VpVVLVVVVVVLVVpV",
+		"VpVVLVVVVVVLVVpV",
+		"VpVVLVVVVVVLVVpV",
+		"eeeVIIIIIIIIVeee",
+		"eVeVIIIIIIIIVeVe",
+		"FFFFFFFFFFFFFFFF",
+		"KKKKKKKKKKKKKKKK",
+	],
+	"event_hall": [
+		"KKKKKKKKKKKKKKKK",
+		"jjjjjjjjjjjjjjjj",
+		"jjLjjjjjjjjjjLjj",
+		"jUUGGGGGGGGGGUUj",
+		"jUUGGGGLLGGGGUUj",
+		"jUUGGGLLLLGGGUUj",
+		"jUUGGGGLLGGGGUUj",
+		"jUUGGGGLLGGGGUUj",
+		"jUUGGGLGGLGGGUUj",
+		"jUUeeeeeeeeeeUUj",
+		"jjjjjjjjjjjjjjjj",
+		"yyjyyjyyjyyjyyjy",
+		"yyjyyjyyjyyjyyjy",
+		"ejjejjejjejjejje",
 		"FFFFFFFFFFFFFFFF",
 		"KKKKKKKKKKKKKKKK",
 	],
