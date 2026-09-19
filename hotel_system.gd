@@ -81,10 +81,10 @@ func rebuild() -> void:
 # 毎フレームの処理
 # ---------------------------------------------------
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	process_rooms()
 	process_leaving_guests()
-	var minutes: float = delta * world.clock.MINUTES_PER_SECOND # このフレームで進んだゲーム内の分数
+	var minutes: float = world.clock.last_advance # このフレームで進んだゲーム内の分数
 	for cell in housekeepers:
 		process_housekeeper(housekeepers[cell], minutes)
 	queue_redraw()

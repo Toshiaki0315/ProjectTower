@@ -8,12 +8,17 @@ extends Node
 const MINUTES_PER_SECOND := 2.0 # 現実の1秒で進むゲーム内の分数（1時間 = 30秒）
 const MINUTES_PER_DAY := 24 * 60
 const START_MINUTE := 7 * 60 + 30 # 1日目の7:30から始める
+# 1フレームで進める上限（ゲーム内の分）。処理が一瞬止まって長いフレームになっても、
+# 時計が何時間・何日も飛ばないようにする（その分、時計がゆっくり進む）
+const MAX_MINUTES_PER_FRAME := 2.0
 
 var day := 1
 var minute := float(START_MINUTE) # その日の0:00からの経過分
+var last_advance := 0.0 # 直前のフレームで進んだゲーム内の分（清掃・食事などの残り時間を減らすのに使う）
 
 func _process(delta: float) -> void:
-	minute += delta * MINUTES_PER_SECOND
+	last_advance = minf(delta * MINUTES_PER_SECOND, MAX_MINUTES_PER_FRAME)
+	minute += last_advance
 	while minute >= MINUTES_PER_DAY:
 		minute -= MINUTES_PER_DAY
 		day += 1
@@ -22,6 +27,7 @@ func _process(delta: float) -> void:
 func set_time(p_day: int, hour: int, min: int) -> void:
 	day = p_day
 	minute = hour * 60 + min
+	last_advance = 0.0
 
 # その日の経過分（整数）
 func minute_of_day() -> int:

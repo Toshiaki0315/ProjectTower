@@ -1,6 +1,7 @@
 extends Node2D
 
 const Resident := preload("res://resident.gd")
+const PixelArt := preload("res://pixel_art.gd")
 const GridOverlay := preload("res://grid_overlay.gd")
 const ElevatorSystem := preload("res://elevator_system.gd")
 const GameClock := preload("res://game_clock.gd")
@@ -9,24 +10,26 @@ const EconomySystem := preload("res://economy_system.gd")
 const HotelSystem := preload("res://hotel_system.gd")
 const CommerceSystem := preload("res://commerce_system.gd")
 const RatingSystem := preload("res://rating_system.gd")
+const HousingSystem := preload("res://housing_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
 
 # ---------------------------------------------------
 # 建物の定義（種類を増やすときはここに追記する）
-# "color" があるものは、TileSetに画像がなくてもコードでタイルを生成する（"rails" で左右にレールを描く）
+# 見た目は pixel_art.gd のドット絵（TILES に同じ名前で描く）
 # ---------------------------------------------------
 const BUILDINGS := {
 	"office": {"name": "オフィス", "cost": 100000, "source_id": 0},
 	"stairs": {"name": "階段", "cost": 50000, "source_id": 1},
-	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2, "color": Color(0.33, 0.35, 0.4), "rails": true},
-	"hotel": {"name": "ホテル客室", "cost": 150000, "source_id": 3, "color": Color(0.55, 0.4, 0.75)},
-	"housekeeping": {"name": "ハウスキーパー室", "cost": 100000, "source_id": 4, "color": Color(0.25, 0.6, 0.6)},
-	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5, "color": Color(0.85, 0.45, 0.2)},
-	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6, "color": Color(0.45, 0.5, 0.3)},
-	"security": {"name": "警備室", "cost": 100000, "source_id": 7, "color": Color(0.25, 0.3, 0.55)},
-	"medical": {"name": "メディカルセンター", "cost": 200000, "source_id": 8, "color": Color(0.8, 0.35, 0.4)},
+	"elevator": {"name": "エレベーター", "cost": 100000, "source_id": 2},
+	"hotel": {"name": "ホテル客室", "cost": 150000, "source_id": 3},
+	"housekeeping": {"name": "ハウスキーパー室", "cost": 100000, "source_id": 4},
+	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5},
+	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6},
+	"security": {"name": "警備室", "cost": 100000, "source_id": 7},
+	"medical": {"name": "メディカルセンター", "cost": 200000, "source_id": 8},
+	"housing": {"name": "住宅", "cost": 150000, "source_id": 9},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -46,6 +49,7 @@ var economy_system # 毎日の決算（賃料収入と維持費）
 var hotel_system # ホテルの客室・宿泊客・清掃員
 var commerce_system # 飲食店（社員の昼食）
 var rating_system # ビルの評価（★）
+var housing_system # 住宅と入居者
 var clock_label: Label # 日付と時刻の表示
 var stats_label: Label # 社員の人数の表示
 
@@ -61,7 +65,7 @@ var selected_resident = null # 行き先の指示を待っている住人
 var building_grid: Dictionary = {}
 
 func _ready() -> void:
-	create_generated_tile_sources()
+	apply_pixel_art_tiles()
 	apply_tile_types()
 	load_grid_from_tilemap()
 	elevator_system = ElevatorSystem.new()
@@ -81,6 +85,10 @@ func _ready() -> void:
 	commerce_system = CommerceSystem.new()
 	commerce_system.setup(self)
 	add_child(commerce_system)
+	housing_system = HousingSystem.new()
+	housing_system.setup(self)
+	add_child(housing_system)
+	housing_system.rebuild()
 	rating_system = RatingSystem.new()
 	rating_system.setup(self)
 	add_child(rating_system)
@@ -212,9 +220,10 @@ func create_ui():
 		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料2万円を払って帰る。清掃が済むまで次の客は泊まれない",
 		"ハウスキーパー室: 清掃員が1人。清掃待ちの部屋を近い順に掃除する",
 		"飲食店: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1千円の売上）",
+		"住宅: 17〜20時に入居者が来て入居（販売収入25万円、1回だけ）。毎朝7〜9時に出かけ、17〜20時に帰る",
 		"ゴミ処理場: 1マスで1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
-		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室数）",
+		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室数 + 入居者）",
 		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
 		"ズーム: マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
@@ -338,6 +347,8 @@ func update_hover_label():
 		text += "（%s）" % hotel_system.get_room_state_text(cell)
 	elif type == "restaurant":
 		text += "（客 %d人）" % commerce_system.count_eating_at(cell)
+	elif type == "housing":
+		text += "（%s）" % housing_system.get_home_state_text(cell)
 	elif type == "recycling":
 		text += "（ビル全体の処理能力 %d/日）" % economy_system.recycling_capacity()
 	var resident = get_resident_at(cell)
@@ -355,27 +366,23 @@ func show_message(text: String):
 # グリッド情報の管理
 # ---------------------------------------------------
 
-# BUILDINGSで "color" を指定した建物のうち、TileSetにまだないものはタイルを生成して追加する
-# （エレベーター・ホテルなど。見た目: 指定色の塗りつぶし。"rails" なら左右にレール）
-func create_generated_tile_sources():
+# 建物のタイルをドット絵（pixel_art.gd）にする。
+# TileSetにソースがなければ作り、あれば画像を差し替える（エディタで置いたオフィス・階段も含む）
+func apply_pixel_art_tiles():
 	var tile_set: TileSet = tile_map.tile_set
-	var size: Vector2i = tile_set.tile_size
 	for type in BUILDINGS:
-		var data = BUILDINGS[type]
-		if not data.has("color") or tile_set.has_source(data.source_id):
-			continue
-		var image := Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
-		image.fill(data.color)
-		if data.get("rails", false):
-			var rail_color: Color = data.color.darkened(0.4)
-			for y in size.y:
-				image.set_pixel(2, y, rail_color)
-				image.set_pixel(size.x - 3, y, rail_color)
-		var source := TileSetAtlasSource.new()
-		source.texture = ImageTexture.create_from_image(image)
-		source.texture_region_size = size
-		source.create_tile(Vector2i.ZERO)
-		tile_set.add_source(source, data.source_id)
+		var id: int = BUILDINGS[type].source_id
+		if tile_set.has_source(id):
+			# 1枚の画像を複数タイルに分けているソースは、同じ並びでドット絵を敷き詰めた画像に差し替える
+			var source := tile_set.get_source(id) as TileSetAtlasSource
+			var grid: Vector2i = source.get_atlas_grid_size()
+			source.texture = ImageTexture.create_from_image(PixelArt.make_atlas_image(type, grid.x, grid.y))
+		else:
+			var source := TileSetAtlasSource.new()
+			source.texture = ImageTexture.create_from_image(PixelArt.make_tile_image(type))
+			source.texture_region_size = tile_set.tile_size
+			source.create_tile(Vector2i.ZERO)
+			tile_set.add_source(source, id)
 
 # BUILDINGSの定義をもとに、TileSetのカスタムデータ「type」を設定する
 # （メモリ上のみ。.tscnには保存されないため、エディタ上では空のまま見える）
@@ -618,6 +625,7 @@ func build_at(map_pos: Vector2i):
 	elevator_system.rebuild()
 	commute_system.rebuild()
 	hotel_system.rebuild()
+	housing_system.rebuild()
 	update_funds_display()
 	show_message("%sを建設しました %s" % [data.name, map_pos])
 
@@ -635,5 +643,6 @@ func demolish_at(map_pos: Vector2i):
 	elevator_system.rebuild()
 	commute_system.rebuild()
 	hotel_system.rebuild()
+	housing_system.rebuild()
 	update_funds_display()
 	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, map_pos, refund])

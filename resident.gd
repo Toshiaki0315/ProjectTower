@@ -29,6 +29,28 @@ const STRESS_RED := 70.0          # これ以上で赤
 const PINK_COLOR := Color(1.0, 0.55, 0.75)
 const RED_COLOR := Color(1.0, 0.2, 0.2)
 
+# 住人のドット絵（8×11ドット）。"c" の服の部分を、種類やストレスに応じた色で塗る
+const BODY_SPRITE := [
+	"..KKKK..",
+	".KhhhhK.",
+	".KssssK.",
+	".KssssK.",
+	"KKccccKK",
+	"KccccccK",
+	"KccccccK",
+	"KKccccKK",
+	".KLLLLK.",
+	".KLKKLK.",
+	".KK..KK.",
+]
+const BODY_COLORS := {
+	"K": Color("#1b1b24"), # 輪郭
+	"h": Color("#4a3020"), # 髪
+	"s": Color("#f1c27d"), # 肌
+	"L": Color("#34405a"), # ズボン
+}
+const BODY_ORIGIN := Vector2(-4, -5) # マスの中心から見た、ドット絵の左上（足元が床の上に来る位置）
+
 var world: Node2D              # main.gd（グリッド情報と経路探索を持つ）
 var cell: Vector2i             # 現在いるマス（乗車中は乗ったマス）
 var goal: Vector2i             # 目的地のマス
@@ -180,14 +202,18 @@ func _draw() -> void:
 			points.append(world.tile_map.map_to_local(c) - position)
 		draw_polyline(points, Color(1.0, 1.0, 0.4, 0.8), 1.5)
 
-	# 体（黒い縁取り付きの人型）。選択中は黄色、それ以外はストレスに応じた色
-	var color := Color(1.0, 0.85, 0.1) if selected else get_body_color()
-	draw_circle(Vector2(0, -4), 3.5, Color.BLACK)
-	draw_rect(Rect2(-3, -1, 6, 9), Color.BLACK)
-	draw_circle(Vector2(0, -4), 2.5, color)
-	draw_rect(Rect2(-2, 0, 4, 7), color)
+	# 体（ドット絵）。服の色は、選択中なら黄色、それ以外は種類とストレスに応じた色
+	var clothes := Color(1.0, 0.85, 0.1) if selected else get_body_color()
+	for y in BODY_SPRITE.size():
+		var row: String = BODY_SPRITE[y]
+		for x in row.length():
+			var ch := row[x]
+			if ch == ".":
+				continue
+			var color: Color = clothes if ch == "c" else BODY_COLORS[ch]
+			draw_rect(Rect2(BODY_ORIGIN + Vector2(x, y), Vector2.ONE), color)
 
 	# カゴを待っている間は頭の上に「…」を出す
 	if state == State.WAITING:
 		for i in 3:
-			draw_circle(Vector2(-3 + i * 3, -10), 1.0, Color.WHITE)
+			draw_rect(Rect2(-3 + i * 2, -8, 1, 1), Color.WHITE)

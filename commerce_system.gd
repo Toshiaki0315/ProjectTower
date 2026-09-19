@@ -23,10 +23,10 @@ var revenue_by_day: Dictionary = {} # 日 -> その日の飲食店の売上
 func setup(p_world: Node2D) -> void:
 	world = p_world
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	var day: int = world.clock.day
 	var now: int = world.clock.minute_of_day()
-	var minutes: float = delta * world.clock.MINUTES_PER_SECOND # このフレームで進んだゲーム内の分数
+	var minutes: float = world.clock.last_advance # このフレームで進んだゲーム内の分数
 	var workers: Dictionary = world.commute_system.workers
 	for office in workers:
 		var resident = workers[office].resident

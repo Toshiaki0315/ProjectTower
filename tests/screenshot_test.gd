@@ -17,9 +17,12 @@ func _init() -> void:
 	var args = OS.get_cmdline_user_args()
 	out_dir = args[0] if args.size() > 0 else ProjectSettings.globalize_path("user://screenshots")
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	# 本物のマウスの操作がテストの入力に割り込まないよう、ウィンドウはマウスを受け付けない
+	# （テストの入力は push_input で直接送るので影響しない）
+	root.mouse_passthrough = true
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -799,6 +802,57 @@ func run_rating_scenario() -> bool:
 	check(rating.missing_for_next() == ["人口120", "ゴミ処理場"], "メディカルセンターを置くと★3の条件から外れる")
 	return true
 
+# ---------------------------------------------------
+# シナリオ15: 住宅
+# ブロック最下段(y=18)の右隣に住宅2戸(x=8,9)。入口(-8,18)から同じ階を歩いて行き来できる。
+# ---------------------------------------------------
+func run_housing_scenario() -> bool:
+	print("[シナリオ] 住宅")
+	main.funds = 10000000
+	var housing = main.housing_system
+	var homes: Array[Vector2i] = [Vector2i(8, 18), Vector2i(9, 18)]
+	await click_button(main.mode_buttons["housing"])
+	for cell in homes:
+		await click_cell(cell, MOUSE_BUTTON_LEFT)
+	check(main.funds == 10000000 - 2 * 150000, "住宅の建設費15万円×2がかかる")
+	check(housing.homes.size() == 2 and housing.count_moved_in() == 0, "建てた直後はまだ入居者がいない")
+	await hover_cell(homes[0])
+	check(main.hover_label.text.contains("住宅（入居者募集中）"), "カーソルを合わせると「入居者募集中」と出る")
+	
+	# 1日目の夕方: 入居者が来て入居し、販売収入が入る
+	main.clock.set_time(1, 16, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.clock.minute_of_day() >= 20 * 60 + 30, 30.0)
+	check(housing.count_moved_in() == 2 and housing.count_at_home() == 2, "夕方に2戸とも入居者が来て家にいる")
+	check(housing.revenue_by_day.get(1, 0) == 500000, "入居で販売収入25万円×2が入る")
+	check(housing.homes[homes[0]].resident.base_color == housing.RESIDENT_COLOR, "入居者は緑の服")
+	var others: int = main.commute_system.workers.size() - main.commute_system.count_unreachable() + main.hotel_system.rooms.size()
+	check(main.rating_system.population() == others + 2, "入居者の分だけ人口が増える")
+	await hover_cell(homes[0])
+	check(main.hover_label.text.contains("住宅（在宅）"), "入居後は「在宅」と出る")
+	await capture("housing_01_moved_in")
+	
+	# 2日目の朝: 1日目の決算に販売収入が入り、入居者は出かける
+	main.clock.set_time(2, 6, 59)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == 1, 10.0)
+	check(main.economy_system.last_report.get("housing") == 500000, "1日目の決算に住宅販売50万円が入る")
+	check(main.message_label.text.contains("住宅販売 +500,000円"), "決算のメッセージに住宅販売が出る")
+	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
+	check(housing.count_at_home() == 0, "朝のうちに入居者は出かけている")
+	check(housing.homes[homes[0]].resident == null, "出かけた入居者はビルの外にいる")
+	await hover_cell(homes[0])
+	check(main.hover_label.text.contains("住宅（外出中）"), "外出中は「外出中」と出る")
+	
+	# 2日目の夕方: 帰ってくる（販売収入は2回目は入らない）
+	main.clock.set_time(2, 16, 59)
+	await wait_until(func(): return main.clock.minute_of_day() >= 20 * 60 + 30, 30.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(housing.count_at_home() == 2, "夕方には2人とも帰ってくる")
+	check(housing.revenue_by_day.get(2, 0) == 0, "販売収入は入居したときの1回だけ")
+	return true
+
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
 func run_day(day: int) -> void:
 	main.clock.set_time(day, 7, 59)
@@ -847,6 +901,7 @@ func click_at(pos: Vector2, button: MouseButton) -> void:
 	root.push_input(motion)
 	await wait_frames(1)
 
+	# 押す・離すは同じフレームで送る（間に別の入力が入ってクリックが取り消されないように）
 	for pressed in [true, false]:
 		var ev := InputEventMouseButton.new()
 		ev.button_index = button
@@ -854,7 +909,7 @@ func click_at(pos: Vector2, button: MouseButton) -> void:
 		ev.position = pos
 		ev.global_position = pos
 		root.push_input(ev)
-		await wait_frames(1)
+	await wait_frames(1)
 
 func scroll_wheel(pos: Vector2, button: MouseButton, times: int) -> void:
 	for i in times:

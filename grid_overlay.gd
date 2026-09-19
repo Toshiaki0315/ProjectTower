@@ -9,7 +9,7 @@ extends Node2D
 # ---------------------------------------------------
 
 const GRID_COLOR := Color(1, 1, 1, 0.08)
-const BORDER_COLOR := Color(0, 0, 0, 0.35)
+const BORDER_COLOR := Color(0, 0, 0, 0.2) # ドット絵に天井・床の線があるので、枠線は控えめに
 const BORDER_WIDTH := 1.5 # 画面上のpx（ズームしても太さが変わらない）
 const HOVER_OK_COLOR := Color(0.3, 1.0, 0.4)
 const HOVER_NG_COLOR := Color(1.0, 0.3, 0.3)
