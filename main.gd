@@ -13,6 +13,7 @@ const RatingSystem := preload("res://rating_system.gd")
 const HousingSystem := preload("res://housing_system.gd")
 const EventSystem := preload("res://event_system.gd")
 const Lighting := preload("res://lighting.gd")
+const TenantSystem := preload("res://tenant_system.gd")
 
 @onready var tile_map = $TileMapLayer
 @onready var camera = $Camera2D
@@ -72,6 +73,7 @@ var rating_system # ビルの評価（★）
 var housing_system # 住宅と入居者
 var event_system # 結婚式場・イベントホール（休日の来客）
 var lighting # 夜の明かり
+var tenant_system # テナント（オフィス）の評価
 var clock_label: Label # 日付と時刻の表示
 var stats_label: Label # 社員の人数の表示
 
@@ -133,6 +135,9 @@ func _ready() -> void:
 	lighting = Lighting.new()
 	lighting.setup(self)
 	tile_map.add_child(lighting)
+	tenant_system = TenantSystem.new()
+	tenant_system.setup(self)
+	tile_map.add_child(tenant_system)
 	tile_map.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST # 拡大してもタイルをぼかさない
 	focus_camera_on_building()
 	grid_overlay = GridOverlay.new()
@@ -151,6 +156,11 @@ func _process(_delta: float) -> void:
 	var unreachable: int = commute_system.count_unreachable()
 	if unreachable > 0:
 		stats_label.text += "（通勤できない %d人）" % unreachable
+	if not tenant_system.offices.is_empty():
+		stats_label.text += " / オフィス評価: 良い %d・普通 %d・悪い %d" % [
+			tenant_system.count_rating(tenant_system.Rating.GOOD),
+			tenant_system.count_rating(tenant_system.Rating.NORMAL),
+			tenant_system.count_rating(tenant_system.Rating.BAD)]
 	if not hotel_system.rooms.is_empty():
 		stats_label.text += " / 客室: 宿泊 %d・清掃待ち %d・空室 %d" % [
 			hotel_system.count_rooms(hotel_system.RoomState.OCCUPIED),
@@ -277,6 +287,7 @@ func create_ui():
 		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
+		"オフィスの評価: 毎日の決算で、社員のその日の最大ストレスの平均から 良い（緑）・普通（黄）・悪い（赤）を付ける",
 		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
 		"スクロール: マウスホイールで上下、Shift+ホイールで左右、右端のスクロールバー",
 		"ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ",
@@ -427,6 +438,8 @@ func update_hover_label():
 	var cell: Vector2i = grid_overlay.hover_cell
 	var type = get_building_type(cell)
 	var text = "マス %s: %s" % [cell, BUILDINGS[type].name if type != "" else "空き"]
+	if type == "office" and tenant_system.get_rating_text(cell) != "":
+		text += "（%s）" % tenant_system.get_rating_text(cell)
 	if hotel_system.is_room_type(type):
 		text += "（%s）" % hotel_system.get_room_state_text(cell)
 	elif type == "restaurant":

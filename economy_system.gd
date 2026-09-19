@@ -85,6 +85,8 @@ func settle(day: int) -> void:
 		items.append("ゴミ処理 -%s円（ゴミ%d・処理能力%d）" % [world.format_money(garbage_cost), garbage, recycling_capacity()])
 	items.append("合計 %s円" % world.format_money(total, true))
 	var message := "%d日目の決算: %s" % [day, " / ".join(items)]
+	# オフィスごとの評価（社員のストレスから）
+	world.tenant_system.evaluate_day(day)
 	# 評価（★）の判定。昇格したら、メッセージの先頭で知らせる（ボーナスは翌日の決算から）
 	if world.rating_system.evaluate():
 		message = "ビルの評価が★%dに上がりました！ %s" % [world.rating_system.stars, message]

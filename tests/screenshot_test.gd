@@ -28,7 +28,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario]:
+	for scenario in [run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario]:
 		await start_main()
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
@@ -1448,6 +1448,55 @@ func run_street_lamp_scenario() -> bool:
 	main.clock.set_time(1, 12, 0)
 	await wait_frames(3)
 	await capture("street_lamp_02_day")
+	return true
+
+# ---------------------------------------------------
+# シナリオ26: テナント（オフィス）の評価
+# シナリオ10と同じ建物（x=8 のシャフトにカゴ1台）。朝のラッシュで、エレベーターを待つ上の階の
+# 社員はストレスがたまり、歩くだけの1階の社員はたまらない。決算でオフィスごとの評価が分かれる。
+# ---------------------------------------------------
+func run_tenant_rating_scenario() -> bool:
+	print("[シナリオ] オフィスの評価")
+	main.funds = 10000000
+	var tenants = main.tenant_system
+	await choose_mode("elevator")
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await choose_mode("office")
+	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT)
+	check(tenants.offices.is_empty(), "最初の決算まではオフィスの評価がない")
+	check(tenants.rating_for(10.0) == tenants.Rating.GOOD and tenants.rating_for(45.0) == tenants.Rating.NORMAL \
+		and tenants.rating_for(80.0) == tenants.Rating.BAD, "平均ストレス30未満は良い・60未満は普通・それ以上は悪い")
+	
+	await run_day(1)
+	for origin in tenants.offices:
+		print("    ", origin, " ", tenants.get_rating_text(origin))
+	check(tenants.offices.size() == 17, "決算で17棟すべてのオフィスに評価が付く")
+	var ground_good := true
+	for x in [-8, -4, 0, 4]:
+		if tenants.offices[Vector2i(x, 18)].rating != tenants.Rating.GOOD:
+			ground_good = false
+	check(ground_good, "歩いて通勤できる1階のオフィスは評価が良い")
+	var upper_bad := 0
+	for origin in tenants.offices:
+		if origin.y < 18 and tenants.offices[origin].rating == tenants.Rating.BAD:
+			upper_bad += 1
+	check(upper_bad > 0, "カゴ1台でエレベーター待ちが長い上の階には、評価が悪いオフィスがある（%d棟）" % upper_bad)
+	await hover_cell(Vector2i(-6, 18))
+	check(main.hover_label.text.contains("オフィス（評価: 良い・平均ストレス0）"), "カーソルを合わせるとオフィスの評価と平均ストレスが出る")
+	check(main.stats_label.text.contains("オフィス評価: 良い"), "下部バーに評価ごとのオフィスの数が出る")
+	await capture("tenant_rating_01")
+	
+	# 休日は出勤がないので評価は変わらない
+	var before := {}
+	for origin in tenants.offices:
+		before[origin] = tenants.offices[origin].rating
+	await run_day(6)
+	var unchanged := true
+	for origin in before:
+		if tenants.offices[origin].rating != before[origin]:
+			unchanged = false
+	check(unchanged, "休日は出勤がないので、オフィスの評価はそのまま")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
