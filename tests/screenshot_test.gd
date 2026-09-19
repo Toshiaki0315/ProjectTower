@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2187,6 +2187,63 @@ func run_service_hours_scenario() -> bool:
 	await wait_until(func(): return car.floor_y == 17 and car.state == car.State.IDLE, 20.0)
 	Engine.time_scale = 1.0
 	check(car.floor_y == 17, "時間帯の外になると、カゴは待機階（2階）に戻って止まる")
+	return true
+
+# ---------------------------------------------------
+# シナリオ37: サービスエレベーター（裏方＝清掃員だけが乗れる）
+#   x=8 に1階〜3階（y=18〜16）のサービスシャフト、2階にハウスキーパー室（x=9〜10）、
+#   3階に客室（x=9〜10）。客はこのシャフトに乗れないので3階の客室へは行けない。
+# ---------------------------------------------------
+func run_service_elevator_scenario() -> bool:
+	print("[シナリオ] サービスエレベーター")
+	main.funds = 10000000
+	var hotel = main.hotel_system
+	focus_camera(Vector2i(9, 16))
+	await wait_frames(1)
+	build_support(cells_row(18, 9, 10), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
+	await choose_mode("service_elevator")
+	check(main.mode_info_label.text == "建設費 80,000円・横1マス", "サービスエレベーターは1マス8万円")
+	for y in range(18, 15, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	check(main.funds == 10000000 - 3 * 80000, "1階から3階までのシャフトで24万円")
+	var car = main.elevator_system.cars[0]
+	check(car.shaft_type == "service_elevator" and car.capacity == 8, "サービスのシャフトにカゴが1台できる（定員は標準と同じ8人）")
+	main.select_mode("housekeeping")
+	main.build_at(Vector2i(9, 17))
+	main.select_mode("hotel")
+	main.build_at(Vector2i(9, 16))
+	check(hotel.housekeepers.size() == 2 and hotel.rooms.size() == 1, "2階に清掃員が2人、3階に客室が1室")
+	
+	# 乗れるのは裏方だけ
+	check(main.can_move(Vector2i(8, 18), Vector2i(8, 16), true), "清掃員はサービスエレベーターに乗れる")
+	check(not main.can_move(Vector2i(8, 18), Vector2i(8, 16)), "社員や客はサービスエレベーターに乗れない")
+	check(main.find_path(Vector2i(-8, 18), Vector2i(9, 16)).is_empty(), "客は3階の客室にたどり着けない")
+	check(not main.find_path(Vector2i(-8, 18), Vector2i(9, 16), true).is_empty(), "清掃員なら3階の客室まで行ける")
+	check(main.get_moves(Vector2i(8, 18)).size() < main.get_moves(Vector2i(8, 18), true).size(), "裏方かどうかで移動できる先が変わる")
+	await hover_cell(Vector2i(8, 17))
+	check(main.hover_label.text.contains("サービスエレベーター"), "カーソルを合わせると種類が出る")
+	
+	# 汚れた客室を、清掃員がサービスエレベーターで上がって掃除する
+	hotel.rooms[Vector2i(9, 16)].state = hotel.RoomState.DIRTY
+	Engine.time_scale = 8.0
+	var rode := false
+	var limit := Time.get_ticks_msec() + 30000
+	var captured := false
+	while Time.get_ticks_msec() < limit and hotel.rooms[Vector2i(9, 16)].state == hotel.RoomState.DIRTY:
+		for cell in hotel.housekeepers:
+			var keeper: Dictionary = hotel.housekeepers[cell]
+			if is_instance_valid(keeper.resident) and keeper.resident.state == keeper.resident.State.RIDING:
+				rode = true
+				if not captured:
+					Engine.time_scale = 1.0
+					await capture("service_elevator_01_riding")
+					Engine.time_scale = 8.0
+					captured = true
+		await wait_frames(1)
+	Engine.time_scale = 1.0
+	check(rode, "清掃員はサービスエレベーターに乗って上の階へ行く")
+	check(hotel.rooms[Vector2i(9, 16)].state == hotel.RoomState.CLEAN, "3階の客室が掃除されてきれいになる")
+	check(main.economy_system.MAINTENANCE["service_elevator"] == 1500, "サービスエレベーターの維持費は1マス1,500円/日")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

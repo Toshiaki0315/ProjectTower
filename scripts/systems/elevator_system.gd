@@ -5,6 +5,7 @@ extends Node
 # シャフト = 同じ列で縦につながった、同じ種類のエレベーターのマスのまとまり。
 # 種類（SHAFT_TYPES）: "elevator" = 標準（全部の階に停まる） /
 #                      "express_elevator" = 急行（1階とスカイロビーの階だけに停まる。速くて定員が多い）
+#                      "service_elevator" = サービス（裏方＝清掃員だけが乗れる）
 # 建設・撤去のたびに rebuild() を呼んで、シャフトとカゴを作り直す。
 #
 # カゴ: シャフトを建てると1台できる。add_car() で1本のシャフトに MAX_CARS 台まで増やせる。
@@ -13,7 +14,7 @@ extends Node
 # ---------------------------------------------------
 
 const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
-const SHAFT_TYPES := ["elevator", "express_elevator"]
+const SHAFT_TYPES := ["elevator", "express_elevator", "service_elevator"]
 const MAX_CARS := 4        # 1本のシャフトに置けるカゴの数
 const CAR_COST := 50000    # カゴを1台追加する費用
 const CAR_MAINTENANCE := 3000 # 追加したカゴ1台の1日の維持費

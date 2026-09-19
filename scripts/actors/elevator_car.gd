@@ -29,6 +29,7 @@ const EXPRESS_SPEED := 144.0 # 急行エレベーターの速さ（標準の3倍
 const EXPRESS_CAPACITY := 20 # 急行エレベーターの定員
 const STANDARD_COLOR := Color(0.75, 0.78, 0.85) # 標準のカゴの扉（銀）
 const EXPRESS_COLOR := Color(0.95, 0.78, 0.3)   # 急行のカゴの扉（金）
+const SERVICE_COLOR := Color(0.45, 0.75, 0.65)  # サービスのカゴの扉（緑）
 
 # 群管理で乗り場呼びを割り当てるときの手間（コスト）の見積もり。単位は「階数」
 const STOP_COST := 1.5     # 停まる予定1つあたり（扉の開け閉めの時間）
@@ -37,7 +38,7 @@ const FULL_COST := 100.0   # 満員のカゴ（停まっても乗れない）
 
 var world: Node2D  # main.gd
 var column: int    # シャフトのx座標
-var shaft_type := "elevator" # シャフトの種類（"elevator" = 標準 / "express_elevator" = 急行）
+var shaft_type := "elevator" # シャフトの種類（"elevator" = 標準 / "express_elevator" = 急行 / "service_elevator" = サービス）
 var speed := SPEED       # 昇降の速さ（急行は速い）
 var capacity := CAPACITY # 定員（急行は大きい）
 var body_color := STANDARD_COLOR # 扉の色（標準は銀、急行は金）
@@ -73,7 +74,11 @@ func set_shaft_type(type: String) -> void:
 	var express := type == "express_elevator"
 	speed = EXPRESS_SPEED if express else SPEED
 	capacity = EXPRESS_CAPACITY if express else CAPACITY
-	body_color = EXPRESS_COLOR if express else STANDARD_COLOR
+	body_color = STANDARD_COLOR
+	if express:
+		body_color = EXPRESS_COLOR
+	elif type == "service_elevator":
+		body_color = SERVICE_COLOR
 	queue_redraw()
 
 # シャフトの範囲が変わったときに呼ぶ。範囲外になった呼び出しは取り消す

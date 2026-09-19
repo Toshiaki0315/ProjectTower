@@ -24,6 +24,7 @@ const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーター�
 	"elevator": 2000,
 	"express_elevator": 3000,
 	"escalator": 2000,
+	"service_elevator": 1500,
 	"housekeeping": 10000,
 	"recycling": 5000,
 	"security": 5000,

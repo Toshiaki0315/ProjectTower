@@ -50,6 +50,7 @@ const BUILDINGS := {
 	"sky_lobby": {"name": "スカイロビー", "cost": 50000, "source_id": 18, "floors": "sky_lobby"},
 	"express_elevator": {"name": "急行エレベーター", "cost": 120000, "source_id": 19, "floors": "any"},
 	"escalator": {"name": "エスカレーター", "cost": 100000, "source_id": 20, "width": 2, "floors": "any"},
+	"service_elevator": {"name": "サービスエレベーター", "cost": 80000, "source_id": 21, "floors": "any"},
 }
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -60,7 +61,7 @@ const MODE_SERVICE := "service"   # エレベーターの稼働時間帯を切�
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
-	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "add_car", "set_home", "service"]},
+	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "service_elevator", "add_car", "set_home", "service"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway"]},
 	{"name": "その他", "modes": ["resident"]},
 ]
@@ -707,9 +708,10 @@ const ELEVATOR_FLOOR_COST := 0.5 # エレベーターで1階分移動する
 # - エスカレーター: 横2マス。左のマス（乗り口）と、1つ上の階の右のマスの上（降り口）を斜めにつなぐ。
 #                   上りも下りも使える。定員も待ち時間もない
 # - エレベーター: シャフトのマスから、同じシャフトの別の階へ乗って移動できる
+#                 （サービスエレベーターは裏方＝清掃員だけ乗れる。staff で切り替える）
 #                 （急行は1階とスカイロビーの階の間だけ。速いので1階分のコストは標準の1/3）
 # 戻り値: [{"to": Vector2i, "cost": float}, ...]
-func get_moves(cell: Vector2i) -> Array:
+func get_moves(cell: Vector2i, staff := false) -> Array:
 	var result: Array = []
 	if not is_walkable(cell):
 		return result
@@ -724,7 +726,7 @@ func get_moves(cell: Vector2i) -> Array:
 		result.append({"to": cell + ESCALATOR_UP, "cost": ESCALATOR_COST})
 	if is_escalator_foot(cell - ESCALATOR_UP):
 		result.append({"to": cell - ESCALATOR_UP, "cost": ESCALATOR_COST})
-	if elevator_system.is_shaft_type(get_building_type(cell)):
+	if elevator_system.is_shaft_type(get_building_type(cell)) and (staff or get_building_type(cell) != "service_elevator"):
 		var car = elevator_system.get_car_at(cell)
 		if car and car.in_service and car.is_stop_floor(cell.y):
 			var floor_cost: float = ELEVATOR_FLOOR_COST * car.SPEED / car.speed
@@ -735,8 +737,8 @@ func get_moves(cell: Vector2i) -> Array:
 	return result
 
 # fromからtoへ1回で移動できるか
-func can_move(from: Vector2i, to: Vector2i) -> bool:
-	for move in get_moves(from):
+func can_move(from: Vector2i, to: Vector2i, staff := false) -> bool:
+	for move in get_moves(from, staff):
 		if move.to == to:
 			return true
 	return false
@@ -759,7 +761,7 @@ func is_elevator_ride(from: Vector2i, to: Vector2i) -> bool:
 
 # ダイクストラ法でコストが最小の経路を求める
 # 戻り値: [from, ..., to] のマス配列。経路がなければ空配列。
-func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
+func find_path(from: Vector2i, to: Vector2i, staff := false) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	if is_cell_empty(from) or is_cell_empty(to):
 		return result
@@ -787,7 +789,7 @@ func find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 			result.push_front(from)
 			return result
 		done[current] = true
-		for move in get_moves(current):
+		for move in get_moves(current, staff):
 			var next: Vector2i = move.to
 			if done.has(next):
 				continue

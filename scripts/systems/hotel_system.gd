@@ -81,6 +81,7 @@ func rebuild() -> void:
 		if not housekeepers.has(cell):
 			var resident = world.spawn_resident(cell)
 			resident.base_color = HOUSEKEEPER_COLOR
+			resident.staff = true # 清掃員はサービスエレベーターに乗れる
 			housekeepers[cell] = {"home": cell, "resident": resident, "room": null, "clean_left": 0.0}
 	for cell in housekeepers.keys():
 		if not home_cells.has(cell):
@@ -227,7 +228,7 @@ func assign_nearest_dirty_room(keeper: Dictionary) -> bool:
 		var room = rooms[cell]
 		if room.state != RoomState.DIRTY or room.cleaner != null:
 			continue
-		var path: Array[Vector2i] = world.find_path(keeper.resident.cell, cell)
+		var path: Array[Vector2i] = world.find_path(keeper.resident.cell, cell, true)
 		if not path.is_empty() and (best == null or path.size() < best_length):
 			best = cell
 			best_length = path.size()
