@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2844,6 +2844,72 @@ func run_bomb_scenario() -> bool:
 			days += 1
 	print("    40日のうち爆破予告が来た日: ", days)
 	check(days > 0 and days < 20, "★2以上では、ときどき爆破予告が届く（40日のうち%d日）" % days)
+	return true
+
+# ---------------------------------------------------
+# シナリオ48: 火災の発生・延焼・消火
+#   2階（y=17）に警備室(x=9〜10)・飲食店(x=11〜13)・ショップ(x=14〜16)を建てて燃やす。
+# ---------------------------------------------------
+func run_fire_scenario() -> bool:
+	print("[シナリオ] 火災")
+	main.funds = 10000000
+	var incidents = main.incident_system
+	focus_camera(Vector2i(12, 17))
+	await wait_frames(1)
+	# 足場: 1階にロビーを足し、(9,18)は2階へ上がる階段にする
+	build_support([Vector2i(8, 18)] + cells_row(18, 10, 17), "lobby")
+	build_support([Vector2i(9, 18)])
+	main.select_mode("security")
+	main.build_at(Vector2i(9, 17))
+	main.select_mode("restaurant")
+	main.build_at(Vector2i(11, 17))
+	main.select_mode("shop")
+	main.build_at(Vector2i(14, 17))
+	await wait_frames(2)
+	check(incidents.guard_count() == 1, "警備員が1人いる")
+	
+	# 出火 → 警備員が消火に向かう
+	main.clock.set_time(1, 20, 0)
+	main.clock.set_process(true)
+	incidents.start_fire(Vector2i(12, 17))
+	check(incidents.has_fire() and incidents.fire.has(Vector2i(12, 17)), "そのマスが燃えはじめる")
+	check(logged("火事だ！"), "出火がメッセージで知らされる")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("火災！"), "上部バーに火災と燃えているマスの数が出る")
+	await capture("fire_01_burning")
+	Engine.time_scale = 16.0
+	await wait_until(func(): return not incidents.has_fire(), 60.0)
+	Engine.time_scale = 1.0
+	check(logged("火を消し止めました"), "警備員が消し止める")
+	check(main.get_building_type(Vector2i(12, 17)) == "restaurant", "消火が間に合い、飲食店は残る")
+	
+	# 警備員がいないと、燃え広がって焼け落ちる
+	main.select_mode("security")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_RIGHT)
+	await wait_frames(2)
+	check(incidents.guard_count() == 0, "警備室を撤去すると警備員もいなくなる")
+	incidents.start_fire(Vector2i(12, 17))
+	Engine.time_scale = 16.0
+	await wait_until(func(): return incidents.fire.size() > 1, 30.0)
+	check(incidents.fire.size() > 1, "時間がたつと隣のマスへ燃え広がる")
+	await capture("fire_02_spreading")
+	await wait_until(func(): return main.is_cell_empty(Vector2i(12, 17)), 60.0)
+	check(main.is_cell_empty(Vector2i(12, 17)), "燃え続けたテナントは焼け落ちる")
+	check(logged("焼け落ちました"), "焼失がメッセージで知らされる")
+	await wait_until(func(): return not incidents.has_fire(), 90.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	
+	# 出火は★2以上のビルだけ
+	check(incidents.MIN_STARS == 2 and main.rating_system.stars == 1, "今は★1")
+	check(not incidents.roll_fire(1) and not incidents.roll_fire(5), "★1のうちは出火しない")
+	main.rating_system.stars = 2
+	var days := 0
+	for day in range(1, 41):
+		if incidents.roll_fire(day):
+			days += 1
+	print("    40日のうち出火した日: ", days)
+	check(days > 0 and days < 20, "★2以上では、ときどき出火する（40日のうち%d日）" % days)
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

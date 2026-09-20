@@ -18,6 +18,7 @@ const ENTRANCE_COLOR := Color(0.2, 0.42, 0.72)       # 1階の入口の庇（青
 const SUBWAY_ENTRANCE_COLOR := Color(0.25, 0.65, 0.8) # 地下鉄駅の入口の庇（水色）
 const HOME_COLOR := Color(1.0, 0.85, 0.2) # エレベーターの待機階の印
 const BOMB_COLOR := Color(1.0, 0.25, 0.2) # 爆破予告のマスの印
+const FIRE_COLORS := [Color(1.0, 0.5, 0.1), Color(1.0, 0.8, 0.2)] # 燃えているマス（交互に点滅）
 const SOIL_COLOR := Color(0.36, 0.26, 0.18)       # 地下（1階より下）の土
 const GROUND_LINE_COLOR := Color(0.55, 0.42, 0.28) # 地面の線
 
@@ -111,6 +112,16 @@ class HomeMarkers extends Node2D:
 		for entrance in world.get_entrances():
 			var entrance_color: Color = overlay.ENTRANCE_COLOR if entrance == world.get_entrance() else overlay.SUBWAY_ENTRANCE_COLOR
 			draw_entrance(Vector2(entrance) * tile_size - Vector2(tile_size.x / 2.0, 0), entrance_color)
+		# 燃えているマス（炎の色が交互に変わる）
+		for cell in world.incident_system.fire:
+			var flame_rect := Rect2(Vector2(cell) * tile_size, tile_size)
+			var color: Color = overlay.FIRE_COLORS[0] if world.tenant_system.blink_on() else overlay.FIRE_COLORS[1]
+			draw_rect(flame_rect, Color(color, 0.45))
+			# 炎（下が広く、上がとがった三角）
+			draw_colored_polygon([flame_rect.position + Vector2(3, tile_size.y - 2),
+				flame_rect.position + Vector2(tile_size.x - 3, tile_size.y - 2),
+				flame_rect.position + Vector2(tile_size.x / 2.0, 3)], color)
+
 		# 爆破予告のマス（赤い枠が点滅する）
 		if world.incident_system.has_bomb() and world.tenant_system.blink_on():
 			var bomb_rect := Rect2(Vector2(world.incident_system.bomb.cell) * tile_size, tile_size)
