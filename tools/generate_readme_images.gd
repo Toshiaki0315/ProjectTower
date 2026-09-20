@@ -126,6 +126,7 @@ func save_screenshots() -> void:
 	root.add_child(m)
 	for i in 3:
 		await process_frame
+	m.start_game() # タイトル画面を閉じる
 	m.funds = 100000000
 	# 更地から建てる: 1階はロビー（入口は左端）、2階から上にテナント、x=8 のシャフトでつなぐ
 	# 建物は下の階に建物がないと建てられないので、1階から上へ（地下は1階から下へ）順に建てる

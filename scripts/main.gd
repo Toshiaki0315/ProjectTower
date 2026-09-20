@@ -94,6 +94,8 @@ var funds_label: Label # 資金表示用のUIラベル
 var message_label: Label # 操作結果のメッセージ（下から数行ぶん流れる）
 var log_panel: Control   # ゲーム開始からのメッセージの記録（⌘Lで開閉）
 var chart_panel: Control # 収支のグラフ（⌘Gで開閉）
+var title_panel: Control # タイトル画面（はじめから／続きから）
+var started := false     # ゲームが始まっているか（タイトル画面の間は false）
 var log_label: Label
 var log_scroll: ScrollContainer
 var drag_button := 0          # 押したままなぞっているマウスのボタン（0なら押していない）
@@ -188,6 +190,7 @@ func _ready() -> void:
 	add_child(parking_system)
 	clock = GameClock.new()
 	add_child(clock)
+	clock.set_process(false) # タイトル画面の間は時間を止めておく（木に入れた後で止める）
 	commute_system = CommuteSystem.new()
 	commute_system.setup(self)
 	add_child(commute_system)
@@ -225,6 +228,7 @@ func _ready() -> void:
 	grid_overlay.setup(self)
 	tile_map.add_child(grid_overlay)
 	create_ui()
+	create_title()
 	update_funds_display()
 
 func _process(_delta: float) -> void:
@@ -1129,6 +1133,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and handle_shortcut(event):
 		get_viewport().set_input_as_handled()
 		return
+	if not started:
+		return # タイトル画面の間は、マップの操作を受け付けない
 	# UIの上以外でマウスが動いたら、カーソル下のマスの強調表示を更新する
 	if event is InputEventMouseMotion:
 		grid_overlay.hover_screen_pos = event.position
@@ -1173,6 +1179,65 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 		call_elevator(map_pos)
 	else:
 		build_at(map_pos)
+
+# ---------------------------------------------------
+# タイトル画面: 「はじめから」で更地から、「続きから」でセーブデータから始める。
+# 始まるまでは時計を止めて、マップの操作も受け付けない。
+# ---------------------------------------------------
+func create_title() -> void:
+	var canvas = CanvasLayer.new()
+	canvas.layer = 2 # ほかのUIより手前に出す
+	add_child(canvas)
+	var back = ColorRect.new()
+	back.color = Color(0.06, 0.07, 0.12, 0.92)
+	back.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas.add_child(back)
+	var box = VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT) # 画面いっぱいに広げて、中身を真ん中にそろえる
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 12 * UI_SCALE)
+	var theme := Theme.new()
+	theme.default_font_size = BASE_FONT_SIZE * UI_SCALE
+	box.theme = theme
+	back.add_child(box)
+	
+	var title = Label.new()
+	title.text = "ProjectTower"
+	title.add_theme_font_size_override("font_size", 48 * UI_SCALE)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var subtitle = Label.new()
+	subtitle.text = "更地から始めて、テナントを入れ、エレベーターを工夫して、ビルの評価（★）を上げよう"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(subtitle)
+	
+	var new_button = Button.new()
+	new_button.text = "はじめから"
+	new_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	new_button.custom_minimum_size.x = 320 * UI_SCALE
+	new_button.pressed.connect(func(): start_game())
+	box.add_child(new_button)
+	var continue_button = Button.new()
+	continue_button.text = "続きから（セーブデータを読み込む）"
+	continue_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	continue_button.custom_minimum_size.x = 320 * UI_SCALE
+	continue_button.disabled = not save_system.has_save()
+	continue_button.pressed.connect(func():
+		start_game()
+		save_system.load_game())
+	box.add_child(continue_button)
+	var hint = Label.new()
+	hint.text = "遊び方は ⌘H（操作説明）。⌘S で保存、⌘O で読み込み、⌘M で音のオン・オフ"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(hint)
+	title_panel = back
+
+# ゲームを始める（タイトル画面を閉じて、時計を動かす）
+func start_game() -> void:
+	started = true
+	if title_panel:
+		title_panel.visible = false
+	clock.set_process(true)
 
 # ⌘（Ctrl）と組み合わせるショートカット。受け付けたら true
 #   ⌘H: 操作説明の開閉 / ⌘L: メッセージの記録の開閉

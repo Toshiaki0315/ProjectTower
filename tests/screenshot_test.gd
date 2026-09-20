@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -60,6 +60,7 @@ func start_main(standard_block := true) -> void:
 	root.add_child(main)
 	Engine.time_scale = 1.0
 	await wait_frames(3) # _ready()が済むまで待つ
+	main.start_game()    # タイトル画面を閉じて、ゲームを始める
 	main.clock.set_process(false) # 社員の出勤で他のシナリオが乱れないよう、時計は止めておく
 	if standard_block:
 		build_standard_block()
@@ -3376,6 +3377,43 @@ func run_audio_scenario() -> bool:
 	main.clock.set_time(1, 7, 30)
 	await wait_frames(2)
 	check(not audio.bgm_night, "朝になると昼のBGMに戻る")
+	return true
+
+# ---------------------------------------------------
+# シナリオ57: タイトル画面（はじめから／続きから）
+# ---------------------------------------------------
+func run_title_scenario() -> bool:
+	print("[シナリオ] タイトル画面")
+	# このシナリオだけは、タイトル画面が出たままのゲームを作り直して確かめる
+	main.queue_free()
+	await wait_frames(1)
+	main = load("res://scenes/main.tscn").instantiate()
+	root.add_child(main)
+	await wait_frames(3)
+	check(not main.started and main.title_panel.visible, "起動するとタイトル画面が出る")
+	check(not main.clock.is_processing(), "タイトル画面の間は時間が止まっている")
+	var title_labels: Array[String] = []
+	for node in main.title_panel.find_children("*", "Label", true, false):
+		title_labels.append(node.text)
+	check(title_labels.has("ProjectTower"), "タイトルが出る")
+	var buttons := {}
+	for node in main.title_panel.find_children("*", "Button", true, false):
+		buttons[node.text] = node
+	check(buttons.has("はじめから") and buttons.keys().any(func(t: String): return t.begins_with("続きから")), "「はじめから」と「続きから」のボタンがある")
+	await capture("title_01")
+	
+	# タイトル画面の間は、マップをクリックしても建たない
+	await choose_mode("lobby")
+	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_LEFT)
+	check(main.building_grid.is_empty(), "タイトル画面の間はマップを操作できない")
+	
+	# 「はじめから」を押すと、更地から始まる
+	await click_button(buttons["はじめから"])
+	check(main.started and not main.title_panel.visible, "「はじめから」でタイトル画面が閉じる")
+	check(main.clock.is_processing(), "ゲームが始まると時間が動きだす")
+	check(main.building_grid.is_empty() and main.funds == 2000000, "更地・資金200万円から始まる")
+	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(0, 18)) == "lobby", "始まった後はマップを操作できる")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
