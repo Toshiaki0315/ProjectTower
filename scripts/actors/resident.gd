@@ -17,6 +17,7 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 #   カゴを待っている間たまり、目的地に着いて立ち止まっている間は回復する。
 #   メディカルセンターがビルにあると、回復が速くなる（main.stress_recover_rate）。
 #   顔（肌）の色で表す: ふつうの肌色（平常）→ ピンク（40以上）→ 赤（70以上）→ 赤く点滅（95以上＝激怒）。
+#   歩いている間は、足の形を切り替えて歩いて見せる（WALK_LEGS）。
 #   服の色はその人の種類（社員は白・宿泊客は薄紫など）を表すので、ストレスでは変えない
 # ---------------------------------------------------
 
@@ -51,6 +52,14 @@ const BODY_SPRITE := [
 	".KLKKLK.",
 	".KK..KK.",
 ]
+# 歩くときの足の形（下から2行ぶんを差し替える）。左右の足を交互に出して、歩いて見せる
+const WALK_LEGS := [
+	[".KLKKLK.", ".KK..KK."], # 立っている（両足そろえる）
+	[".KLLKLK.", "KK...KK."], # 右足を前に
+	[".KLKLLK.", ".KK..KK."], # 左足を前に
+]
+const WALK_FRAME_PIXELS := 5.0 # 何px進むごとに足を切り替えるか
+
 const BODY_COLORS := {
 	"K": Color("#1b1b24"), # 輪郭
 	"h": Color("#4a3020"), # 髪
@@ -67,6 +76,7 @@ var state := State.WALKING
 var car = null                 # 乗っているカゴ
 var ride_dir := 0              # 乗りたい方向（カゴのDirection.UP / DOWN）
 var stress := 0.0
+var walked := 0.0 # 歩いた距離（px。足の動かし方を決めるのに使う）
 var base_color := Color.WHITE  # 平常時の体の色（社員: 白 / 宿泊客: 薄紫 / 清掃員: 水色）
 var staff := false             # 裏方（清掃員など）。サービスエレベーターに乗れる
 var sprite_offset := Vector2.ZERO # 体を描く位置のずれ（同じマスにいる連れ同士が重ならないように）
@@ -140,7 +150,9 @@ func process_walking(delta: float) -> void:
 		speed = ESCALATOR_SPEED
 	elif next.y != cell.y:
 		speed = STAIRS_SPEED
+	var before := position
 	position = position.move_toward(target_pos, speed * delta)
+	walked += before.distance_to(position)
 	if position == target_pos:
 		cell = next
 		path.pop_front()
@@ -204,6 +216,15 @@ func update_stress(delta: float) -> void:
 func get_body_color() -> Color:
 	return Color(1.0, 0.85, 0.1) if selected else base_color
 
+# 今の体のドット絵（歩いているときは、進んだ距離で足の形を切り替える）
+func body_sprite() -> Array:
+	var sprite: Array = BODY_SPRITE.duplicate()
+	if is_moving():
+		var frame: int = int(walked / WALK_FRAME_PIXELS) % WALK_LEGS.size()
+		sprite[sprite.size() - 2] = WALK_LEGS[frame][0]
+		sprite[sprite.size() - 1] = WALK_LEGS[frame][1]
+	return sprite
+
 # 我慢の限界（激怒）か。顔が赤く点滅して、放っておくと評価が下がっていく
 func is_angry() -> bool:
 	return stress >= STRESS_ANGRY
@@ -236,8 +257,9 @@ func _draw() -> void:
 	# 体（ドット絵）。服は種類ごとの色（選択中は黄色）、顔はストレスに応じた色
 	var clothes := get_body_color()
 	var face := get_face_color()
-	for y in BODY_SPRITE.size():
-		var row: String = BODY_SPRITE[y]
+	var sprite := body_sprite()
+	for y in sprite.size():
+		var row: String = sprite[y]
 		for x in row.length():
 			var ch := row[x]
 			if ch == ".":

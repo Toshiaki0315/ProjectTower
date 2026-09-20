@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -3531,6 +3531,55 @@ func run_tutorial_scenario() -> bool:
 	check(tutorial.finished and not main.tutorial_panel.visible, "決算まで進むと案内は終わる")
 	check(logged("案内はここまでです"), "終わりがメッセージで出る")
 	
+	return true
+
+# ---------------------------------------------------
+# シナリオ60: 見た目（歩くアニメーションと、建設・撤去・お金の演出）
+# ---------------------------------------------------
+func run_effects_scenario() -> bool:
+	print("[シナリオ] 見た目の演出")
+	main.funds = 10000000
+	focus_camera(Vector2i(0, 16))
+	await wait_frames(1)
+	var effects = main.effects
+	effects.effects.clear() # 共通のビルを建てたときの演出を片づけてから始める
+	check(effects.effects.is_empty(), "はじめは演出が出ていない")
+	
+	# 建てると白い枠、撤去すると土ぼこりが出る
+	await choose_mode("stairs")
+	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_LEFT)
+	check(effects.effects.size() == 1 and effects.effects[0].type == "build", "建てると建設の演出が出る")
+	await capture("effects_01_build")
+	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_RIGHT)
+	check(effects.effects.any(func(e): return e.type == "demolish"), "撤去すると土ぼこりの演出が出る")
+	
+	# 演出はしばらくすると消える
+	await wait_until(func(): return effects.effects.is_empty(), 5.0)
+	check(effects.effects.is_empty(), "演出は時間がたつと消える")
+	
+	# 決算で黒字なら「+◯◯円」が浮かぶ
+	await choose_mode("elevator")
+	for y in range(18, 14, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT) # ブロックの隣にシャフトを建てて、社員が出勤できるようにする
+	await run_day(1)
+	var money: Array = effects.effects.filter(func(e): return e.type == "money")
+	check(money.size() == 1 and money[0].text.begins_with("+"), "黒字の決算で「+◯◯円」が浮かぶ")
+	await capture("effects_02_money")
+	
+	# 歩いている人は、足の形が変わる（歩いて見える）
+	var resident = main.spawn_resident(Vector2i(-8, 18))
+	check(resident.body_sprite() == resident.BODY_SPRITE, "立っている人はふつうの絵")
+	resident.go_to(Vector2i(7, 18))
+	var shapes := {}
+	Engine.time_scale = 2.0
+	var limit := Time.get_ticks_msec() + 8000
+	while Time.get_ticks_msec() < limit and shapes.size() < 3 and resident.is_moving():
+		shapes[resident.body_sprite()[resident.BODY_SPRITE.size() - 2]] = true
+		await wait_frames(1)
+	Engine.time_scale = 1.0
+	print("    足の形の数: ", shapes.size())
+	check(shapes.size() >= 2, "歩いている間に足の形が切り替わる")
+	check(resident.walked > 0.0, "歩いた距離を数えている")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

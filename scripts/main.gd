@@ -12,6 +12,7 @@ const IncidentSystem := preload("res://scripts/systems/incident_system.gd")
 const WeatherSystem := preload("res://scripts/systems/weather_system.gd")
 const SaveSystem := preload("res://scripts/systems/save_system.gd")
 const ChartView := preload("res://scripts/view/chart_view.gd")
+const Effects := preload("res://scripts/view/effects.gd")
 const AudioSystem := preload("res://scripts/systems/audio_system.gd")
 const GoalSystem := preload("res://scripts/systems/goal_system.gd")
 const TutorialSystem := preload("res://scripts/systems/tutorial_system.gd")
@@ -116,6 +117,7 @@ var mode_select: OptionButton # 建設メニュー（リストから建物など
 var mode_info_label: Label # 選んだものの費用・大きさの表示
 var v_scroll: VScrollBar # マップの上下スクロールバー
 var grid_overlay # マス目の表示
+var effects      # 建設・撤去・お金の演出
 var elevator_system # エレベーターのシャフトとカゴの管理
 var parking_system  # 地下駐車場とスロープ（車で来るお客さん）
 var visitor_system  # 外から来るお客さん（店の客・車で来た客）の動き
@@ -242,6 +244,9 @@ func _ready() -> void:
 	grid_overlay = GridOverlay.new()
 	grid_overlay.setup(self)
 	tile_map.add_child(grid_overlay)
+	effects = Effects.new()
+	effects.setup(self)
+	tile_map.add_child(effects)
 	create_ui()
 	create_title()
 	update_funds_display()
@@ -1391,6 +1396,7 @@ func build_at(map_pos: Vector2i):
 	rebuild_systems()
 	update_funds_display()
 	audio_system.play("build")
+	effects.play_build(get_footprint(map_pos, current_mode))
 	show_message("%sを建設しました %s" % [BUILDINGS[current_mode].name, map_pos])
 	incident_system.on_built(get_footprint(map_pos, current_mode)) # 地下なら埋蔵金が見つかることがある
 
@@ -1419,6 +1425,7 @@ func clear_world() -> void:
 func destroy_unit(cell: Vector2i) -> void:
 	if is_cell_empty(cell):
 		return
+	effects.play_demolish(get_unit_cells(cell))
 	for c in get_unit_cells(cell):
 		tile_map.erase_cell(c)
 		building_grid.erase(c)
@@ -1439,6 +1446,7 @@ func demolish_at(map_pos: Vector2i):
 	var refund = int(BUILDINGS[type].cost * REFUND_RATE)
 	
 	funds += refund
+	effects.play_demolish(get_unit_cells(map_pos))
 	for cell in get_unit_cells(map_pos):
 		tile_map.erase_cell(cell)
 		building_grid.erase(cell)
