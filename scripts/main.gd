@@ -214,6 +214,8 @@ func _process(_delta: float) -> void:
 			angry += 1
 	if angry > 0:
 		stats_label.text += " / 怒っている人 %d人" % angry
+	if incident_system.has_roaches():
+		stats_label.text += " / " + incident_system.get_roach_text()
 	if incident_system.has_fire():
 		stats_label.text += " / " + incident_system.get_fire_text()
 	if incident_system.has_bomb():
@@ -371,6 +373,7 @@ func create_ui():
 		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
 		"　処理が足りない日が続くとビルが汚れ（衛生の悪化）、レベル1につきストレス5ぶん全テナントの評価が下がる",
 		"メディカルセンター（横3マス）: ビル全体のストレスの回復が速くなる（1施設で1.5倍・最大2.5倍）",
+		"ゴキブリ: 衛生の悪化が続くと大繁殖し、いるテナントの評価がストレス15ぶん悪くなる（悪化が0に戻ると消える）",
 		"火災: ★2以上のビルでときどき出火。20分ごとに隣と上へ燃え広がり、60分燃えたテナントは焼け落ちる（警備員が消火する）",
 		"爆破予告: ★2以上のビルにときどき届く。警備員が現場で解体できないと、120分後にそのテナントが吹き飛ぶ",
 		"VIP: ★4の条件がそろうと16時にVIPが来館。ストレス30以下できれいな空きスイートに着けば合格（不合格なら翌日また来る）",
@@ -558,6 +561,8 @@ func update_hover_label():
 	var cell: Vector2i = grid_overlay.hover_cell
 	var type = get_building_type(cell)
 	var text = "%s マス %s: %s" % [get_floor_name(cell.y), cell, BUILDINGS[type].name if type != "" else "空き"]
+	if incident_system.has_roach_at(cell):
+		text += "（ゴキブリ発生中）"
 	if type == "office" and tenant_system.get_rating_text(cell) != "":
 		text += "（%s）" % tenant_system.get_rating_text(cell)
 	if hotel_system.is_room_type(type):

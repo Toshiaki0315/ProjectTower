@@ -1,7 +1,7 @@
 extends Node
 
 # ---------------------------------------------------
-# 事件（トラブル）：爆破予告（テロ）と火災を受け持つ。
+# 事件（トラブル）：爆破予告（テロ）・火災・ゴキブリの大繁殖を受け持つ。
 #
 # ■ 警備員
 #   警備室1つにつき1人が常駐する（裏方なので、サービスエレベーターにも乗れる）。
@@ -18,6 +18,11 @@ extends Node
 #   1マスが BURN_MINUTES 燃え続けると、そのテナントは焼け落ちる（払い戻しなし）。
 #   警備員が燃えているマスへ行き、EXTINGUISH_MINUTES 分かけて1マスずつ消し止める。
 #   燃えているマスがなくなれば鎮火。
+# ■ ゴキブリの大繁殖
+#   衛生の悪化（economy_system.pollution）が ROACH_POLLUTION 以上の日が ROACH_DAYS 日続くと発生し、
+#   毎日 ROACH_SPAWN 棟ずつテナントに広がる。
+#   ゴキブリがいるテナントは、評価にストレス ROACH_STRESS 相当が足される。
+#   ゴミの処理が追いついて悪化が0に戻ると、いなくなる。
 # ---------------------------------------------------
 
 const GUARD_COLOR := Color(0.45, 0.55, 0.95) # 警備員の服の色（青）
@@ -32,6 +37,12 @@ const SPREAD_MINUTES := 20.0   # 隣のマスへ燃え広がるまでの時間�
 const BURN_MINUTES := 60.0     # 1マスが燃え尽きる（建物が焼け落ちる）までの時間（分）
 const EXTINGUISH_MINUTES := 10.0 # 警備員が1マスを消し止めるのにかかる時間（分）
 
+const ROACH_POLLUTION := 4   # 衛生の悪化がこのレベル以上の日が続くと、ゴキブリが出る
+const ROACH_DAYS := 2        # 続く日数
+const ROACH_SPAWN := 3       # 1日に広がるテナントの数
+const ROACH_STRESS := 15.0   # ゴキブリがいるテナントの評価に足されるストレス
+const ROACH_MINUTE := 6 * 60 # 1日の判定をする時刻
+
 # 爆弾が仕掛けられるテナント
 const TARGET_TYPES := ["office", "hotel", "hotel_twin", "hotel_suite", "housing", "restaurant", "shop", "cinema", "wedding", "event_hall"]
 
@@ -43,6 +54,9 @@ var bomb_day := 0   # 最後に予告の判定をした日
 var fire := {}      # 燃えているマス -> {"burn_left": 焼け落ちるまでの分, "work_left": 消火の残りの分}
 var fire_spread_left := 0.0 # 次に燃え広がるまでの分
 var fire_day := 0   # 最後に出火の判定をした日
+var roaches := {}   # ゴキブリがいるテナント（左端のマス） -> true
+var roach_days := 0 # 衛生の悪化が続いている日数
+var roach_day := 0  # 最後にゴキブリの判定をした日
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -89,6 +103,9 @@ func _process(_delta: float) -> void:
 			start_fire(pick_target(day))
 	if has_fire():
 		process_fire(minutes)
+	if roach_day != day and now >= ROACH_MINUTE:
+		roach_day = day
+		update_roaches(day)
 
 # その日に爆破予告が届くか（日ごとに決まった乱数）
 func roll_bomb(day: int) -> bool:
@@ -278,6 +295,64 @@ func dispatch_guards() -> void:
 			guard.go_to(best)
 		else:
 			send_guards_home(guard)
+
+# ---------------------------------------------------
+# ゴキブリの大繁殖
+# ---------------------------------------------------
+
+func has_roaches() -> bool:
+	return not roaches.is_empty()
+
+# ゴキブリがいるテナントか（そのテナントのどのマスでもよい）
+func has_roach_at(cell: Vector2i) -> bool:
+	return world.building_grid.has(cell) and roaches.has(world.building_grid[cell].origin)
+
+# ゴキブリのぶん、評価に足されるストレス
+func roach_stress(origin: Vector2i) -> float:
+	return ROACH_STRESS if roaches.has(origin) else 0.0
+
+# 1日1回の判定（衛生が悪い日が続くと増え、きれいになるといなくなる）
+func update_roaches(day: int) -> void:
+	# なくなったテナントのゴキブリは消す
+	for origin in roaches.keys():
+		if world.is_cell_empty(origin):
+			roaches.erase(origin)
+	if world.economy_system.pollution >= ROACH_POLLUTION:
+		roach_days += 1
+	else:
+		roach_days = 0
+		if world.economy_system.pollution == 0 and has_roaches():
+			roaches.clear()
+			world.show_message("ビルがきれいになり、ゴキブリはいなくなりました")
+			return
+	if roach_days < ROACH_DAYS:
+		return
+	var before := roaches.size()
+	spread_roaches(day)
+	if before == 0 and has_roaches():
+		world.show_message("ゴキブリが大繁殖しました！ テナントの評価が下がります。ゴミの処理を急ぎましょう")
+	elif roaches.size() > before:
+		world.show_message("ゴキブリが %d 棟のテナントに広がっています" % roaches.size())
+
+# ゴキブリをテナントに広げる（日ごとに決まった乱数で選ぶ）
+func spread_roaches(day: int) -> void:
+	var targets: Array[Vector2i] = []
+	for type in TARGET_TYPES:
+		for origin in world.find_units_of_type(type):
+			if not roaches.has(origin):
+				targets.append(origin)
+	if targets.is_empty():
+		return
+	targets.sort()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([day, "roach"])
+	for i in mini(ROACH_SPAWN, targets.size()):
+		roaches[targets[rng.randi_range(0, targets.size() - 1)]] = true
+
+func get_roach_text() -> String:
+	if not has_roaches():
+		return ""
+	return "ゴキブリ %d棟" % roaches.size()
 
 # カーソルや上部バーの表示用
 func get_fire_text() -> String:

@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2910,6 +2910,54 @@ func run_fire_scenario() -> bool:
 			days += 1
 	print("    40日のうち出火した日: ", days)
 	check(days > 0 and days < 20, "★2以上では、ときどき出火する（40日のうち%d日）" % days)
+	return true
+
+# ---------------------------------------------------
+# シナリオ49: ゴキブリの大繁殖（衛生の悪化が続くと発生）
+# ---------------------------------------------------
+func run_roach_scenario() -> bool:
+	print("[シナリオ] ゴキブリの大繁殖")
+	var incidents = main.incident_system
+	var economy = main.economy_system
+	var tenants = main.tenant_system
+	focus_camera(Vector2i(0, 16))
+	await wait_frames(1)
+	check(not incidents.has_roaches(), "最初はゴキブリがいない")
+	
+	# 衛生の悪化が続くと発生する
+	economy.pollution = incidents.ROACH_POLLUTION
+	incidents.update_roaches(1)
+	check(not incidents.has_roaches(), "悪化1日目では、まだ出ない")
+	incidents.update_roaches(2)
+	check(incidents.has_roaches(), "悪化が2日続くとゴキブリが大繁殖する")
+	check(incidents.roaches.size() <= incidents.ROACH_SPAWN, "1日に広がるのは%d棟まで" % incidents.ROACH_SPAWN)
+	check(logged("ゴキブリが大繁殖しました"), "発生がメッセージで知らされる")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("ゴキブリ"), "上部バーにゴキブリのいる棟数が出る")
+	var infested: Vector2i = incidents.roaches.keys()[0]
+	await hover_cell(infested)
+	check(main.hover_label.text.contains("ゴキブリ発生中"), "カーソルを合わせるとゴキブリがいると出る")
+	await capture("roach_01")
+	
+	# 日がたつと、さらに広がる
+	var before: int = incidents.roaches.size()
+	incidents.update_roaches(3)
+	check(incidents.roaches.size() > before, "悪化が続くと、さらに広がる")
+	
+	# ゴキブリがいるテナントは評価が下がる
+	check(is_equal_approx(incidents.roach_stress(infested), incidents.ROACH_STRESS), "ゴキブリのいるテナントはストレス15ぶんの上乗せ")
+	tenants.offices[infested] = tenants.new_tenant()
+	for cell in main.get_unit_cells(infested):
+		tenants.day_peak_stress[cell] = 5.0
+		main.commute_system.workers[cell].arrived_day = 4
+	economy.pollution = 0 # 衛生の悪化ぶんを外して、ゴキブリの影響だけを見る
+	tenants.evaluate_day(4)
+	check(tenants.offices[infested].average >= incidents.ROACH_STRESS, "評価に使う値に、ゴキブリのぶんが足されている")
+	
+	# ゴミの処理が追いつくと、いなくなる
+	incidents.update_roaches(5)
+	check(not incidents.has_roaches(), "衛生の悪化が0に戻ると、ゴキブリはいなくなる")
+	check(logged("ゴキブリはいなくなりました"), "いなくなったことがメッセージで出る")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

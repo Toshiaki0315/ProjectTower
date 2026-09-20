@@ -19,6 +19,7 @@ const SUBWAY_ENTRANCE_COLOR := Color(0.25, 0.65, 0.8) # 地下鉄駅の入口の
 const HOME_COLOR := Color(1.0, 0.85, 0.2) # エレベーターの待機階の印
 const BOMB_COLOR := Color(1.0, 0.25, 0.2) # 爆破予告のマスの印
 const FIRE_COLORS := [Color(1.0, 0.5, 0.1), Color(1.0, 0.8, 0.2)] # 燃えているマス（交互に点滅）
+const ROACH_COLOR := Color(0.25, 0.15, 0.1) # ゴキブリ
 const SOIL_COLOR := Color(0.36, 0.26, 0.18)       # 地下（1階より下）の土
 const GROUND_LINE_COLOR := Color(0.55, 0.42, 0.28) # 地面の線
 
@@ -112,6 +113,16 @@ class HomeMarkers extends Node2D:
 		for entrance in world.get_entrances():
 			var entrance_color: Color = overlay.ENTRANCE_COLOR if entrance == world.get_entrance() else overlay.SUBWAY_ENTRANCE_COLOR
 			draw_entrance(Vector2(entrance) * tile_size - Vector2(tile_size.x / 2.0, 0), entrance_color)
+		# ゴキブリがいるテナント（床に小さな虫を描く）
+		for origin in world.incident_system.roaches:
+			if not world.building_grid.has(origin):
+				continue
+			for cell in world.get_unit_cells(origin):
+				if cell.y != origin.y:
+					continue
+				draw_roach(Vector2(cell) * tile_size + Vector2(4, tile_size.y - 4), world.tenant_system.blink_on())
+				draw_roach(Vector2(cell) * tile_size + Vector2(11, tile_size.y - 6), not world.tenant_system.blink_on())
+
 		# 燃えているマス（炎の色が交互に変わる）
 		for cell in world.incident_system.fire:
 			var flame_rect := Rect2(Vector2(cell) * tile_size, tile_size)
@@ -135,6 +146,13 @@ class HomeMarkers extends Node2D:
 			var cx := pos.x + 4.0
 			var cy := pos.y + tile_size.y / 2.0
 			draw_colored_polygon([Vector2(cx - 1.5, cy - 2), Vector2(cx + 1.5, cy - 2), Vector2(cx, cy + 1)], overlay.HOME_COLOR)
+
+	# ゴキブリ（胴体とひげ。歩いて見えるよう、向きを交互に変える）
+	func draw_roach(pos: Vector2, flip: bool) -> void:
+		var dir := 1.0 if flip else -1.0
+		draw_rect(Rect2(pos - Vector2(1.5, 1.0), Vector2(3, 2)), overlay.ROACH_COLOR)
+		draw_line(pos + Vector2(1.5 * dir, -1.0), pos + Vector2(3.0 * dir, -2.5), overlay.ROACH_COLOR, 0.6)
+		draw_line(pos + Vector2(1.5 * dir, -1.0), pos + Vector2(3.0 * dir, 0.0), overlay.ROACH_COLOR, 0.6)
 
 	# 入口のアイコンを、左上を pos として1ドットずつ描く（"C" は入口の色）
 	func draw_entrance(pos: Vector2, color: Color) -> void:
