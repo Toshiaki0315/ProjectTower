@@ -14,6 +14,7 @@ const SaveSystem := preload("res://scripts/systems/save_system.gd")
 const ChartView := preload("res://scripts/view/chart_view.gd")
 const AudioSystem := preload("res://scripts/systems/audio_system.gd")
 const GoalSystem := preload("res://scripts/systems/goal_system.gd")
+const TutorialSystem := preload("res://scripts/systems/tutorial_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -97,6 +98,8 @@ var log_panel: Control   # ゲーム開始からのメッセージの記録（�
 var chart_panel: Control # 収支のグラフ（⌘Gで開閉）
 var title_panel: Control # タイトル画面（はじめから／続きから）
 var goal_panel: Control  # 目標を達成したときの画面
+var tutorial_panel: Control # はじめての案内（上部バーの下）
+var tutorial_label: Label
 var goal_title: Label
 var goal_text: Label
 var started := false     # ゲームが始まっているか（タイトル画面の間は false）
@@ -123,6 +126,7 @@ var weather_system  # 天気（晴れ・くもり・雨）
 var save_system     # セーブ／ロード
 var audio_system    # 音（効果音とBGM）
 var goal_system     # 目標（シナリオ）
+var tutorial_system # はじめての案内
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -193,6 +197,9 @@ func _ready() -> void:
 	goal_system = GoalSystem.new()
 	goal_system.setup(self)
 	add_child(goal_system)
+	tutorial_system = TutorialSystem.new()
+	tutorial_system.setup(self)
+	add_child(tutorial_system)
 	parking_system = ParkingSystem.new()
 	parking_system.setup(self)
 	add_child(parking_system)
@@ -252,6 +259,8 @@ func _process(_delta: float) -> void:
 	if angry > 0:
 		stats_label.text += " / 怒っている人 %d人" % angry
 	stats_label.text += " / " + goal_system.get_goal_text()
+	tutorial_label.text = tutorial_system.current_text()
+	tutorial_panel.visible = tutorial_label.text != ""
 	if incident_system.has_roaches():
 		stats_label.text += " / " + incident_system.get_roach_text()
 	if incident_system.has_fire():
@@ -380,6 +389,23 @@ func create_ui():
 	mode_info_label = Label.new()
 	mode_info_label.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
 	build_row.add_child(mode_info_label)
+	
+	# --- はじめての案内（上部バーの下。画面の横幅いっぱいに出す） ---
+	var tutorial_box = HBoxContainer.new()
+	tutorial_box.add_theme_constant_override("separation", 12 * UI_SCALE)
+	tutorial_label = Label.new()
+	tutorial_label.add_theme_color_override("font_color", Color(0.65, 0.95, 1.0))
+	tutorial_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tutorial_label.clip_text = true
+	tutorial_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	tutorial_box.add_child(tutorial_label)
+	var skip_button = Button.new()
+	skip_button.text = "案内を閉じる"
+	skip_button.pressed.connect(func(): tutorial_system.skip())
+	tutorial_box.add_child(skip_button)
+	tutorial_panel = make_bar(tutorial_box)
+	tutorial_panel.visible = false
+	layout.add_child(tutorial_panel)
 	
 	# --- 操作説明（上部バーの下、右寄せ） ---
 	var help_row = HBoxContainer.new()

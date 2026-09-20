@@ -60,6 +60,8 @@ func collect() -> Dictionary:
 		"stars": world.rating_system.stars,
 		"vip_passed": world.vip_system.passed,
 		"goal_index": world.goal_system.index,
+		"tutorial_step": world.tutorial_system.step,
+		"tutorial_finished": world.tutorial_system.finished,
 		"pollution": world.economy_system.pollution,
 		"last_day": world.economy_system.last_day,
 		"treasure_total": world.incident_system.treasure_total,
@@ -133,6 +135,8 @@ func apply(data: Dictionary) -> void:
 	world.vip_system.passed = bool(data.vip_passed)
 	world.goal_system.index = int(data.get("goal_index", 0))
 	world.goal_system.cleared = world.goal_system.current() == null
+	world.tutorial_system.step = int(data.get("tutorial_step", 0))
+	world.tutorial_system.finished = bool(data.get("tutorial_finished", false))
 	world.economy_system.pollution = int(data.pollution)
 	world.economy_system.last_day = int(data.last_day)
 	world.incident_system.treasure_total = int(data.treasure_total)

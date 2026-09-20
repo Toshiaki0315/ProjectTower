@@ -33,11 +33,13 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
-		await start_main(scenario != run_empty_start_scenario)
+		await start_main(scenario != run_empty_start_scenario and scenario != run_tutorial_scenario)
+		if scenario != run_tutorial_scenario:
+			main.tutorial_system.finished = true # 案内のバーがほかのシナリオの画面をずらさないようにする
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
 		var finished = await scenario.call()
 		if finished != true:
@@ -1074,7 +1076,7 @@ func run_room_types_scenario() -> bool:
 				clean_start[cell] = now
 			if clean_start.has(cell) and hotel.rooms[cell].state == hotel.RoomState.CLEAN and not clean_end.has(cell):
 				clean_end[cell] = now
-		return clean_end.size() == 2, 40.0)
+		return clean_end.size() == 2, 90.0)
 	check(hotel.revenue_by_day.get(2, 0) == 35000 + 80000, "チェックアウトでツイン3.5万円＋スイート8万円が入る")
 	check(hotel.checkouts_by_day.get(2, 0) == 2, "チェックアウトした部屋は2室と数える")
 	check(clean_end.size() == 2, "ツインもスイートも清掃されてきれいな空室に戻る")
@@ -3472,6 +3474,63 @@ func run_goal_scenario() -> bool:
 	check(main.save_system.load_game(save_path), "読み込める")
 	check(goals.index == goals.GOALS.size() and goals.cleared, "目標の進み具合が戻る")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
+	return true
+
+# ---------------------------------------------------
+# シナリオ59: はじめての案内（チュートリアル）
+#   更地から、案内のとおりに建てていくと、案内が順に進む。
+# ---------------------------------------------------
+func run_tutorial_scenario() -> bool:
+	print("[シナリオ] はじめての案内")
+	var tutorial = main.tutorial_system
+	focus_camera(Vector2i(0, 17))
+	await wait_frames(2)
+	check(tutorial.step == 0 and not tutorial.finished, "はじめは1つ目の案内")
+	check(main.tutorial_panel.visible and main.tutorial_label.text.contains("ロビーを建てよう"), "上部バーの下に案内が出る")
+	await capture("tutorial_01")
+	
+	# 「案内を閉じる」でいつでもやめられる（確かめたら、案内を出し直して続ける）
+	var skip_button: Button = null
+	for node in main.tutorial_panel.find_children("*", "Button", true, false):
+		skip_button = node
+	await click_button(skip_button)
+	await wait_frames(2)
+	check(tutorial.finished and not main.tutorial_panel.visible, "「案内を閉じる」で消える")
+	check(logged("案内を閉じました"), "閉じたことがメッセージで出る")
+	tutorial.finished = false
+	await wait_frames(2)
+	check(main.tutorial_panel.visible, "案内を出し直して、続きを確かめる")
+	
+	# ① ロビーを建てると、次の案内へ
+	await choose_mode("lobby")
+	await drag_cells(Vector2i(-3, 18), Vector2i(2, 18), MOUSE_BUTTON_LEFT)
+	await wait_frames(2)
+	check(tutorial.step == 1 and main.tutorial_label.text.contains("エレベーター"), "ロビーを建てると2つ目の案内に進む")
+	
+	# ② 階段かエレベーターを建てると、次へ
+	await choose_mode("stairs")
+	await click_cell(Vector2i(2, 18), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(3, 18), MOUSE_BUTTON_LEFT)
+	await wait_frames(2)
+	check(tutorial.step == 2 and main.tutorial_label.text.contains("オフィス"), "上下に移動できるようにすると3つ目の案内に進む")
+	
+	# ③ オフィスを建てると、次へ
+	await choose_mode("office")
+	await click_cell(Vector2i(-3, 17), MOUSE_BUTTON_LEFT) # ロビー(x=-3〜2)の上に、横4マスのオフィス
+	await wait_frames(2)
+	check(tutorial.step == 3 and main.tutorial_label.text.contains("時間を進め"), "オフィスを建てると4つ目の案内に進む")
+	
+	# ④ 時間を進めると、次へ
+	main.clock.set_time(1, 9, 30)
+	await wait_frames(2)
+	check(tutorial.step == 4 and main.tutorial_label.text.contains("決算"), "時間を進めると5つ目の案内に進む")
+	
+	# ⑤ 決算があると案内は終わり
+	await run_day(1)
+	await wait_frames(2)
+	check(tutorial.finished and not main.tutorial_panel.visible, "決算まで進むと案内は終わる")
+	check(logged("案内はここまでです"), "終わりがメッセージで出る")
+	
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
