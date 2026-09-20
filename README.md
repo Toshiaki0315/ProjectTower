@@ -555,6 +555,7 @@ ProjectTower/
 | `scripts/systems/game_clock.gd` | 時計・曜日、空の色、太陽と月 |
 | `scripts/systems/audio_system.gd` | 効果音とBGM（波形をコードで作る） |
 | `scripts/view/effects.gd` | 建設・撤去・お金の演出 |
+| `scripts/view/ui.gd` | 画面（上下のバー・建設メニュー・操作説明・グラフ・吹き出し・タイトル画面）の組み立てと更新 |
 | `scripts/systems/elevator_system.gd` | シャフトとカゴの管理、カゴの追加、群管理 |
 | `scripts/systems/commute_system.gd` | 社員の出勤・退社 |
 | `scripts/systems/commerce_system.gd` | 飲食店の昼食 |
