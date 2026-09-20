@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2259,6 +2259,7 @@ func run_service_elevator_scenario() -> bool:
 	
 	# 汚れた客室を、清掃員がサービスエレベーターで上がって掃除する
 	hotel.rooms[Vector2i(9, 16)].state = hotel.RoomState.DIRTY
+	main.clock.set_process(true) # 清掃はゲーム内の時間で進むので、時計を動かす
 	Engine.time_scale = 8.0
 	var rode := false
 	var limit := Time.get_ticks_msec() + 60000
@@ -2275,6 +2276,7 @@ func run_service_elevator_scenario() -> bool:
 					captured = true
 		await wait_frames(1)
 	Engine.time_scale = 1.0
+	main.clock.set_process(false)
 	check(rode, "清掃員はサービスエレベーターに乗って上の階へ行く")
 	check(hotel.rooms[Vector2i(9, 16)].state == hotel.RoomState.CLEAN, "3階の客室が掃除されてきれいになる")
 	check(main.economy_system.MAINTENANCE["service_elevator"] == 1500, "サービスエレベーターの維持費は1マス1,500円/日")
@@ -2592,6 +2594,61 @@ func run_medical_scenario() -> bool:
 	resident.state = resident.State.WAITING
 	resident.update_stress(1.0)
 	check(resident.stress > 50.0, "エレベーターを待っている間はストレスがたまる（回復はしない）")
+	return true
+
+# ---------------------------------------------------
+# シナリオ44: 衛生の悪化（ゴミ処理が追いつかないとテナントの評価が下がる）
+#   ゴミ処理場がないままオフィスを動かすと、ゴミがあふれて衛生が悪化する。
+# ---------------------------------------------------
+func run_pollution_scenario() -> bool:
+	print("[シナリオ] 衛生の悪化")
+	main.funds = 10000000
+	var economy = main.economy_system
+	var tenants = main.tenant_system
+	focus_camera(Vector2i(0, 16))
+	await wait_frames(1)
+	await choose_mode("elevator")
+	for y in range(18, 12, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	check(economy.pollution == 0 and economy.recycling_capacity() == 0, "最初は衛生の悪化がなく、ゴミの処理能力も0")
+	
+	# 1日目: ゴミ処理場がないので、出勤したオフィスのぶんのゴミがあふれる
+	await run_day(1)
+	var report: Dictionary = economy.last_report
+	print("    garbage=", report.garbage, " pollution=", economy.pollution)
+	check(report.garbage > 0 and report.garbage_cost > 0, "処理しきれないゴミは外部委託になる")
+	check(economy.pollution == mini(report.garbage / economy.GARBAGE_PER_POLLUTION, economy.POLLUTION_MAX), "あふれたゴミ5につき、衛生の悪化が1レベル進む")
+	check(economy.pollution == economy.POLLUTION_MAX, "ゴミが多いと、悪化はすぐ上限（レベル5）になる")
+	check(main.last_message.contains("衛生の悪化 レベル5"), "決算のメッセージに衛生の悪化が出る")
+	await wait_frames(2) # 上部バーの表示は次のフレームで更新される
+	check(main.stats_label.text.contains("衛生の悪化 レベル5"), "上部バーにも衛生の悪化が出る")
+	check(is_equal_approx(economy.pollution_stress(), 5 * economy.POLLUTION_STRESS), "悪化のレベル1につきストレス5ぶん、評価が悪くなる")
+	await capture("pollution_01")
+	
+	# 同じストレスでも、ビルが汚れていると評価が悪くなる
+	var origin := Vector2i(0, 17)
+	tenants.offices[origin] = tenants.new_tenant()
+	for cell in main.get_unit_cells(origin):
+		tenants.day_peak_stress[cell] = 10.0 # 本来なら「良い」のストレス
+	for cell in main.get_unit_cells(origin):
+		main.commute_system.workers[cell].arrived_day = 2
+	tenants.evaluate_day(2)
+	check(tenants.offices[origin].average > 10.0, "評価に使う値に、衛生の悪化のぶんが足されている")
+	check(tenants.offices[origin].rating != tenants.Rating.GOOD, "汚れたビルでは、ストレスが低くても評価が「良い」にならない")
+	
+	# ゴミ処理場を建てて処理が足りるようにすると、1日ごとに悪化が1レベル戻る
+	main.funds = 10000000
+	build_support(cells_row(18, 9, 20), "lobby")
+	main.select_mode("recycling")
+	for x in [9, 12, 15, 18]:
+		main.build_at(Vector2i(x, 17))
+	check(economy.recycling_capacity() == 4 * economy.RECYCLING_CAPACITY, "ゴミ処理場4施設で処理能力80/日")
+	var before: int = economy.pollution
+	await run_day(2)
+	check(economy.last_report.garbage <= economy.recycling_capacity(), "処理能力がゴミの量を上回る")
+	check(economy.pollution == before - 1, "ゴミが足りている日は、悪化が1レベル戻る")
+	await run_day(3)
+	check(economy.pollution == before - 2, "次の日もまた1レベル戻る")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

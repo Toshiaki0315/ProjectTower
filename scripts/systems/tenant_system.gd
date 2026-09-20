@@ -15,6 +15,8 @@ extends Node2D
 # ■ ホテルの客室
 #   宿泊客がチェックインしてから帰るまでのストレスの一番高い値で、チェックアウトのときに評価が決まる。
 #   評価が悪い部屋ほど客が来にくい（CHECKIN_CHANCE: その夜に客が来る確率）。
+# ■ 衛生の悪化
+#   ゴミ処理が追いつかない日が続くと（economy_system.pollution）、すべてのテナントの評価が下がる。
 # ■ 騒音
 #   住宅・客室は、まわりの騒音（noise_system）のぶんだけ評価が下がる（騒音1につきストレス6相当）。
 # ■ 住宅
@@ -94,7 +96,8 @@ func evaluate_day(day: int) -> Dictionary:
 				count += 1
 		if count == 0:
 			continue # 出勤がなかった日は前の評価のまま
-		office.average = total / count
+		# ビルが汚れている（ゴミ処理が追いつかない）ほど、働きにくい
+		office.average = total / count + world.economy_system.pollution_stress()
 		office.rating = rating_for(office.average)
 		office.bad_days = office.bad_days + 1 if office.rating == Rating.BAD else 0
 		# 評価の悪い日が続いたら退去する
@@ -133,7 +136,7 @@ func evaluate_homes(result: Dictionary) -> void:
 		if count == 0:
 			continue # 誰もビルにいなかった日は前の評価のまま
 		# 騒音がうるさい場所ほど、住み心地が悪い（評価に足す）
-		record.average = total / count + world.noise_system.noise_stress(origin)
+		record.average = total / count + world.noise_system.noise_stress(origin) + world.economy_system.pollution_stress()
 		record.rating = rating_for(record.average)
 		record.bad_days = record.bad_days + 1 if record.rating == Rating.BAD else 0
 		if record.bad_days >= LEAVE_AFTER_BAD_DAYS:
@@ -148,7 +151,7 @@ func evaluate_homes(result: Dictionary) -> void:
 # ホテルの客がチェックアウトしたときに呼ばれる: その部屋の評価を決める
 func rate_hotel_stay(origin: Vector2i, peak_stress: float) -> void:
 	# 騒音がうるさい部屋ほど、泊まった客の評価が悪くなる
-	var average: float = peak_stress + world.noise_system.noise_stress(origin)
+	var average: float = peak_stress + world.noise_system.noise_stress(origin) + world.economy_system.pollution_stress()
 	rooms[origin] = {"rating": rating_for(average), "average": average}
 
 # その夜に客室に客が来る確率（まだ評価がなければ必ず来る）

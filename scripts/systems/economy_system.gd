@@ -13,7 +13,8 @@ extends Node
 #   イベント: その日に結婚式場・イベントホールに来た客の料金（event_system が記録する）
 #   評価ボーナス: 賃料と宿泊料に、ビルの評価（★）に応じた割合を上乗せ（rating_system）
 #   維持費:   建物ごとの MAINTENANCE × 建物（ユニット）の数
-#   ゴミ処理: その日の活動で出たゴミのうち、ゴミ処理場で処理しきれない分を外部に委託する費用
+#   ゴミ処理: その日の活動で出たゴミのうち、ゴミ処理場で処理しきれない分を外部に委託する費用。
+#             処理しきれない日が続くとビルが汚れ（衛生の悪化）、すべてのテナントの評価が下がる
 #   ショップ: 外から来たお客さんの買い物代（visitor_system が記録する）
 #   映画館:   上映ごとに来たお客さんの料金（visitor_system が記録する）
 #             ゴミの量 = 出勤があったオフィス数 + チェックアウトした客室数 + 飲食店の客数 / 10
@@ -40,9 +41,14 @@ const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーター�
 const MEALS_PER_GARBAGE := 10   # 飲食店の客・会場の来客の何人分でゴミ1になるか
 const RECYCLING_CAPACITY := 20  # ゴミ処理場1施設が1日に処理できるゴミの量
 const OUTSOURCE_COST := 1000    # 処理しきれないゴミ1あたりの外部委託費
+# 衛生の悪化: ゴミ処理が追いつかない日が続くと、ビルが汚れてテナントの評価が下がる
+const GARBAGE_PER_POLLUTION := 5 # 処理しきれないゴミがこの量になるごとに、悪化のレベルが1上がる
+const POLLUTION_MAX := 5         # 悪化のレベルの上限
+const POLLUTION_STRESS := 5.0    # 悪化のレベル1につき、テナントの評価に足されるストレス
 
 var world: Node2D # main.gd
 var last_day := 1 # 最後に決算した日の翌日（= 今日）
+var pollution := 0    # 衛生の悪化のレベル（0〜POLLUTION_MAX）
 var last_report := {} # 最後の決算: {"day", "rent", "hotel", "food", "housing", "event", "bonus", "maintenance", "garbage", "garbage_cost", "refund", "total"}
 
 func setup(p_world: Node2D) -> void:
@@ -54,6 +60,10 @@ func _process(_delta: float) -> void:
 	while last_day < world.clock.day:
 		settle(last_day)
 		last_day += 1
+
+# 衛生の悪化のぶん、テナントの評価に足されるストレス
+func pollution_stress() -> float:
+	return pollution * POLLUTION_STRESS
 
 # 指定した日の決算
 func settle(day: int) -> void:
@@ -81,14 +91,20 @@ func settle(day: int) -> void:
 	var event_visitors: int = world.event_system.visitors_by_day.get(day, 0)
 	var garbage: int = active_offices + checkouts + meals / MEALS_PER_GARBAGE + world.housing_system.count_moved_in() \
 		+ (event_visitors + shop_customers) / MEALS_PER_GARBAGE
-	var garbage_cost := maxi(garbage - recycling_capacity(), 0) * OUTSOURCE_COST
+	var overflow := maxi(garbage - recycling_capacity(), 0)
+	var garbage_cost := overflow * OUTSOURCE_COST
+	# 処理しきれないゴミが多い日は衛生が悪化し、足りている日は少しずつよくなる
+	if overflow > 0:
+		pollution = mini(pollution + overflow / GARBAGE_PER_POLLUTION, POLLUTION_MAX)
+	else:
+		pollution = maxi(pollution - 1, 0)
 	var bonus := int((rent + hotel) * world.rating_system.bonus_rate())
 	# テナントの評価（人のストレスから）と、オフィス・住宅の退去・入居。住宅の退去では販売収入を返金する
 	var tenants: Dictionary = world.tenant_system.evaluate_day(day)
 	var refund: int = tenants.refund
 	var total := rent + hotel + food + shop + cinema + housing + event + bonus - maintenance - garbage_cost - refund
 	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "shop": shop, "cinema": cinema, "housing": housing, "event": event, "bonus": bonus, "maintenance": maintenance,
-		"garbage": garbage, "garbage_cost": garbage_cost, "refund": refund, "total": total}
+		"garbage": garbage, "garbage_cost": garbage_cost, "pollution": pollution, "refund": refund, "total": total}
 	world.funds += total
 	world.update_funds_display() # last_reportを更新してから表示する（前日の収支も表示されるため）
 	# 0円の項目は省いて短くする
@@ -100,6 +116,8 @@ func settle(day: int) -> void:
 		items.append("維持費 -%s円" % world.format_money(maintenance))
 	if garbage_cost > 0:
 		items.append("ゴミ処理 -%s円（ゴミ%d・処理能力%d）" % [world.format_money(garbage_cost), garbage, recycling_capacity()])
+	if pollution > 0:
+		items.append("衛生の悪化 レベル%d（テナントの評価が下がります）" % pollution)
 	if refund > 0:
 		items.append("住宅の返金 -%s円（%d戸退去）" % [world.format_money(refund), tenants.homes_left])
 	items.append("合計 %s円" % world.format_money(total, true))
