@@ -89,7 +89,8 @@ var log_label: Label
 var log_scroll: ScrollContainer
 var message_log: Array[String] = [] # ゲーム開始からのメッセージ（時刻つき）
 var last_message := ""              # 一番新しいメッセージ（時刻なし）
-var hover_label: Label # カーソル下のマスの情報表示用
+var hover_label: Label   # カーソル下のマスの情報（マウスの横に出る吹き出しの中身）
+var hover_tooltip: Control # 吹き出し（カーソルの近くに浮かせて表示する）
 var help_panel: Control # 操作説明（⌘Hで開閉）
 var mode_select: OptionButton # 建設メニュー（リストから建物などを選ぶ）
 var mode_info_label: Label # 選んだものの費用・大きさの表示
@@ -267,8 +268,8 @@ func focus_camera_on_building():
 #                  3段目: 建設メニュー
 #   操作説明    … 上部バーの下に表示（⌘Hで開閉）。メッセージの記録は⌘Lで開閉
 #   （マップ）  … クリックはそのままマップに届く
-#   下部バー    … 1段目: 操作結果のメッセージ（新しいものが下に出て、古いものは流れる）
-#                  2段目: カーソル下のマスの情報
+#   下部バー    … 操作結果のメッセージ（新しいものが下に出て、古いものは流れる）
+#   吹き出し    … カーソル下のマスの情報（建物や人がいるマスで、マウスの横に出る）
 # バーの上のクリックはバーが受け止めるので、下のマスに建設されることはない。
 func create_ui():
 	var canvas = CanvasLayer.new()
@@ -362,6 +363,7 @@ func create_ui():
 		"入口: 1階の左端と地下鉄駅（地下にだけ建てられる）。人は近い方の入口から出入りする",
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
 		"ショートカット: ⌘H（この説明の開閉） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
+		"日付: 1日目は4月1日（月）。1年は365日で、12月24日・25日の夜にはサンタクロースのソリが空を横切る",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
 		"結婚式場（横6マス）: 休日の10〜11時に12人が来て13時まで（1人1万円）",
 		"イベントホール（横6マス）: 休日の13〜14時に15人が来て17時まで（1人3千円）",
@@ -442,10 +444,14 @@ func create_ui():
 	message_label.custom_minimum_size.y = MESSAGE_LINES * BASE_FONT_SIZE * UI_SCALE / 2 * 1.3
 	bottom_rows.add_child(message_label)
 	
+	# カーソル下のマスの情報は、マウスの横に吹き出し（ツールチップ）で出す
 	hover_label = Label.new()
-	hover_label.clip_text = true
-	hover_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	bottom_rows.add_child(hover_label)
+	hover_tooltip = make_bar(hover_label)
+	hover_tooltip.theme = theme
+	hover_tooltip.visible = false
+	hover_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hover_tooltip.top_level = true # 画面の好きな位置に出せるようにする
+	canvas.add_child(hover_tooltip)
 	
 	update_mode_select()
 
@@ -552,12 +558,13 @@ func update_scrollbar():
 	v_scroll.value = view_top
 	v_scroll.set_block_signals(false)
 
-# 下部バーにカーソル下のマスの座標と建物を表示する
+# カーソル下のマスの座標と建物を、マウスの横の吹き出しに表示する
 func update_hover_label():
 	if not hover_label:
 		return
 	if not grid_overlay.hover_visible:
 		hover_label.text = ""
+		hover_tooltip.visible = false
 		return
 	var cell: Vector2i = grid_overlay.hover_cell
 	var type = get_building_type(cell)
@@ -606,6 +613,23 @@ func update_hover_label():
 	if resident:
 		text += " / 住人のストレス: %d" % int(resident.stress)
 	hover_label.text = text
+	show_tooltip(cell)
+
+# 吹き出しを、マウスの右下に出す（画面からはみ出すときは左や上に寄せる）。
+# 空きマスのときは出さない（建物や人がいるマスだけ）
+func show_tooltip(cell: Vector2i) -> void:
+	hover_tooltip.visible = not is_cell_empty(cell) or get_resident_at(cell) != null
+	if not hover_tooltip.visible:
+		return
+	var offset := Vector2(12, 12) * UI_SCALE
+	var size := hover_tooltip.get_combined_minimum_size()
+	var screen: Vector2 = get_viewport_rect().size
+	var pos: Vector2 = grid_overlay.hover_screen_pos + offset
+	if pos.x + size.x > screen.x:
+		pos.x = grid_overlay.hover_screen_pos.x - size.x - offset.x
+	if pos.y + size.y > screen.y:
+		pos.y = grid_overlay.hover_screen_pos.y - size.y - offset.y
+	hover_tooltip.position = pos.clamp(Vector2.ZERO, (screen - size).max(Vector2.ZERO))
 
 # 画面とログにメッセージを出す
 func show_message(text: String):

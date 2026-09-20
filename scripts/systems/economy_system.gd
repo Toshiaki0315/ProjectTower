@@ -121,7 +121,7 @@ func settle(day: int) -> void:
 	if refund > 0:
 		items.append("住宅の返金 -%s円（%d戸退去）" % [world.format_money(refund), tenants.homes_left])
 	items.append("合計 %s円" % world.format_money(total, true))
-	var message := "%d日目の決算: %s" % [day, " / ".join(items)]
+	var message := "%s（%d日目）の決算: %s" % [world.clock.date_text(day), day, " / ".join(items)]
 	if tenants.left > 0 or tenants.moved_in > 0:
 		message += " / オフィス退去 %d棟・入居 %d棟" % [tenants.left, tenants.moved_in]
 	# 評価（★）の判定。昇格したら、メッセージの先頭で知らせる（ボーナスは翌日の決算から）

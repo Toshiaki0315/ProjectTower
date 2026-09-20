@@ -2,6 +2,7 @@ extends Node
 
 # ---------------------------------------------------
 # ゲーム内の時計：日にち・曜日・時刻を進める。1日目は月曜日で、土日が休日。
+# カレンダー: 1日目は4月1日。うるう年は考えず、1年を365日として月日を数える。
 # ゲーム内の1分 = 現実の 1 / MINUTES_PER_SECOND 秒（Engine.time_scaleで早送りできる）
 # ---------------------------------------------------
 
@@ -12,6 +13,12 @@ const START_MINUTE := 7 * 60 + 30 # 1日目の7:30から始める
 # 時計が何時間・何日も飛ばないようにする（その分、時計がゆっくり進む）
 const MAX_MINUTES_PER_FRAME := 2.0
 const WEEKDAY_NAMES := ["月", "火", "水", "木", "金", "土", "日"]
+const MONTH_DAYS := [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] # 1月〜12月の日数
+const START_MONTH := 4 # 1日目の月
+const START_DAY := 1   # 1日目の日
+const SANTA_DATES := [[12, 24], [12, 25]] # サンタクロースが飛ぶ日
+const SANTA_FROM := 21 * 60  # サンタが飛び始める時刻
+const SANTA_TO := 24 * 60    # 飛び終わる時刻
 
 # 空の色の移り変わり: [時刻（分）, 色]。間の時刻は前後の色を少しずつ混ぜる
 const SKY_COLORS := [
@@ -82,6 +89,29 @@ func moon_progress() -> float:
 func darkness() -> float:
 	return clampf(1.0 - sky_color().get_luminance() * 2.5, 0.0, 1.0)
 
+# 何月何日か（[月, 日]）。1日目は4月1日
+func date(d: int = day) -> Array:
+	var index := START_MONTH - 1
+	var day_of_month := START_DAY + (d - 1)
+	while day_of_month > MONTH_DAYS[index]:
+		day_of_month -= MONTH_DAYS[index]
+		index = (index + 1) % MONTH_DAYS.size()
+	return [index + 1, day_of_month]
+
+func date_text(d: int = day) -> String:
+	var md := date(d)
+	return "%d月%d日" % [md[0], md[1]]
+
+# サンタクロースが飛ぶ日か
+func is_santa_day(d: int = day) -> bool:
+	return SANTA_DATES.has(date(d))
+
+# サンタクロースが空を横切る進み具合（0: 左端 〜 1: 右端）。飛んでいなければ -1
+func santa_progress() -> float:
+	if not is_santa_day() or minute < SANTA_FROM or minute > SANTA_TO:
+		return -1.0
+	return (minute - SANTA_FROM) / float(SANTA_TO - SANTA_FROM)
+
 # 曜日（0: 月 〜 6: 日）
 func weekday(d: int = day) -> int:
 	return (d - 1) % 7
@@ -91,7 +121,7 @@ func is_holiday(d: int = day) -> bool:
 	return weekday(d) >= 5
 
 func get_time_text() -> String:
-	var text := "%d日目（%s）" % [day, WEEKDAY_NAMES[weekday()]]
+	var text := "%s（%s）" % [date_text(), WEEKDAY_NAMES[weekday()]]
 	if is_holiday():
 		text += "休日"
 	return text + " %02d:%02d" % [minute_of_day() / 60, minute_of_day() % 60]

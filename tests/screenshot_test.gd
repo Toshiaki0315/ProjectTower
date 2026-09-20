@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -324,8 +324,12 @@ func run_ui_scenario() -> bool:
 	check(main.hover_label.text.contains(str(empty_cell)) and main.hover_label.text.contains("空き"), "下部バーにマスの座標と「空き」が出る")
 	await capture("ui_01_hover_empty")
 	
+	check(not main.hover_tooltip.visible, "空きマスでは吹き出しを出さない")
 	var office_cell := Vector2i(0, 16)
 	await hover_cell(office_cell)
+	check(main.hover_tooltip.visible, "建物のマスにカーソルを合わせると吹き出しが出る")
+	var tooltip_rect: Rect2 = main.hover_tooltip.get_global_rect()
+	check(tooltip_rect.position.x > 0 and tooltip_rect.end.x <= main.get_viewport_rect().size.x, "吹き出しは画面の中に収まる")
 	check(not main.can_click_cell(office_cell), "建物のあるマスは建設不可（赤）と判定される")
 	check(main.hover_label.text.contains("オフィス"), "下部バーに建物の種類が出る")
 	
@@ -629,7 +633,7 @@ func run_commute_scenario() -> bool:
 	check(main.clock_label.text != "", "上部バーに時刻が出る")
 	Engine.time_scale = 8.0
 	await wait_until(func(): return main.clock.minute_of_day() >= 8 * 60 + 30, 20.0)
-	check(main.clock_label.text.begins_with("1日目（月） 08:"), "時刻の表示が進む（1日目（月） 08:xx）")
+	check(main.clock_label.text.begins_with("4月1日（月） 08:"), "時刻の表示が進む（4月1日（月） 08:xx）")
 	check(commute.count_in_building() > 0, "8時台に社員が入口から出勤してくる")
 	await capture("commute_01_rush")
 	var max_stress := 0.0
@@ -696,7 +700,7 @@ func run_economy_scenario() -> bool:
 	check(report.get("garbage") == 52 and report.get("garbage_cost") == 52000, "ゴミ処理場がないとゴミ52を外部委託して5.2万円かかる")
 	check(main.funds == funds_before + 456000, "資金が差し引き45.6万円増える")
 	check(main.funds_label.text.contains("（前日 +456,000円）"), "資金の横に前日の収支が出る")
-	check(main.last_message.contains("1日目の決算"), "決算の内容がメッセージに出る")
+	check(main.last_message.contains("4月1日（1日目）の決算"), "決算の内容が日付つきでメッセージに出る")
 	await capture("economy_01_settled")
 	return true
 
@@ -1108,7 +1112,7 @@ func run_weekday_scenario() -> bool:
 	# 6日目（土）: 休日。社員は来ない。入居者は遅めに出かける
 	clock.set_time(6, 7, 59)
 	await wait_until(func(): return clock.minute_of_day() >= 9 * 60 + 45, 30.0)
-	check(main.clock_label.text.begins_with("6日目（土）休日"), "上部バーに曜日と休日が出る")
+	check(main.clock_label.text.begins_with("4月6日（土）休日"), "上部バーに日付・曜日と休日が出る")
 	check(main.commute_system.count_in_building() == 0, "休日は社員が出勤しない")
 	check(main.housing_system.count_at_home() == 3, "休日の入居者3人は9時45分にはまだ家にいる（平日なら9時までに出かける）")
 	await capture("weekday_01_holiday")
@@ -3002,6 +3006,43 @@ func run_treasure_scenario() -> bool:
 	check(incidents.dug.has(Vector2i(0, 19)) and incidents.dug.has(Vector2i(3, 19)), "建てたマスは掘ったことになる")
 	check(main.funds == funds_before - 400000 + (incidents.treasure_total - total_before), "建設費と、見つかった埋蔵金が資金に反映される")
 	await capture("treasure_01")
+	return true
+
+# ---------------------------------------------------
+# シナリオ51: カレンダー（月・日）とサンタクロースの飛来
+#   1日目は4月1日（月）。12月24日・25日の夜には、サンタクロースが空を横切る。
+# ---------------------------------------------------
+func run_calendar_scenario() -> bool:
+	print("[シナリオ] カレンダーとサンタクロース")
+	var clock = main.clock
+	check(clock.date(1) == [4, 1], "1日目は4月1日")
+	check(clock.date(30) == [4, 30] and clock.date(31) == [5, 1], "月が変わると日付も変わる（4月30日の次は5月1日）")
+	check(clock.date_text(245) == "12月1日", "245日目は12月1日")
+	check(clock.date(366) == [4, 1], "1年（365日）たつと、また4月1日に戻る")
+	check(clock.date_text(335) == "3月1日", "2月は28日まで（335日目は3月1日）")
+	
+	# サンタクロースが飛ぶ日
+	var santa_day := 268 # 12月24日
+	check(clock.date(santa_day) == [12, 24] and clock.is_santa_day(santa_day), "12月24日はサンタクロースが飛ぶ日")
+	check(clock.is_santa_day(santa_day + 1) and not clock.is_santa_day(santa_day + 2), "12月25日も飛ぶが、26日は飛ばない")
+	check(not clock.is_santa_day(1), "4月1日は飛ばない")
+	
+	# 21時〜24時のあいだ、空を左から右へ横切る
+	clock.set_time(santa_day, 20, 0)
+	check(clock.santa_progress() < 0.0, "20時にはまだ飛んでいない")
+	clock.set_time(santa_day, 21, 0)
+	check(is_equal_approx(clock.santa_progress(), 0.0), "21時に空の左端から飛び始める")
+	clock.set_time(santa_day, 22, 30)
+	check(is_equal_approx(clock.santa_progress(), 0.5), "22時半には空の真ん中")
+	clock.set_time(santa_day, 23, 59)
+	check(clock.santa_progress() > 0.9, "24時ちかくに右端へ抜ける")
+	
+	# 飛んでいるところを撮る
+	clock.set_time(santa_day, 22, 30)
+	await wait_frames(3)
+	check(main.clock_label.text.begins_with("12月24日"), "上部バーに12月24日と出る")
+	await capture("calendar_01_santa")
+	clock.set_time(1, 7, 30)
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

@@ -181,6 +181,7 @@ class SoilBackground extends Node2D:
 			draw_rect(Rect2(visible_rect.position.x, visible_rect.position.y,
 				visible_rect.size.x, sky_bottom - visible_rect.position.y), world.clock.sky_color())
 			draw_stars(visible_rect, sky_bottom, tile_size, world.clock.darkness())
+			draw_santa(visible_rect, sky_bottom) # 12月24日・25日の夜に空を横切る
 			draw_sun_and_moon(visible_rect, sky_bottom)
 			draw_street_lamps(visible_rect, world.clock.darkness())
 		
@@ -220,6 +221,36 @@ class SoilBackground extends Node2D:
 			draw_rect(Rect2(head.x - 0.5, head.y, 1, lighting.LAMP_HEIGHT), pole_color)  # 柱
 			draw_rect(Rect2(head.x - 2, head.y - 1, 4, 2), pole_color)                   # かさ
 			draw_rect(Rect2(head.x - 1, head.y + 1, 2, 1), head_color)                   # 灯り
+
+	# サンタクロースのソリ（12月24日・25日の21時〜24時に、空を左から右へ横切る）
+	func draw_santa(visible_rect: Rect2, sky_bottom: float) -> void:
+		var world = overlay.world
+		var t: float = world.clock.santa_progress()
+		if t < 0.0:
+			return
+		var sky_height := sky_bottom - visible_rect.position.y
+		var pos := Vector2(visible_rect.position.x + visible_rect.size.x * (-0.1 + 1.2 * t),
+			visible_rect.position.y + sky_height * (0.45 + 0.05 * sin(t * PI * 6.0)))
+		var red := Color(0.9, 0.25, 0.25)
+		var brown := Color(0.55, 0.36, 0.2)
+		var gold := Color(1.0, 0.9, 0.5)
+		# トナカイ2頭（体と角）
+		for i in 2:
+			var deer := pos + Vector2(10 + i * 8, 0)
+			draw_rect(Rect2(deer, Vector2(6, 3)), brown)
+			draw_rect(Rect2(deer + Vector2(5, -3), Vector2(2, 3)), brown)
+			draw_line(deer + Vector2(6, -3), deer + Vector2(8, -6), brown, 0.8)
+			draw_line(deer + Vector2(1, 3), deer + Vector2(1, 5), brown, 0.8)
+			draw_line(deer + Vector2(5, 3), deer + Vector2(5, 5), brown, 0.8)
+		draw_line(pos + Vector2(6, 1), pos + Vector2(26, 1), gold, 0.6) # 手綱
+		# ソリ（赤い箱とプレゼント）
+		draw_rect(Rect2(pos - Vector2(2, 2), Vector2(9, 5)), red)
+		draw_line(pos + Vector2(-3, 3), pos + Vector2(8, 3), gold, 0.8)
+		draw_rect(Rect2(pos + Vector2(0, -5), Vector2(4, 3)), gold)
+		# きらきらした軌跡
+		for i in 5:
+			var sparkle := pos - Vector2(6 + i * 5, -1 - i)
+			draw_rect(Rect2(sparkle, Vector2.ONE * (1.5 - i * 0.2)), Color(1, 1, 0.8, 0.8 - i * 0.15))
 
 	# 空の中の位置: t=0 で左下、t=0.5 で上の真ん中、t=1 で右下
 	func celestial_position(t: float, visible_rect: Rect2, sky_bottom: float) -> Vector2:
