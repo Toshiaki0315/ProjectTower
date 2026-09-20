@@ -94,6 +94,11 @@ SimTower をリスペクトした本作の目標とする仕様をまとめた�
 - 起動すると `main.create_title()` のタイトル画面が出る（「はじめから」「続きから」）。始まるまでは時計を止め、マップの操作も受け付けない。
 - 「続きから」は、セーブデータがあるときだけ押せる（`save_system.has_save()`）。
 
+### 配布 ✅
+- `export_presets.cfg` に macOS と Windows の設定を置く（`docs/`・`tools/`・`tests/` は除外）。書き出し先は `build/`（gitignore 済み）。
+- `icon.svg` はビルの絵。`project.godot` に説明とバージョンを入れてある。
+- 書き出しにはエクスポートテンプレート（Godot エディタからダウンロード）が必要。
+
 ### 見た目の演出 ✅
 - 人は歩くときに足の形を切り替える（`resident.WALK_LEGS` と進んだ距離 `walked`）。
 - `effects.gd` が、建設（白い枠）・撤去（土ぼこり）・黒字の決算（「+◯◯円」の文字）の短い演出を描く。

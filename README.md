@@ -10,6 +10,7 @@
 
 - [開発環境の構築](#開発環境の構築)
 - [アプリの実行方法](#アプリの実行方法)
+- [配布（書き出し）](#配布書き出し)
 - [遊び方（マニュアル）](#遊び方マニュアル)
   - [画面の見方](#画面の見方)
   - [操作方法](#操作方法)
@@ -563,6 +564,24 @@ ProjectTower/
 | `scripts/view/camera_controller.gd` | カメラ（スクロール・ズーム） |
 | `tests/screenshot_test.gd` | 画面確認テスト（クリック操作を再現して確かめ、スクリーンショットを保存） |
 | `tools/generate_readme_images.gd` | README の画像を作るスクリプト |
+
+## 配布（書き出し）
+
+ほかの人に遊んでもらうときは、macOS や Windows 向けに書き出します。書き出しの設定は [export_presets.cfg](export_presets.cfg) に入っています（`docs/`・`tools/`・`tests/` は含めません）。
+
+1. **エクスポートテンプレートを入れる**（初回だけ）
+   Godot エディタの「エディター > エクスポートテンプレートの管理」からダウンロードします（約1GB）。
+2. **書き出す**
+
+```bash
+godot --headless --path . --export-release "macOS" build/ProjectTower.app
+```
+
+```bash
+godot --headless --path . --export-release "Windows Desktop" build/ProjectTower.exe
+```
+
+書き出したものは `build/` に入ります（`.gitignore` 済み）。macOS の `.app` を配るときは署名や公証が必要になることがあります。
 
 ## 開発の進め方
 
