@@ -128,6 +128,8 @@ const MAX_FLOORS_ABOVE := 150 # 建てられる一番上の階（地上150階）
 const MAX_FLOORS_BELOW := 50  # 掘れる一番下の階（地下50階）
 const MAX_WIDTH := 100        # ビルの横幅（マス数）。0を中心に左右へ半分ずつ
 const SPEEDS := [1, 4, 16] # ゲームの速度（押すたびにこの順に切り替わる）
+const MEDICAL_RECOVER_BONUS := 0.5 # メディカルセンター1施設で、ストレスの回復が何割速くなるか
+const MEDICAL_RECOVER_MAX := 2.5   # 回復の速さの上限（何倍まで）
 const MESSAGE_LINES := 3      # 下部バーに出しておくメッセージの行数（古いものは上へ流れて消える）
 const MESSAGE_LOG_MAX := 500  # ⌘Lで見られるメッセージの記録の数
 var ground_y := GROUND_FLOOR_Y
@@ -340,6 +342,7 @@ func create_ui():
 		"飲食店（横3マス）: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1千円の売上）",
 		"住宅（横3マス・3人家族）: 17〜20時に入居者が来て入居（販売収入70万円、1回だけ）。毎朝7〜9時に出かけ、17〜20時に帰る",
 		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
+		"メディカルセンター（横3マス）: ビル全体のストレスの回復が速くなる（1施設で1.5倍・最大2.5倍）",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
 		"オフィスの評価: 毎日の決算で、社員のその日の最大ストレスの平均から 良い（緑）・普通（黄）・悪い（赤）を付ける",
@@ -556,6 +559,8 @@ func update_hover_label():
 			noise_system.get_noise_text(cell)]
 	elif type == "parking":
 		text += "（%s）" % parking_system.get_parking_text(cell)
+	elif type == "medical":
+		text += "（ビル全体のストレスの回復 %.1f倍）" % stress_recover_rate()
 	elif type == "recycling":
 		text += "（ビル全体の処理能力 %d/日）" % economy_system.recycling_capacity()
 	var resident = get_resident_at(cell)
@@ -917,6 +922,11 @@ func get_hover_footprint(cell: Vector2i) -> Array[Vector2i]:
 # ---------------------------------------------------
 # 住人の管理
 # ---------------------------------------------------
+
+# ストレスの回復の速さ（メディカルセンターがあるほど速い。1.0が標準）
+func stress_recover_rate() -> float:
+	var medical := find_units_of_type("medical").size()
+	return minf(1.0 + MEDICAL_RECOVER_BONUS * medical, MEDICAL_RECOVER_MAX)
 
 func spawn_resident(cell: Vector2i):
 	var resident = Resident.new()

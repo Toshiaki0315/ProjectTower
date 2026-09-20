@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2549,6 +2549,49 @@ func run_noise_scenario() -> bool:
 	tenants.rate_hotel_stay(Vector2i(31, 17), 20.0)
 	check(tenants.rooms[Vector2i(20, 17)].average > tenants.rooms[Vector2i(31, 17)].average, "うるさい客室は、同じストレスでも評価の値が悪くなる")
 	check(tenants.hotel_checkin_chance(Vector2i(31, 17)) >= tenants.hotel_checkin_chance(Vector2i(20, 17)), "静かな部屋の方が客が来やすい")
+	return true
+
+# ---------------------------------------------------
+# シナリオ43: メディカルセンターのストレス緩和
+#   メディカルセンターがあると、立ち止まっている人のストレスの回復が速くなる。
+# ---------------------------------------------------
+func run_medical_scenario() -> bool:
+	print("[シナリオ] メディカルセンターのストレス緩和")
+	main.funds = 10000000
+	focus_camera(Vector2i(10, 17))
+	await wait_frames(1)
+	build_support(cells_row(18, 8, 19), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
+	var resident = main.spawn_resident(Vector2i(0, 17))
+	resident.stress = 90.0
+	check(is_equal_approx(main.stress_recover_rate(), 1.0), "メディカルセンターがないと、回復の速さは標準（1.0倍）")
+	resident.update_stress(1.0)
+	var base_recover: float = 90.0 - resident.stress
+	check(is_equal_approx(base_recover, resident.STRESS_RECOVER_RATE), "1秒で標準の量だけ回復する")
+	
+	# 1施設で1.5倍
+	await choose_mode("medical")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 17)) == "medical", "2階にメディカルセンターを建てられる")
+	check(is_equal_approx(main.stress_recover_rate(), 1.5), "1施設で回復が1.5倍になる")
+	resident.stress = 90.0
+	resident.update_stress(1.0)
+	check(is_equal_approx(90.0 - resident.stress, base_recover * 1.5), "同じ1秒でも、1.5倍の量だけ回復する")
+	await hover_cell(Vector2i(10, 17))
+	check(main.hover_label.text.contains("ストレスの回復 1.5倍"), "カーソルを合わせると回復の速さが出る")
+	await capture("medical_01")
+	
+	# 増やすほど速くなるが、上限がある
+	await click_cell(Vector2i(12, 17), MOUSE_BUTTON_LEFT)
+	await click_cell(Vector2i(15, 17), MOUSE_BUTTON_LEFT)
+	check(is_equal_approx(main.stress_recover_rate(), 2.5), "3施設で2.5倍になる")
+	await click_cell(Vector2i(18, 17), MOUSE_BUTTON_LEFT)
+	check(is_equal_approx(main.stress_recover_rate(), main.MEDICAL_RECOVER_MAX), "それ以上増やしても2.5倍で頭打ち")
+	
+	# 待っている間は回復しない（メディカルセンターがあっても）
+	resident.stress = 50.0
+	resident.state = resident.State.WAITING
+	resident.update_stress(1.0)
+	check(resident.stress > 50.0, "エレベーターを待っている間はストレスがたまる（回復はしない）")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

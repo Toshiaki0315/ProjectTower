@@ -15,6 +15,7 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 #
 # ストレス（0〜100）:
 #   カゴを待っている間たまり、目的地に着いて立ち止まっている間は回復する。
+#   メディカルセンターがビルにあると、回復が速くなる（main.stress_recover_rate）。
 #   顔（肌）の色で表す: ふつうの肌色（平常）→ ピンク（40以上）→ 赤（70以上）。
 #   服の色はその人の種類（社員は白・宿泊客は薄紫など）を表すので、ストレスでは変えない
 # ---------------------------------------------------
@@ -192,7 +193,8 @@ func update_stress(delta: float) -> void:
 	if state == State.WAITING:
 		stress = minf(stress + STRESS_WAIT_RATE * delta, MAX_STRESS)
 	elif state == State.WALKING and path.is_empty():
-		stress = maxf(stress - STRESS_RECOVER_RATE * delta, 0.0)
+		# メディカルセンターがあるビルでは、落ち着くのが速い（world.stress_recover_rate）
+		stress = maxf(stress - STRESS_RECOVER_RATE * world.stress_recover_rate() * delta, 0.0)
 
 # ストレスに応じた体の色
 # 服の色（種類ごとの色。選択中は黄色）
