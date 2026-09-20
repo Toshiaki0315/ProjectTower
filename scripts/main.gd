@@ -7,6 +7,7 @@ const ElevatorSystem := preload("res://scripts/systems/elevator_system.gd")
 const ParkingSystem := preload("res://scripts/systems/parking_system.gd")
 const VisitorSystem := preload("res://scripts/systems/visitor_system.gd")
 const NoiseSystem := preload("res://scripts/systems/noise_system.gd")
+const VipSystem := preload("res://scripts/systems/vip_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -97,6 +98,7 @@ var elevator_system # エレベーターのシャフトとカゴの管理
 var parking_system  # 地下駐車場とスロープ（車で来るお客さん）
 var visitor_system  # 外から来るお客さん（店の客・車で来た客）の動き
 var noise_system    # 騒音（うるさい建物のまわりのマスに広がる）
+var vip_system      # VIPの宿泊（★4への昇格イベント）
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -148,6 +150,9 @@ func _ready() -> void:
 	noise_system = NoiseSystem.new()
 	noise_system.setup(self)
 	add_child(noise_system)
+	vip_system = VipSystem.new()
+	vip_system.setup(self)
+	add_child(vip_system)
 	parking_system = ParkingSystem.new()
 	parking_system.setup(self)
 	add_child(parking_system)
@@ -204,6 +209,8 @@ func _process(_delta: float) -> void:
 			angry += 1
 	if angry > 0:
 		stats_label.text += " / 怒っている人 %d人" % angry
+	if vip_system.is_visiting():
+		stats_label.text += " / VIPが来館中（ストレス %d）" % int(vip_system.vip.stress)
 	var leaving: int = tenant_system.count_about_to_leave()
 	if leaving > 0:
 		stats_label.text += " / 退去しそうなテナント %d件" % leaving
@@ -355,6 +362,7 @@ func create_ui():
 		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
 		"　処理が足りない日が続くとビルが汚れ（衛生の悪化）、レベル1につきストレス5ぶん全テナントの評価が下がる",
 		"メディカルセンター（横3マス）: ビル全体のストレスの回復が速くなる（1施設で1.5倍・最大2.5倍）",
+		"VIP: ★4の条件がそろうと16時にVIPが来館。ストレス30以下できれいな空きスイートに着けば合格（不合格なら翌日また来る）",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
 		"オフィスの評価: 毎日の決算で、社員のその日の最大ストレスの平均から 良い（緑）・普通（黄）・悪い（赤）を付ける",

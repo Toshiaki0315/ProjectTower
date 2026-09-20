@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -1259,7 +1259,7 @@ func run_subway_scenario() -> bool:
 	
 	# ★4の条件に地下鉄駅がある
 	main.rating_system.stars = 3
-	check(main.rating_system.missing_for_next() == ["人口250"], "★4の条件（人口250・地下鉄駅）のうち、地下鉄駅は満たしている")
+	check(main.rating_system.missing_for_next() == ["人口250", "VIPの宿泊"], "★4の条件（人口250・地下鉄駅・VIPの宿泊）のうち、地下鉄駅は満たしている")
 	main.rating_system.stars = 1
 	return true
 
@@ -2702,6 +2702,82 @@ func run_angry_scenario() -> bool:
 	# 退去して空室になると、点滅は止まる
 	tenants.offices[origin].vacant = true
 	check(not tenants.is_about_to_leave(origin) and tenants.count_about_to_leave() == 0, "退去して空室になると点滅しない")
+	return true
+
+# ---------------------------------------------------
+# シナリオ46: VIPの宿泊（★4への昇格イベント）
+#   人口250と地下鉄駅をそろえると、17時にVIPが来館する。
+#   きれいな空きスイートまでストレス30以下で着けば合格で、★4に昇格できる。
+# ---------------------------------------------------
+func run_vip_scenario() -> bool:
+	print("[シナリオ] VIPの宿泊")
+	main.funds = 100000000
+	var vips = main.vip_system
+	var rating = main.rating_system
+	# 人口250のために、5階から18階まで x=-8〜7 にオフィスを積む（1階あたり16人）
+	main.select_mode("office")
+	for y in range(14, 0, -1):
+		for x in [-8, -4, 0, 4]:
+			main.build_at(Vector2i(x, y))
+	main.select_mode("elevator")
+	for y in range(18, 0, -1):
+		main.build_at(Vector2i(8, y))
+	# スイートは、入口から階段1つで行ける2階に置く（エレベーター待ちがない＝VIPのストレスがたまらない）
+	build_support([Vector2i(9, 18)] + cells_row(18, 11, 16), "lobby") # 足場: 1階のロビー
+	build_support([Vector2i(10, 18)]) # 足場: 2階へ上がる階段
+	main.select_mode("hotel_suite")
+	main.build_at(Vector2i(10, 17))
+	main.select_mode("subway")
+	main.build_at(Vector2i(11, 19))
+	rating.stars = 3
+	await wait_frames(2)
+	check(rating.population() >= 250, "人口が250以上ある（%d人）" % rating.population())
+	check(rating.waiting_for_vip(), "★4に足りないのはVIPの宿泊だけ")
+	check(rating.waiting_for_vip() and not vips.passed, "VIPの来館を待っている状態")
+	check(not rating.evaluate(), "VIPが来るまでは★4に昇格できない")
+	
+	# 16時: VIPが来館して、スイートへ向かう
+	focus_camera(Vector2i(6, 17))
+	main.clock.set_time(1, 15, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 8.0
+	await wait_until(func(): return vips.is_visiting(), 30.0)
+	check(vips.is_visiting(), "16時にVIPが来館する")
+	check(main.last_message.contains("VIPが来館しました"), "来館がメッセージで知らされる")
+	check(vips.vip.base_color == vips.VIP_COLOR, "VIPは金色の服")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("VIPが来館中"), "上部バーにVIPの来館が出る")
+	await capture("vip_01_arrived")
+	
+	# スイートに着けば合格。VIPはその部屋に泊まる
+	await wait_until(func(): return vips.passed or not vips.is_visiting(), 40.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(vips.passed, "ストレス30以下でスイートに着いたので合格")
+	check(main.last_message.contains("VIPがスイートに満足しました"), "合格がメッセージで知らされる")
+	var hotel = main.hotel_system
+	check(hotel.rooms[Vector2i(10, 17)].state == hotel.RoomState.OCCUPIED, "VIPはそのスイートに泊まる")
+	check(rating.missing_for_next().is_empty(), "★4の条件がそろう")
+	check(rating.evaluate() and rating.stars == 4, "次の決算で★4に昇格する")
+	await capture("vip_02_passed")
+	
+	# 待たせてしまったときは不合格（ストレスが高いVIPは帰る）
+	vips.passed = false
+	vips.visit_day = 0
+	rating.stars = 3
+	hotel.rooms[Vector2i(10, 17)].state = hotel.RoomState.CLEAN
+	hotel.rooms[Vector2i(10, 17)].guests = []
+	main.clock.set_time(2, 15, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 8.0
+	await wait_until(func(): return vips.is_visiting(), 30.0)
+	vips.vip.stress = 80.0 # エレベーターで待たされた想定
+	await wait_until(func(): return not vips.is_visiting(), 40.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(not vips.passed, "ストレスが高いままだと不合格")
+	check(main.last_message.contains("VIPを待たせてしまいました"), "不合格の理由がメッセージで出る")
+	check(rating.waiting_for_vip(), "★4にはまたVIPの宿泊が必要")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

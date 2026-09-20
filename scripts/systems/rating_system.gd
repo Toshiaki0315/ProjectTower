@@ -8,12 +8,13 @@ extends Node
 # 昇格の条件（REQUIREMENTS[次の★]）:
 #   population: 必要な人口
 #   buildings:  少なくとも1マス必要な建物
+#   vip:        VIPの宿泊（最終試験）に合格していること（vip_system）
 # ---------------------------------------------------
 
 const REQUIREMENTS := {
 	2: {"population": 50, "buildings": ["security"]},
 	3: {"population": 120, "buildings": ["medical", "recycling"]},
-	4: {"population": 250, "buildings": ["subway"]},
+	4: {"population": 250, "buildings": ["subway"], "vip": true},
 }
 const MAX_STARS := 4
 const BONUS_PER_STAR := 0.25
@@ -44,7 +45,14 @@ func missing_for_next() -> Array[String]:
 	for type in req.buildings:
 		if world.find_cells_of_type(type).is_empty():
 			missing.append(world.BUILDINGS[type].name)
+	if req.get("vip", false) and not world.vip_system.passed:
+		missing.append("VIPの宿泊")
 	return missing
+
+# VIPの宿泊だけが足りない状態か（VIPはこのときに来館する）
+func waiting_for_vip() -> bool:
+	var missing := missing_for_next()
+	return missing.size() == 1 and missing[0] == "VIPの宿泊"
 
 # 条件を満たしていれば★を上げる（決算のときに呼ばれる）。上がったらtrue
 func evaluate() -> bool:
