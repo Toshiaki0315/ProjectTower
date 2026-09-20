@@ -239,6 +239,7 @@ func build_bars() -> void:
 		"　シングル（横2マス）: 1人・2万円・清掃20分 / ツイン（横3マス）: 2人・3.5万円・清掃30分 / スイート（横4マス）: 2人・8万円・清掃45分",
 		"ハウスキーパー室（横2マス）: 清掃員が2人。清掃待ちの部屋を近い順に掃除する",
 		"飲食店（横3マス）: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1千円の売上）",
+		"ファストフード（横2マス）: 飲食店の小さくて速い版。食事は10分で、1人600円の売上",
 		"住宅（横3マス・3人家族）: 17〜20時に入居者が来て入居（販売収入70万円、1回だけ）。毎朝7〜9時に出かけ、17〜20時に帰る",
 		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
 		"　処理が足りない日が続くとビルが汚れ（衛生の悪化）、レベル1につきストレス5ぶん全テナントの評価が下がる",
@@ -440,7 +441,7 @@ func update_hover_label():
 		var room_rating: String = world.tenant_system.get_room_rating_text(cell)
 		text += "（%s%s・%s）" % [world.hotel_system.get_room_state_text(cell), "・" + room_rating if room_rating != "" else "",
 			world.noise_system.get_noise_text(cell)]
-	elif type == "restaurant":
+	elif type == "restaurant" or type == "fastfood":
 		text += "（客 %d人）" % (world.commerce_system.count_eating_at(cell) + world.visitor_system.count_at_shop(cell))
 	elif type == "shop":
 		text += "（客 %d人）" % world.visitor_system.count_at_shop(cell)

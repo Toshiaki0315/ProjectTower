@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -3845,3 +3845,58 @@ func wait_until(condition: Callable, timeout: float) -> void:
 func wait_frames(n: int) -> void:
 	for i in n:
 		await process_frame
+
+# シナリオ62: ファストフード（早くて安い店）
+# 2階に「ファストフード｜オフィス｜オフィス｜飲食店」と並べて、
+# 社員がそれぞれ近い方の店で食事をすることを確かめる。
+# ---------------------------------------------------
+func run_fastfood_scenario() -> bool:
+	print("[シナリオ] ファストフード")
+	main.clear_world()
+	main.funds = 10000000
+	var commerce = main.commerce_system
+	# 足場: 1階のロビーと、2階へ上がるエレベーター
+	build_support(cells_row(18, 9, 24), "lobby")
+	build_support([Vector2i(8, 18), Vector2i(8, 17)], "elevator")
+	var fastfood := Vector2i(9, 17)    # 2階の左（x=9〜10）
+	var restaurant := Vector2i(19, 17) # 2階の右（x=19〜21）
+
+	await choose_mode("fastfood")
+	await click_cell(fastfood, MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(fastfood) == "fastfood", "ファストフードを建てられる（12万円）")
+	check(main.funds == 10000000 - 120000, "ファストフードの建設費12万円がかかる")
+	check(main.get_building_type(Vector2i(10, 17)) == "fastfood", "ファストフードは横2マス")
+	check(main.get_building_type(Vector2i(11, 17)) == "", "ファストフードは3マス目までは使わない")
+	check(commerce.RESTAURANTS["fastfood"].minutes < commerce.RESTAURANTS["restaurant"].minutes, "ファストフードの食事は飲食店より短い")
+	check(commerce.RESTAURANTS["fastfood"].price < commerce.RESTAURANTS["restaurant"].price, "ファストフードの代金は飲食店より安い")
+
+	await choose_mode("restaurant")
+	await click_cell(restaurant, MOUSE_BUTTON_LEFT)
+	await choose_mode("office")
+	await click_cell(Vector2i(11, 17), MOUSE_BUTTON_LEFT) # 左のオフィス（x=11〜14。ファストフードが近い）
+	await click_cell(Vector2i(15, 17), MOUSE_BUTTON_LEFT) # 右のオフィス（x=15〜18。飲食店が近い）
+	main.funds = 10000000
+
+	# 出勤させてから昼休みへ
+	main.clock.set_time(1, 7, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.commute_system.count_at_office() == 8, 30.0)
+	main.clock.set_time(1, 11, 59)
+	var ate := {"fastfood": 0, "restaurant": 0}
+	await wait_until(func():
+		ate.fastfood = maxi(ate.fastfood, commerce.count_eating_at(fastfood))
+		ate.restaurant = maxi(ate.restaurant, commerce.count_eating_at(restaurant))
+		return main.clock.minute_of_day() >= 13 * 60, 30.0)
+	focus_camera(Vector2i(15, 17))
+	await wait_frames(2)
+	await capture("fastfood_01_lunch")
+	check(ate.fastfood > 0, "社員はファストフードで食事をする")
+	check(ate.restaurant > 0, "飲食店が近い社員は飲食店へ行く")
+	await hover_cell(fastfood)
+	check(main.hover_label.text.contains("ファストフード（客 "), "カーソルを合わせると店にいる客の数が出る")
+	await wait_until(func(): return main.clock.minute_of_day() >= 15 * 60, 30.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(commerce.revenue_by_day.get(1, 0) > 0, "ファストフードの売上が飲食の売上に入る")
+	return true

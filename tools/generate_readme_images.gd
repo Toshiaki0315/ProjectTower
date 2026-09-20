@@ -77,6 +77,7 @@ func save_people_images() -> void:
 		"event": EventSystem.EVENT_TYPES.event_hall.color,   # イベントの来客
 		"parking": ParkingSystem.VISITOR_COLOR,              # 車で来たお客さん
 		"restaurant_customer": VisitorSystem.SHOP_TYPES.restaurant.color, # 飲食店の外からの客
+		"fastfood_customer": VisitorSystem.SHOP_TYPES.fastfood.color,     # ファストフードの外からの客
 		"shop_customer": VisitorSystem.SHOP_TYPES.shop.color,             # ショップのお客さん
 		"cinema_customer": VisitorSystem.CINEMA.color,                    # 映画のお客さん
 		"selected": Color(1.0, 0.85, 0.1),                   # 選択中（住人モード）
@@ -149,6 +150,7 @@ func save_screenshots() -> void:
 	build(m, "security", [Vector2i(16, 16)])
 	build(m, "medical", [Vector2i(9, 15)])
 	build(m, "recycling", [Vector2i(12, 15)])
+	build(m, "fastfood", [Vector2i(15, 15)])
 	build(m, "wedding", [Vector2i(9, 14)])
 	build(m, "subway", [Vector2i(9, 19)])
 	m.select_mode("office")

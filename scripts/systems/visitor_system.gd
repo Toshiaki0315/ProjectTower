@@ -21,6 +21,8 @@ extends Node
 const SHOP_TYPES := {
 	"restaurant": {"price": 1000, "stay": 30.0, "weekday": 2, "holiday": 8, "revenue": "food",
 		"color": Color(1.0, 0.8, 0.5)},  # 飲食店の外からの客（うすいオレンジ）
+	"fastfood": {"price": 600, "stay": 10.0, "weekday": 3, "holiday": 10, "revenue": "food",
+		"color": Color(1.0, 0.75, 0.45)}, # ファストフードの客（オレンジ）
 	"shop": {"price": 1500, "stay": 20.0, "weekday": 3, "holiday": 10, "revenue": "shop",
 		"color": Color(0.95, 0.65, 0.85)}, # ショップの客（ピンク）
 }
@@ -187,6 +189,7 @@ func pay(v: Dictionary, info: Dictionary, day: int) -> void:
 	match info.revenue:
 		"food":
 			world.commerce_system.revenue_by_day[day] = world.commerce_system.revenue_by_day.get(day, 0) + info.price
+			world.commerce_system.meals_by_day[day] = world.commerce_system.meals_by_day.get(day, 0) + 1
 		"cinema":
 			cinema_revenue_by_day[day] = cinema_revenue_by_day.get(day, 0) + info.price
 			cinema_audience_by_day[day] = cinema_audience_by_day.get(day, 0) + 1

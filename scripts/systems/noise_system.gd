@@ -18,6 +18,7 @@ const NOISE_SOURCES := {
 	"event_hall": 5,       # イベントホール
 	"wedding": 4,          # 結婚式場
 	"restaurant": 3,       # 飲食店
+	"fastfood": 3,         # ファストフード
 	"shop": 2,             # ショップ
 	"recycling": 4,        # ゴミ処理場
 	"subway": 4,           # 地下鉄駅

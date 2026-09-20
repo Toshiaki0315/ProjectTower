@@ -15,6 +15,7 @@ const TABLE := {
 	"hotel_suite": {"name": "スイート", "cost": 500000, "source_id": 11, "width": 4},
 	"housekeeping": {"name": "ハウスキーパー室", "cost": 200000, "source_id": 4, "width": 2},
 	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5, "width": 3},
+	"fastfood": {"name": "ファストフード", "cost": 120000, "source_id": 28, "width": 2},
 	"shop": {"name": "ショップ", "cost": 250000, "source_id": 24, "width": 3},
 	"cinema": {"name": "映画館", "cost": 1500000, "source_id": 25, "width": 8, "height": 2},
 	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6, "width": 3},

@@ -59,7 +59,7 @@ const TREASURE_PER_FLOOR := 10000  # 見つかる金額（深さ1階につき）
 const TREASURE_MAX := 1000000      # 1回に見つかる金額の上限
 
 # 爆弾が仕掛けられるテナント
-const TARGET_TYPES := ["office", "hotel", "hotel_twin", "hotel_suite", "housing", "restaurant", "shop", "cinema", "wedding", "event_hall"]
+const TARGET_TYPES := ["office", "hotel", "hotel_twin", "hotel_suite", "housing", "restaurant", "fastfood", "shop", "cinema", "wedding", "event_hall"]
 
 var world: Node2D # main.gd
 

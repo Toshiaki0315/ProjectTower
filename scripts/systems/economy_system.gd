@@ -30,6 +30,7 @@ const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーター�
 	"service_elevator": 1500,
 	"housekeeping": 10000,
 	"shop": 3000,
+	"fastfood": 2000,
 	"cinema": 20000,
 	"recycling": 5000,
 	"security": 5000,
@@ -86,7 +87,7 @@ func settle(day: int) -> void:
 	var hotel: int = world.hotel_system.revenue_by_day.get(day, 0)
 	var food: int = world.commerce_system.revenue_by_day.get(day, 0)
 	var checkouts: int = world.hotel_system.checkouts_by_day.get(day, 0)
-	var meals: int = food / world.commerce_system.MEAL_PRICE
+	var meals: int = world.commerce_system.meals_by_day.get(day, 0)
 	var housing: int = world.housing_system.revenue_by_day.get(day, 0)
 	var event: int = world.event_system.revenue_by_day.get(day, 0)
 	var shop: int = world.visitor_system.revenue_by_day.get(day, 0)

@@ -1,9 +1,10 @@
 extends Node
 
 # ---------------------------------------------------
-# 商業施設（飲食店）：オフィスの社員が昼に食事をしに来る。
+# 商業施設（飲食店・ファストフード）：オフィスの社員が昼に食事をしに来る。
+# ファストフードは食事が早くて安い（RESTAURANTS）。社員は経路が一番近い店を選ぶ。
 #   LUNCH_START〜LUNCH_END の間のランダムな時刻に、自分のオフィスにいる社員が
-#   経路が一番近い飲食店へ向かい、EAT_MINUTES 分食事をして、代金 MEAL_PRICE を払ってオフィスへ戻る。
+#   経路が一番近い店へ向かい、店ごとの時間だけ食事をして、代金を払ってオフィスへ戻る。
 #   飲食店は横に何マスかの建物で、店は左端のマスで表す。客は店の中のマスに振り分けて座る。
 # 社員（住人ノード）は commute_system が管理しており、ここでは昼休みの行き来だけを受け持つ。
 # ---------------------------------------------------
@@ -12,15 +13,19 @@ enum Phase { NONE, GOING, EATING, RETURNING }
 
 const LUNCH_START := 12 * 60
 const LUNCH_END := 13 * 60
-const EAT_MINUTES := 30.0
-const MEAL_PRICE := 1000
+# 店の種類ごとの、食事にかかる時間（分）と代金
+const RESTAURANTS := {
+	"restaurant": {"minutes": 30.0, "price": 1000}, # 飲食店（ゆっくり）
+	"fastfood": {"minutes": 10.0, "price": 600},    # ファストフード（早い・安い）
+}
 
 var world: Node2D # main.gd
 
 # オフィスのマス（= 社員） -> {lunch_day, phase, restaurant, seat, eat_left}
 #   restaurant: 行く店（左端のマス）  seat: 店の中で座るマス
 var lunches: Dictionary = {}
-var revenue_by_day: Dictionary = {} # 日 -> その日の飲食店の売上
+var revenue_by_day: Dictionary = {} # 日 -> その日の飲食店・ファストフードの売上
+var meals_by_day: Dictionary = {}   # 日 -> その日の食事の数（ゴミの計算に使う）
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -54,15 +59,16 @@ func _process(_delta: float) -> void:
 							lunch.seat = seat
 							lunch.phase = Phase.GOING
 			Phase.GOING:
-				if world.get_building_type(lunch.restaurant) != "restaurant":
+				if not RESTAURANTS.has(world.get_building_type(lunch.restaurant)):
 					go_back(lunch, resident, office) # 店がなくなった
 				elif resident.cell == lunch.seat and not resident.is_moving():
 					lunch.phase = Phase.EATING
-					lunch.eat_left = EAT_MINUTES
+					lunch.eat_left = RESTAURANTS[world.get_building_type(lunch.restaurant)].minutes
 			Phase.EATING:
 				lunch.eat_left -= minutes
 				if lunch.eat_left <= 0.0:
-					revenue_by_day[day] = revenue_by_day.get(day, 0) + MEAL_PRICE
+					revenue_by_day[day] = revenue_by_day.get(day, 0) + RESTAURANTS[world.get_building_type(lunch.restaurant)].price
+					meals_by_day[day] = meals_by_day.get(day, 0) + 1
 					go_back(lunch, resident, office)
 			Phase.RETURNING:
 				if not resident.is_moving():
@@ -84,13 +90,12 @@ func lunch_minute(office: Vector2i, day: int) -> int:
 func find_nearest_restaurant(from: Vector2i):
 	var best = null
 	var best_length := 0
-	for cell: Vector2i in world.find_cells_of_type("restaurant"):
-		if world.building_grid[cell].origin != cell:
-			continue
-		var path: Array[Vector2i] = world.find_path(from, cell)
-		if not path.is_empty() and (best == null or path.size() < best_length):
-			best = cell
-			best_length = path.size()
+	for type in RESTAURANTS:
+		for cell: Vector2i in world.find_units_of_type(type):
+			var path: Array[Vector2i] = world.find_path(from, cell)
+			if not path.is_empty() and (best == null or path.size() < best_length):
+				best = cell
+				best_length = path.size()
 	return best
 
 # 指定した飲食店で食事中の客の数（店のどのマスを指定してもよい）
