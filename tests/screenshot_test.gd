@@ -2357,18 +2357,17 @@ func run_parking_scenario() -> bool:
 	main.select_mode("restaurant")
 	main.build_at(Vector2i(9, 17))
 	
-	# スロープは地下1階にだけ建てられる
+	# スロープは地下にだけ建てられる
 	await choose_mode("ramp")
 	check(main.mode_info_label.text == "建設費 200,000円・横2マス", "スロープは横2マス・20万円")
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(9, 17)) == "restaurant", "スロープは地上には建てられない")
 	await click_cell(Vector2i(9, 19), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(9, 19)) == "ramp", "地下1階にはスロープを建てられる")
-	await click_cell(Vector2i(13, 20), MOUSE_BUTTON_LEFT)
-	check(main.is_cell_empty(Vector2i(13, 20)), "地下2階にはスロープを建てられない")
-	check(main.last_message.contains("スロープは地下1階にしか建てられません"), "建てられない理由がメッセージで出る")
+	await hover_cell(Vector2i(9, 19))
+	check(main.hover_label.text.contains("車が下りてこられます"), "地下1階のスロープは1階から車が下りてこられる")
 	
-	# 駐車場は、スロープまで車で行けるときだけ使える
+	# 駐車場は、同じ階のスロープまで行けるときだけ使える
 	await choose_mode("parking")
 	await click_cell(Vector2i(12, 19), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(15, 19)) == "parking", "地下駐車場は横4マス")
@@ -2376,11 +2375,12 @@ func run_parking_scenario() -> bool:
 	check(parking.usable_units == [Vector2i(12, 19)] and parking.car_capacity() == 4, "スロープにつながった駐車場は4台使える")
 	await hover_cell(Vector2i(14, 19))
 	check(main.hover_label.text.contains("地下駐車場（4台）"), "カーソルを合わせると停められる台数が出る")
-	await click_cell(Vector2i(12, 20), MOUSE_BUTTON_LEFT) # 地下2階の、どこにもつながらない駐車場
-	check(parking.usable_units == [Vector2i(12, 19)] and parking.car_capacity() == 4, "スロープにつながらない駐車場は使えない")
+	await click_cell(Vector2i(12, 20), MOUSE_BUTTON_LEFT) # 地下2階の、スロープのない駐車場
+	check(parking.usable_units == [Vector2i(12, 19)] and parking.car_capacity() == 4, "同じ階にスロープがない駐車場は使えない")
 	await hover_cell(Vector2i(12, 20))
-	check(main.hover_label.text.contains("スロープにつながっていないので使えません"), "使えない理由がカーソルで出る")
+	check(main.hover_label.text.contains("車で下りてこられるスロープにつながっていないので使えません"), "使えない理由がカーソルで出る")
 	await capture("parking_01_built")
+	
 	
 	# 昼に車で来て、飲食店で食事をして帰る
 	main.clock.set_time(1, 10, 59)
@@ -2397,6 +2397,25 @@ func run_parking_scenario() -> bool:
 	check(main.commerce_system.revenue_by_day.get(1, 0) >= 8000, "食事の代金8,000円が飲食店の売上になる")
 	check(parking.count_visitors() == 0, "食事が済んだお客さんは車で帰る")
 	check(main.economy_system.MAINTENANCE["parking"] == 5000 and main.economy_system.MAINTENANCE["ramp"] == 2000, "維持費は駐車場5,000円・スロープ2,000円")
+	
+	# 地下3階にスロープを建てても、地下2階にスロープがなければ車は下りてこられない
+	await choose_mode("ramp")
+	await click_cell(Vector2i(12, 21), MOUSE_BUTTON_LEFT)
+	await hover_cell(Vector2i(12, 21))
+	check(main.hover_label.text.contains("車が下りてこられません"), "上の階のスロープが抜けていると、車は下りてこられない")
+	await click_cell(Vector2i(12, 21), MOUSE_BUTTON_RIGHT)
+	
+	# 地下2階にもスロープを足すと、地下2階の駐車場も使えるようになる
+	build_support([Vector2i(11, 20)]) # スロープと駐車場の間をつなぐ階段
+	await choose_mode("ramp")
+	await click_cell(Vector2i(9, 20), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 20)) == "ramp", "地下2階にもスロープを建てられる")
+	check(parking.car_capacity() == 8, "地下1階から順にスロープをつなぐと、地下2階の駐車場も使える（8台）")
+	await hover_cell(Vector2i(9, 20))
+	check(main.hover_label.text.contains("車が下りてこられます"), "つながったスロープはカーソルでわかる")
+	await click_cell(Vector2i(9, 19), MOUSE_BUTTON_RIGHT)
+	check(main.get_building_type(Vector2i(9, 19)) == "ramp", "下の階のスロープを支えているので、上のスロープは壊せない")
+	await capture("parking_03_two_floors")
 	return true
 
 # ---------------------------------------------------

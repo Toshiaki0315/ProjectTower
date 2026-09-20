@@ -30,7 +30,7 @@ const TABLE := {
 	"garden": {"name": "屋上庭園", "cost": 400000, "source_id": 27, "width": 4, "floors": "rooftop"},
 	"helipad": {"name": "ヘリポート", "cost": 800000, "source_id": 26, "width": 4, "floors": "rooftop"},
 	"parking": {"name": "地下駐車場", "cost": 300000, "source_id": 22, "width": 4, "floors": "basement"},
-	"ramp": {"name": "スロープ", "cost": 200000, "source_id": 23, "width": 2, "floors": "basement1"},
+	"ramp": {"name": "スロープ", "cost": 200000, "source_id": 23, "width": 2, "floors": "basement"},
 	"lobby": {"name": "ロビー", "cost": 15000, "source_id": 15, "floors": "ground", "lobby": true},
 	"lobby2": {"name": "吹き抜けロビー（2階分）", "cost": 30000, "source_id": 16, "floors": "ground", "height": 2, "lobby": true},
 	"lobby3": {"name": "吹き抜けロビー（3階分）", "cost": 45000, "source_id": 17, "floors": "ground", "height": 3, "lobby": true},
@@ -95,8 +95,6 @@ func get_build_problem(origin: Vector2i, type: String) -> String:
 			return "ヘリポートの上には建てられません"
 	if floors == "deep_basement" and origin.y < world.ground_y + SUBWAY_MIN_DEPTH:
 		return "%sは地下%d階より深いところにしか建てられません（ここは%s）" % [TABLE[type].name, SUBWAY_MIN_DEPTH, world.get_floor_name(origin.y)]
-	if floors == "basement1" and origin.y != world.ground_y + 1:
-		return "%sは地下1階にしか建てられません（1階から車で下りる道なので）" % TABLE[type].name
 	if floors == "sky_lobby" and not world.is_sky_lobby_floor(origin.y):
 		return "%sは%d階・%d階・%d階…にしか建てられません（ここは%s）" % [TABLE[type].name,
 			SKY_LOBBY_INTERVAL, SKY_LOBBY_INTERVAL * 2, SKY_LOBBY_INTERVAL * 3, world.get_floor_name(origin.y)]

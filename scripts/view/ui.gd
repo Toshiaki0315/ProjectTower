@@ -233,6 +233,7 @@ func build_bars() -> void:
 		"セーブ: ⌘S で保存、⌘O で読み込み（ビル・資金・日付・評価・各設備の状態が戻る）",
 		"天気: 日ごとに晴れ・くもり・雨が決まる（6月は梅雨）。雨の日は入口から来る店の客が半分（車で来る客は減らない）",
 		"日付: 1日目は4月1日（月）。1年は365日で、12月24日・25日の夜にはサンタクロースのソリが空を横切る",
+		"駐車場: 地下の何階にでも作れる。使うには地下1階から目的の階まで、階ごとにスロープを建ててつなぐ（車は階段では下りられない）",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
 		"結婚式場（横6マス）: 休日の10〜11時に12人が来て13時まで（1人1万円）",
 		"イベントホール（横6マス）: 休日の13〜14時に15人が来て17時まで（1人3千円）",
@@ -470,6 +471,9 @@ func update_hover_label():
 			world.noise_system.get_noise_text(cell)]
 	elif type == "parking":
 		text += "（%s）" % world.parking_system.get_parking_text(cell)
+	elif type == "ramp":
+		text += "（%s）" % ("車が下りてこられます" if world.parking_system.is_ramp_connected(cell)
+			else "上の階のスロープが足りないので、車が下りてこられません")
 	elif type == "garden":
 		text += "（ストレスの回復 %.1f倍・騒音をやわらげる）" % world.stress_recover_rate()
 	elif type == "medical":

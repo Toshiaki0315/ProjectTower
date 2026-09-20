@@ -2,8 +2,9 @@ extends Node
 
 # ---------------------------------------------------
 # 地下駐車場とスロープ：車で来る外からのお客さん。
-#   スロープ（地下1階）は、1階から車で下りてくる道。
-#   駐車場は、スロープから車で行ける（＝歩いて行ける）場所にあるときだけ使える。
+#   スロープは、上の階から車で下りてくる道。地下1階のスロープが1階からの入口で、
+#   その真下の階にもスロープがあれば、さらに下の階へ車で下りられる（階段のようにつなぐ）。
+#   駐車場は、同じ階にある「車で下りてこられるスロープ」から行ける場所にあるときだけ使える。
 #   使える駐車場1棟につき CARS_PER_UNIT 台、1台につき PEOPLE_PER_CAR 人が来て、
 #   VISIT_START〜VISIT_END の間のランダムな時刻に自分の車のマスに現れ、
 #   一番近い店（飲食店・ショップ）で過ごして、車に戻って帰る。
@@ -28,15 +29,35 @@ var visitors_by_day := {}              # 日 -> その日に店で過ごした�
 func setup(p_world: Node2D) -> void:
 	world = p_world
 
-# 使える駐車場を数え直す（スロープまで車で行ける駐車場だけ）
+# 使える駐車場を数え直す（車で下りてこられるスロープまで行ける駐車場だけ）
 func rebuild() -> void:
 	usable_units.clear()
-	var ramps: Array[Vector2i] = world.find_units_of_type("ramp")
+	var ramps: Array[Vector2i] = connected_ramps()
 	for unit in world.find_units_of_type("parking"):
 		for ramp in ramps:
-			if not world.find_path(unit, ramp).is_empty():
+			# 車は階段では下りられないので、スロープは駐車場と同じ階にあるものだけ
+			if ramp.y == unit.y and not world.find_path(unit, ramp).is_empty():
 				usable_units.append(unit)
 				break
+
+# 1階から車で下りてこられるスロープ（左端のマス）の一覧。
+# 地下1階から順に、その階にスロープがある間だけ下へ続く（途中が抜けたらそこで行き止まり）
+func connected_ramps() -> Array[Vector2i]:
+	var by_floor := {} # 階(y) -> その階のスロープ
+	for ramp in world.find_units_of_type("ramp"):
+		if not by_floor.has(ramp.y):
+			by_floor[ramp.y] = [] as Array[Vector2i]
+		by_floor[ramp.y].append(ramp)
+	var result: Array[Vector2i] = []
+	var y: int = world.ground_y + 1 # 地下1階から
+	while by_floor.has(y):
+		result.append_array(by_floor[y])
+		y += 1
+	return result
+
+# そのスロープに車が下りてこられるか（カーソルの説明用）
+func is_ramp_connected(cell: Vector2i) -> bool:
+	return connected_ramps().has(world.building_grid[cell].origin)
 
 # 今停められる車の数
 func car_capacity() -> int:
@@ -95,5 +116,5 @@ func count_visitors() -> int:
 func get_parking_text(cell: Vector2i) -> String:
 	var origin: Vector2i = world.building_grid[cell].origin
 	if not usable_units.has(origin):
-		return "スロープにつながっていないので使えません"
+		return "車で下りてこられるスロープにつながっていないので使えません"
 	return "%d台" % CARS_PER_UNIT
