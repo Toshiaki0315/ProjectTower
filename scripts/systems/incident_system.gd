@@ -159,6 +159,7 @@ func start_bomb(cell) -> void:
 	if cell == null or world.is_cell_empty(cell):
 		return
 	bomb = {"cell": cell, "left": BOMB_LIMIT, "defuse_left": DEFUSE_MINUTES, "guard": null}
+	world.audio_system.play("alert")
 	world.show_message("爆破予告！ %s の%sに爆弾が仕掛けられました（残り%d分）。警備員が向かいます"
 		% [world.get_floor_name(cell.y), world.BUILDINGS[world.get_building_type(cell)].name, int(BOMB_LIMIT)])
 	send_guard()
@@ -235,6 +236,7 @@ func start_fire(cell) -> void:
 		return
 	fire.clear()
 	burn(cell)
+	world.audio_system.play("alert")
 	fire_spread_left = SPREAD_MINUTES
 	world.show_message("火事だ！ %s の%sから火が出ました。警備員が消火に向かいます"
 		% [world.get_floor_name(cell.y), world.BUILDINGS[world.get_building_type(cell)].name])

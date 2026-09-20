@@ -133,6 +133,7 @@ func settle(day: int) -> void:
 	# 評価（★）の判定。昇格したら、メッセージの先頭で知らせる（ボーナスは翌日の決算から）
 	if world.rating_system.evaluate():
 		message = "ビルの評価が★%dに上がりました！ %s" % [world.rating_system.stars, message]
+	world.audio_system.play("money")
 	world.show_message(message)
 
 # 入口からたどり着けるオフィスの数（休日の賃料の計算用）

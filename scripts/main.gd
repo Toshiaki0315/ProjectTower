@@ -12,6 +12,7 @@ const IncidentSystem := preload("res://scripts/systems/incident_system.gd")
 const WeatherSystem := preload("res://scripts/systems/weather_system.gd")
 const SaveSystem := preload("res://scripts/systems/save_system.gd")
 const ChartView := preload("res://scripts/view/chart_view.gd")
+const AudioSystem := preload("res://scripts/systems/audio_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -114,6 +115,7 @@ var vip_system      # VIPの宿泊（★4への昇格イベント）
 var incident_system # 事件（爆破予告・火災・ゴキブリ・埋蔵金）
 var weather_system  # 天気（晴れ・くもり・雨）
 var save_system     # セーブ／ロード
+var audio_system    # 音（効果音とBGM）
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -178,6 +180,9 @@ func _ready() -> void:
 	save_system = SaveSystem.new()
 	save_system.setup(self)
 	add_child(save_system)
+	audio_system = AudioSystem.new()
+	add_child(audio_system)
+	audio_system.setup(self)
 	parking_system = ParkingSystem.new()
 	parking_system.setup(self)
 	add_child(parking_system)
@@ -384,6 +389,7 @@ func create_ui():
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
 		"ショートカット: ⌘H（この説明の開閉） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
 		"収支のグラフ: ⌘G で、最近60日ぶんの決算の合計を棒グラフで見られる",
+		"音: ⌘M で音のオン・オフ（効果音とBGMは、波形からゲームの中で作っている）",
 		"撤去: 建設メニューの「撤去」を選ぶと左クリックで撤去できる（右クリックはいつでも撤去）。ドラッグで続けて建設・撤去できる",
 		"セーブ: ⌘S で保存、⌘O で読み込み（ビル・資金・日付・評価・各設備の状態が戻る）",
 		"天気: 日ごとに晴れ・くもり・雨が決まる（6月は梅雨）。雨の日は入口から来る店の客が半分（車で来る客は減らない）",
@@ -1171,13 +1177,15 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 # ⌘（Ctrl）と組み合わせるショートカット。受け付けたら true
 #   ⌘H: 操作説明の開閉 / ⌘L: メッセージの記録の開閉
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
-#   ⌘S: セーブ / ⌘O: セーブデータの読み込み / ⌘G: 収支のグラフの開閉
+#   ⌘S: セーブ / ⌘O: セーブデータの読み込み / ⌘G: 収支のグラフの開閉 / ⌘M: 音のオン・オフ
 func handle_shortcut(event: InputEventKey) -> bool:
 	if not (event.meta_pressed or event.ctrl_pressed):
 		return false
 	match event.keycode:
 		KEY_H:
 			help_panel.visible = not help_panel.visible
+		KEY_M:
+			audio_system.toggle_mute()
 		KEY_G:
 			chart_panel.visible = not chart_panel.visible
 		KEY_S:
@@ -1239,12 +1247,14 @@ func build_at(map_pos: Vector2i):
 	var problem := get_build_problem(map_pos, current_mode)
 	if problem != "":
 		show_message(problem)
+		audio_system.play("error")
 		return
 	
 	funds -= BUILDINGS[current_mode].cost
 	place_unit(map_pos, current_mode)
 	rebuild_systems()
 	update_funds_display()
+	audio_system.play("build")
 	show_message("%sを建設しました %s" % [BUILDINGS[current_mode].name, map_pos])
 	incident_system.on_built(get_footprint(map_pos, current_mode)) # 地下なら埋蔵金が見つかることがある
 
@@ -1286,6 +1296,7 @@ func demolish_at(map_pos: Vector2i):
 	var problem := get_demolish_problem(map_pos)
 	if problem != "":
 		show_message(problem)
+		audio_system.play("error")
 		return
 	var type = get_building_type(map_pos)
 	var origin: Vector2i = building_grid[map_pos].origin
@@ -1297,4 +1308,5 @@ func demolish_at(map_pos: Vector2i):
 		building_grid.erase(cell)
 	rebuild_systems()
 	update_funds_display()
+	audio_system.play("demolish")
 	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, origin, refund])

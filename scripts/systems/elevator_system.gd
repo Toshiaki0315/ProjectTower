@@ -141,7 +141,9 @@ func create_car(type: String, x: int, top: int, bottom: int, start_y: int):
 	var car = ElevatorCar.new()
 	car.setup(world, x, top, bottom, start_y)
 	car.set_shaft_type(type)
-	car.arrived.connect(func(y): world.show_message("エレベーターが %s に到着しました" % Vector2i(car.column, y)))
+	car.arrived.connect(func(y):
+		world.audio_system.play("chime")
+		world.show_message("エレベーターが %s に到着しました" % Vector2i(car.column, y)))
 	world.tile_map.add_child(car)
 	return car
 

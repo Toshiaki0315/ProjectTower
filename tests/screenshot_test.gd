@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -3328,6 +3328,54 @@ func run_usability_scenario() -> bool:
 	await capture("usability_02_chart")
 	await press_shortcut(KEY_G)
 	check(not main.chart_panel.visible, "もう一度⌘Gを押すと閉じる")
+	return true
+
+# ---------------------------------------------------
+# シナリオ56: 音（効果音とBGM）
+#   音源ファイルは持たず、波形からゲームの中で作っている。
+# ---------------------------------------------------
+func run_audio_scenario() -> bool:
+	print("[シナリオ] 音")
+	var audio = main.audio_system
+	check(audio.sounds.size() == audio.SOUNDS.size(), "効果音が%d種類そろっている" % audio.SOUNDS.size())
+	for name in audio.SOUNDS:
+		check(audio.sounds[name].data.size() > 0, "「%s」の音の波形ができている" % name)
+	check(audio.bgm_player.stream != null and audio.bgm_player.stream.loop_mode == AudioStreamWAV.LOOP_FORWARD, "BGMはくり返し鳴るようになっている")
+	check(not audio.muted and audio.bgm_player.playing, "はじめは音が鳴っている")
+	
+	# 効果音は、続けて鳴らしすぎない
+	audio.last_played.clear()
+	audio.play("build")
+	var playing := 0
+	for player in audio.players:
+		if player.playing:
+			playing += 1
+	check(playing >= 1, "建設の音が鳴る")
+	var first_time: float = audio.last_played["build"]
+	audio.play("build")
+	check(is_equal_approx(audio.last_played["build"], first_time), "同じ音は少し間を空けてから鳴らす")
+	
+	# ⌘Mで音を消せる
+	await press_shortcut(KEY_M)
+	check(audio.muted and not audio.bgm_player.playing, "⌘Mで音が止まる")
+	check(main.last_message.contains("音をオフにしました"), "音を消したことがメッセージで出る")
+	audio.last_played.clear()
+	audio.play("chime")
+	check(not audio.last_played.has("chime"), "音を消している間は効果音も鳴らない")
+	await press_shortcut(KEY_M)
+	check(not audio.muted and audio.bgm_player.playing, "もう一度⌘Mで音が戻る")
+	
+	# 夜になるとBGMが夜の和音に変わる
+	main.clock.set_time(1, 12, 0)
+	await wait_frames(2)
+	check(not audio.bgm_night, "昼は昼のBGM")
+	var day_stream = audio.bgm_player.stream
+	main.clock.set_time(1, 23, 0)
+	await wait_frames(2)
+	check(audio.bgm_night and audio.bgm_player.stream != day_stream, "夜になると夜のBGMに変わる")
+	main.clock.set_time(1, 7, 30)
+	await wait_frames(2)
+	check(not audio.bgm_night, "朝になると昼のBGMに戻る")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
