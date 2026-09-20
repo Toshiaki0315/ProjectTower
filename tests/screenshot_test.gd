@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2649,6 +2649,59 @@ func run_pollution_scenario() -> bool:
 	check(economy.pollution == before - 1, "ゴミが足りている日は、悪化が1レベル戻る")
 	await run_day(3)
 	check(economy.pollution == before - 2, "次の日もまた1レベル戻る")
+	return true
+
+# ---------------------------------------------------
+# シナリオ45: テナントの激怒（ストレスが限界を超えると赤く点滅）
+#   人はストレス95以上で「激怒」して顔が点滅し、退去が近いテナントはマークが点滅する。
+# ---------------------------------------------------
+func run_angry_scenario() -> bool:
+	print("[シナリオ] テナントの激怒")
+	var tenants = main.tenant_system
+	focus_camera(Vector2i(0, 16))
+	await wait_frames(1)
+	var resident = main.spawn_resident(Vector2i(0, 17))
+	resident.stress = 50.0
+	check(not resident.is_angry() and resident.get_face_color() == resident.PINK_COLOR, "ストレス50では激怒しない（顔はピンク）")
+	resident.stress = 80.0
+	check(not resident.is_angry() and resident.get_face_color() == resident.RED_COLOR, "ストレス80でも顔は赤いだけ")
+	resident.stress = resident.MAX_STRESS
+	check(resident.is_angry(), "ストレスが95以上になると激怒する")
+	
+	# 激怒した人の顔は、赤と明るい色で点滅する
+	var seen := {}
+	var limit := Time.get_ticks_msec() + 3000
+	while Time.get_ticks_msec() < limit and seen.size() < 2:
+		seen[resident.get_face_color()] = true
+		await wait_frames(1)
+	check(seen.has(resident.RED_COLOR) and seen.has(resident.ANGRY_COLOR), "激怒した人の顔は赤と明るい色で点滅する")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("怒っている人 1人"), "上部バーに怒っている人の数が出る")
+	await capture("angry_01_resident")
+	
+	# 退去が近いテナントは、評価のマークが点滅する
+	var origin := Vector2i(0, 17)
+	tenants.offices[origin] = tenants.new_tenant()
+	tenants.offices[origin].rating = tenants.Rating.BAD
+	check(not tenants.is_about_to_leave(origin), "評価が悪くなった初日は、まだ点滅しない")
+	tenants.offices[origin].bad_days = tenants.LEAVE_AFTER_BAD_DAYS - 1
+	check(tenants.is_about_to_leave(origin), "あと1日で退去のテナントは点滅して知らせる")
+	check(tenants.count_about_to_leave() == 1, "退去しそうなテナントの数を数えられる")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("退去しそうなテナント 1件"), "上部バーに退去しそうなテナントの数が出る")
+	
+	# 点滅は、表示する周期と消す周期が交互に来る
+	var blinks := {}
+	limit = Time.get_ticks_msec() + 3000
+	while Time.get_ticks_msec() < limit and blinks.size() < 2:
+		blinks[tenants.blink_on()] = true
+		await wait_frames(1)
+	check(blinks.size() == 2, "マークは点いたり消えたりする")
+	await capture("angry_02_tenant")
+	
+	# 退去して空室になると、点滅は止まる
+	tenants.offices[origin].vacant = true
+	check(not tenants.is_about_to_leave(origin) and tenants.count_about_to_leave() == 0, "退去して空室になると点滅しない")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

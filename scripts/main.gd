@@ -198,6 +198,15 @@ func _process(_delta: float) -> void:
 	update_hover_label()
 	clock_label.text = clock.get_time_text()
 	stats_label.text = rating_system.get_status_text()
+	var angry := 0
+	for r in residents:
+		if is_instance_valid(r) and r.is_angry():
+			angry += 1
+	if angry > 0:
+		stats_label.text += " / 怒っている人 %d人" % angry
+	var leaving: int = tenant_system.count_about_to_leave()
+	if leaving > 0:
+		stats_label.text += " / 退去しそうなテナント %d件" % leaving
 	if economy_system.pollution > 0:
 		stats_label.text += " / 衛生の悪化 レベル%d" % economy_system.pollution
 	stats_label.text += " / 社員: 在館 %d / 全 %d人" % [commute_system.count_in_building(), commute_system.workers.size()]
@@ -350,6 +359,8 @@ func create_ui():
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
 		"オフィスの評価: 毎日の決算で、社員のその日の最大ストレスの平均から 良い（緑）・普通（黄）・悪い（赤）を付ける",
 		"　悪い日が3日続くとテナントが退去して空室（賃料なし）。2日後に新しいテナントが入居する",
+		"　退去まであと1日のテナントは、評価のマークが点滅して知らせる（上部バーにも件数が出る）",
+		"激怒: ストレスが95以上になると人の顔が赤く点滅する（上部バーに人数が出る）",
 		"ホテル・住宅の評価: 客室は泊まった客のストレスで決まり、悪いと客が来にくい。住宅は悪い日が3日続くと家族が退去（販売収入を返金）",
 		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
 		"スクロール: マウスホイールで上下、Shift+ホイールで左右、右端のスクロールバー",

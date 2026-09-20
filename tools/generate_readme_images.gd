@@ -84,6 +84,7 @@ func save_people_images() -> void:
 		"stress_low": Resident.BODY_COLORS["s"], # ストレス 0〜39
 		"stress_mid": Resident.PINK_COLOR,       # ストレス 40〜69
 		"stress_high": Resident.RED_COLOR,       # ストレス 70〜100
+		"stress_angry": Resident.ANGRY_COLOR,    # 激怒（赤と交互に点滅する明るい方）
 	}
 	for name in people:
 		save_scaled(make_person_image(people[name]), PERSON_SCALE, OUT.path_join("people/%s.png" % name))

@@ -16,7 +16,7 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 # ストレス（0〜100）:
 #   カゴを待っている間たまり、目的地に着いて立ち止まっている間は回復する。
 #   メディカルセンターがビルにあると、回復が速くなる（main.stress_recover_rate）。
-#   顔（肌）の色で表す: ふつうの肌色（平常）→ ピンク（40以上）→ 赤（70以上）。
+#   顔（肌）の色で表す: ふつうの肌色（平常）→ ピンク（40以上）→ 赤（70以上）→ 赤く点滅（95以上＝激怒）。
 #   服の色はその人の種類（社員は白・宿泊客は薄紫など）を表すので、ストレスでは変えない
 # ---------------------------------------------------
 
@@ -31,8 +31,11 @@ const STRESS_WAIT_RATE := 10.0    # 待っている間に1秒でたまるスト�
 const STRESS_RECOVER_RATE := 5.0  # 目的地で1秒に回復するストレス
 const STRESS_PINK := 40.0         # これ以上でピンク
 const STRESS_RED := 70.0          # これ以上で赤
+const STRESS_ANGRY := 95.0        # これ以上は「激怒」。顔が赤く点滅する
+const BLINK_PERIOD := 0.4         # 点滅の周期（秒）
 const PINK_COLOR := Color(1.0, 0.55, 0.75)
 const RED_COLOR := Color(1.0, 0.2, 0.2)
+const ANGRY_COLOR := Color(1.0, 0.95, 0.95) # 激怒の点滅で、赤と交互に出る色
 
 # 住人のドット絵（8×11ドット）。"c" の服の部分を、種類やストレスに応じた色で塗る
 const BODY_SPRITE := [
@@ -201,9 +204,17 @@ func update_stress(delta: float) -> void:
 func get_body_color() -> Color:
 	return Color(1.0, 0.85, 0.1) if selected else base_color
 
-# 顔（肌）の色。ストレスが高いほど赤くなる
+# 我慢の限界（激怒）か。顔が赤く点滅して、放っておくと評価が下がっていく
+func is_angry() -> bool:
+	return stress >= STRESS_ANGRY
+
+# 顔（肌）の色。ストレスが高いほど赤くなり、限界を超えると点滅する
 #（服は種類を表す色なので、ストレスは顔色で見せる）
 func get_face_color() -> Color:
+	if is_angry():
+		# 点滅: BLINK_PERIOD の半分ごとに、赤と明るい色が入れ替わる
+		var phase := fmod(Time.get_ticks_msec() / 1000.0, BLINK_PERIOD)
+		return RED_COLOR if phase < BLINK_PERIOD / 2.0 else ANGRY_COLOR
 	if stress >= STRESS_RED:
 		return RED_COLOR
 	if stress >= STRESS_PINK:

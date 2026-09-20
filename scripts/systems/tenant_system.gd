@@ -9,6 +9,7 @@ extends Node2D
 #   評価:            毎日の決算のときに、その日に出勤した社員の平均で決める（evaluate_day）
 #                     平均 < GOOD_BELOW … 良い / < BAD_FROM … 普通 / それ以上 … 悪い
 #                     出勤がなかった日（休日など）は前の評価のまま
+#   激怒:            退去まであと WARN_BEFORE_LEAVE 日になると、評価のマークが点滅して知らせる
 #   退去:            評価が「悪い」の日が LEAVE_AFTER_BAD_DAYS 日続くと、テナントが退去して空室になる
 #                     （空室の間は社員が出勤せず、賃料も入らず、人口にも数えない）
 #   入居:            空室になって VACANT_DAYS 日たつと、新しいテナントが入居する（評価は「良い」から）
@@ -34,6 +35,8 @@ const LEAVE_AFTER_BAD_DAYS := 3 # 評価が悪い日がこの日数続くと退�
 const VACANT_DAYS := 2          # 空室になってから新しいテナントが入居するまでの日数
 const CHECKIN_CHANCE := {Rating.GOOD: 1.0, Rating.NORMAL: 0.6, Rating.BAD: 0.2} # 客室の評価ごとの、客が来る確率
 const RATING_NAMES := {Rating.GOOD: "良い", Rating.NORMAL: "普通", Rating.BAD: "悪い"}
+const WARN_BEFORE_LEAVE := 1 # 退去まで残りこの日数になると、評価のマークが点滅して知らせる
+const BLINK_PERIOD := 0.6    # マークの点滅の周期（秒）
 const RATING_COLORS := {
 	Rating.GOOD: Color(0.3, 0.9, 0.4),
 	Rating.NORMAL: Color(1.0, 0.85, 0.2),
@@ -56,6 +59,7 @@ func setup(p_world: Node2D) -> void:
 	z_index = 9 # カゴより手前、住人より奥
 
 func _process(_delta: float) -> void:
+	queue_redraw() # 退去が近いテナントのマークを点滅させるため、毎フレーム描き直す
 	# 社員ごとに、今日たまったストレスの一番高い値を記録する
 	var workers: Dictionary = world.commute_system.workers
 	for cell in workers:
@@ -263,7 +267,31 @@ func _draw() -> void:
 		if marks[origin] == -1:
 			draw_vacant(origin, tile_size)
 			continue
+		# 退去が近いテナント（激怒）は、マークを点滅させて知らせる
+		if is_about_to_leave(origin) and not blink_on():
+			continue
 		draw_face(Vector2(origin) * tile_size + Vector2(1, 1), marks[origin])
+
+# あと WARN_BEFORE_LEAVE 日で退去してしまうテナントか（オフィス・住宅）
+func is_about_to_leave(origin: Vector2i) -> bool:
+	for records in [offices, homes]:
+		if records.has(origin) and not records[origin].vacant \
+				and records[origin].bad_days >= LEAVE_AFTER_BAD_DAYS - WARN_BEFORE_LEAVE:
+			return true
+	return false
+
+# 点滅の表示中か（周期の前半だけ描く）
+func blink_on() -> bool:
+	return fmod(Time.get_ticks_msec() / 1000.0, BLINK_PERIOD) < BLINK_PERIOD / 2.0
+
+# 退去が近いテナントの数（上部バーの表示用）
+func count_about_to_leave() -> int:
+	var count := 0
+	for records in [offices, homes]:
+		for origin in records:
+			if is_about_to_leave(origin):
+				count += 1
+	return count
 
 func draw_face(p: Vector2, rating: Rating) -> void:
 	draw_rect(Rect2(p - Vector2.ONE, Vector2(7, 7)), Color(0, 0, 0, 0.6))
