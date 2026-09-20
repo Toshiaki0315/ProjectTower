@@ -7,7 +7,7 @@ extends Node
 #   席まで行けないお客さんは来ない。
 #
 # 店の客: 店（飲食店・ショップ）ごとに、平日と休日で決まった人数が入口から来る。
-#   雨の日は人数が減る（weather_system.visitor_rate）。
+#   雨の日は人数が減り（weather_system.visitor_rate）、地下鉄駅があると増える（subway_rate）。
 #   平日は昼（社員の昼食に外からの客が加わる）、休日は昼から夕方まで。
 # 車で来た客: parking_system が駐車場のマスを出発にして add_visit() で足す。
 # 映画館の客: 上映時刻（CINEMA.shows）の少し前に一斉に来て、上映が終わると一斉に帰る。
@@ -32,6 +32,8 @@ const CINEMA := {
 	"shows": [13 * 60, 16 * 60, 19 * 60], "shows_holiday": [11 * 60, 14 * 60, 17 * 60, 20 * 60],
 	"length": 120, "audience": 10, "audience_holiday": 16, "arrive_before": 30, "parking_bonus_max": 8,
 }
+const SUBWAY_BONUS := 0.5      # 地下鉄駅1つにつき、外から来るお客さんが何割増えるか
+const SUBWAY_BONUS_MAX := 2.0  # 増える割合の上限（2倍まで）
 const WEEKDAY_START := 11 * 60 # 平日に来はじめる時刻
 const WEEKDAY_END := 14 * 60
 const HOLIDAY_START := 10 * 60 # 休日に来はじめる時刻
@@ -53,6 +55,10 @@ func setup(p_world: Node2D) -> void:
 
 func is_shop_type(type: String) -> bool:
 	return SHOP_TYPES.has(type)
+
+# 地下鉄駅があると、外から来るお客さんが増える（駅からの人の流入）
+func subway_rate() -> float:
+	return minf(1.0 + SUBWAY_BONUS * world.find_units_of_type("subway").size(), SUBWAY_BONUS_MAX)
 
 # お客さんの種類ごとの設定（店と映画館）
 func visit_info(type: String) -> Dictionary:
@@ -87,8 +93,8 @@ func plan_shop_visits(day: int, start: int, end: int) -> void:
 		var info: Dictionary = SHOP_TYPES[type]
 		for unit in world.find_units_of_type(type):
 			var seats: Array[Vector2i] = world.get_unit_cells(unit)
-			# 雨の日は、外を歩いて来るお客さんが減る
-			var count := int((info.holiday if holiday else info.weekday) * world.weather_system.visitor_rate())
+			# 雨の日は減り、地下鉄駅があると増える
+			var count := int((info.holiday if holiday else info.weekday) * world.weather_system.visitor_rate() * subway_rate())
 			for i in count:
 				var seat: Vector2i = seats[i % seats.size()]
 				var entrance = world.nearest_entrance(seat)
@@ -108,6 +114,7 @@ func plan_cinema_visits(day: int) -> void:
 	var base: int = CINEMA.audience_holiday if holiday else CINEMA.audience
 	# 駐車場が使えるぶんだけ客が増える（映画館は車で来る人が多い）
 	var bonus: int = mini(world.parking_system.car_capacity(), CINEMA.parking_bonus_max)
+	base = int(base * subway_rate()) # 地下鉄駅からも客が来る
 	for unit in cinemas:
 		var seats: Array[Vector2i] = world.get_unit_cells(unit).filter(func(c): return c.y == unit.y)
 		for show in showtimes(day):

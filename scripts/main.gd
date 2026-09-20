@@ -33,7 +33,8 @@ const TenantSystem := preload("res://scripts/systems/tenant_system.gd")
 # lobby: true ならロビー（1階の入口になる）
 # floors: 建てられる階。"ground" = 1階だけ / "basement" = 地下だけ / "any" = どこでも /
 #         "sky_lobby" = 15階・30階・45階…だけ（SKY_LOBBY_INTERVAL 階ごと） /
-#         "basement1" = 地下1階だけ（1階から車で下りられる深さ） / 省略 = 1階以外
+#         "basement1" = 地下1階だけ（1階から車で下りられる深さ） /
+#         "deep_basement" = 地下SUBWAY_MIN_DEPTH階より深いところだけ（地下鉄駅） / 省略 = 1階以外
 #         （1階はロビー専用のフロアなので、テナントや設備は1階に建てられない）
 # ---------------------------------------------------
 const BUILDINGS := {
@@ -53,7 +54,7 @@ const BUILDINGS := {
 	"housing": {"name": "住宅", "cost": 400000, "source_id": 9, "width": 3},
 	"wedding": {"name": "結婚式場", "cost": 1000000, "source_id": 12, "width": 6},
 	"event_hall": {"name": "イベントホール", "cost": 800000, "source_id": 13, "width": 6},
-	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14, "width": 4, "floors": "basement"},
+	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14, "width": 4, "floors": "deep_basement"},
 	"parking": {"name": "地下駐車場", "cost": 300000, "source_id": 22, "width": 4, "floors": "basement"},
 	"ramp": {"name": "スロープ", "cost": 200000, "source_id": 23, "width": 2, "floors": "basement1"},
 	"lobby": {"name": "ロビー", "cost": 30000, "source_id": 15, "floors": "ground", "lobby": true},
@@ -136,6 +137,7 @@ const GROUND_FLOOR_Y := 18
 const MAX_FLOORS_ABOVE := 150 # 建てられる一番上の階（地上150階）
 const MAX_FLOORS_BELOW := 50  # 掘れる一番下の階（地下50階）
 const MAX_WIDTH := 100        # ビルの横幅（マス数）。0を中心に左右へ半分ずつ
+const SUBWAY_MIN_DEPTH := 5   # 地下鉄駅を建てられる深さ（地下5階より下）
 const SPEEDS := [1, 4, 16] # ゲームの速度（押すたびにこの順に切り替わる）
 const MEDICAL_RECOVER_BONUS := 0.5 # メディカルセンター1施設で、ストレスの回復が何割速くなるか
 const MEDICAL_RECOVER_MAX := 2.5   # 回復の速さの上限（何倍まで）
@@ -370,7 +372,8 @@ func create_ui():
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
 		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
 		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
-		"入口: 1階の左端と地下鉄駅（地下にだけ建てられる）。人は近い方の入口から出入りする",
+		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
+		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
 		"ショートカット: ⌘H（この説明の開閉） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
 		"セーブ: ⌘S で保存、⌘O で読み込み（ビル・資金・日付・評価・各設備の状態が戻る）",
@@ -798,6 +801,8 @@ func get_build_problem(origin: Vector2i, type: String) -> String:
 		return "%sは1階にしか建てられません" % BUILDINGS[type].name
 	if floors == "basement" and origin.y <= ground_y:
 		return "%sは地下（1階より下）にしか建てられません" % BUILDINGS[type].name
+	if floors == "deep_basement" and origin.y < ground_y + SUBWAY_MIN_DEPTH:
+		return "%sは地下%d階より深いところにしか建てられません（ここは%s）" % [BUILDINGS[type].name, SUBWAY_MIN_DEPTH, get_floor_name(origin.y)]
 	if floors == "basement1" and origin.y != ground_y + 1:
 		return "%sは地下1階にしか建てられません（1階から車で下りる道なので）" % BUILDINGS[type].name
 	if floors == "sky_lobby" and not is_sky_lobby_floor(origin.y):

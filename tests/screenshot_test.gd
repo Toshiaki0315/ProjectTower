@@ -1211,7 +1211,8 @@ func run_subway_scenario() -> bool:
 	await choose_mode("elevator")
 	for y in range(18, 12, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
-	await click_cell(Vector2i(8, 19), MOUSE_BUTTON_LEFT) # 地下は1階のシャフトを建ててから掘る
+	for y in range(19, 24): # 地下は1階のシャフトを建ててから、地下5階(y=23)まで掘り下げる
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	await choose_mode("office")
 	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
@@ -1223,20 +1224,26 @@ func run_subway_scenario() -> bool:
 	main.build_at(Vector2i(-12, 17))
 	check(main.get_entrance() == Vector2i(-8, 18), "ロビーの左に階段を置いても、入口はロビーの左端のまま")
 	
-	# 地下鉄駅は地下にしか建てられない
+	# 地下鉄駅は、地下5階より深いところにしか建てられない
 	await choose_mode("subway")
 	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(9, 18)), "1階には地下鉄駅を建てられない")
-	check(main.last_message.contains("地下鉄駅は地下（1階より下）にしか建てられません"), "建てられない理由がメッセージで出る")
-	var station := Vector2i(9, 19)
-	build_support(cells_row(18, 9, 12), "lobby") # 足場: 地下の駅は1階の真下にしか掘れないので、1階にロビーを足す
+	check(main.last_message.contains("地下鉄駅は地下5階より深いところにしか建てられません（ここは1階）"), "建てられない理由がメッセージで出る")
+	# 足場: 駅の上（1階〜地下4階）を埋めて、地下5階まで掘り下げる
+	build_support(cells_row(18, 9, 12), "lobby")
+	for y in range(19, 23):
+		build_support(cells_row(y, 9, 12))
+	await click_cell(Vector2i(9, 19), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 19)) != "subway", "地下1階では浅すぎて建てられない")
+	var station := Vector2i(9, 23) # 地下5階
 	await click_cell(station, MOUSE_BUTTON_LEFT)
-	check(main.get_building_type(station) == "subway", "地下(y=19)には地下鉄駅を建てられる")
+	check(main.get_building_type(station) == "subway", "地下5階(y=23)には地下鉄駅を建てられる")
 	check(main.get_entrance() == Vector2i(-8, 18), "地下に建物ができても、1階の入口は変わらない")
 	check(main.get_entrances() == [Vector2i(-8, 18), station], "入口は1階の入口と地下鉄駅の2つ")
 	check(main.nearest_entrance(Vector2i(6, 13)) == station, "上の階のオフィスからは地下鉄駅の方が近い")
 	check(main.nearest_entrance(Vector2i(-6, 17)) == Vector2i(-8, 18), "左寄りのオフィスからは、階段で上がれる1階の入口の方が近い")
 	await capture("subway_01_built")
+
 	
 	# 平日の朝: それぞれ近い入口から出勤してくる
 	var first_cells := {}
@@ -1265,6 +1272,26 @@ func run_subway_scenario() -> bool:
 	main.rating_system.stars = 3
 	check(main.rating_system.missing_for_next() == ["人口250", "VIPの宿泊"], "★4の条件（人口250・地下鉄駅・VIPの宿泊）のうち、地下鉄駅は満たしている")
 	main.rating_system.stars = 1
+	
+	# 駅があると、店へ来る外からのお客さんが増える
+	var visitors = main.visitor_system
+	check(is_equal_approx(visitors.subway_rate(), 1.0 + visitors.SUBWAY_BONUS), "地下鉄駅1つで、外から来るお客さんが5割増える")
+	main.select_mode("shop")
+	main.build_at(Vector2i(9, 17))
+	main.clock.set_time(1, 11, 0)
+	visitors.plan_day = 0
+	main.clock.set_process(true)
+	await wait_frames(3)
+	var with_station: int = visitors.visits.size()
+	await click_cell(station, MOUSE_BUTTON_RIGHT) # 駅を撤去する
+	check(main.is_cell_empty(station), "地下鉄駅を撤去できる")
+	visitors.plan_day = 0
+	visitors.visits.clear()
+	await wait_frames(3)
+	main.clock.set_process(false)
+	print("    駅あり=", with_station, "人 / 駅なし=", visitors.visits.size(), "人")
+	check(with_station > visitors.visits.size(), "駅があるときの方が、店に来る人数が多い")
+	check(is_equal_approx(visitors.subway_rate(), 1.0), "駅がなくなると、増え方ももとに戻る")
 	return true
 
 # ---------------------------------------------------
@@ -2731,8 +2758,11 @@ func run_vip_scenario() -> bool:
 	build_support([Vector2i(10, 18)]) # 足場: 2階へ上がる階段
 	main.select_mode("hotel_suite")
 	main.build_at(Vector2i(10, 17))
+	# 地下鉄駅は地下5階より深くにしか建てられないので、足場で掘り下げてから建てる
+	for y in range(19, 23):
+		build_support(cells_row(y, 11, 14))
 	main.select_mode("subway")
-	main.build_at(Vector2i(11, 19))
+	main.build_at(Vector2i(11, 23))
 	rating.stars = 3
 	await wait_frames(2)
 	check(rating.population() >= 250, "人口が250以上ある（%d人）" % rating.population())
