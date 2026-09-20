@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -3117,6 +3117,75 @@ func run_weather_scenario() -> bool:
 	print("    晴れの日の予定=", sunny_plan, "人 / 雨の日=", visitors.visits.size(), "人")
 	check(sunny_plan > 0 and visitors.visits.size() < sunny_plan, "雨の日は、店に来る予定の人数が少ない")
 	clock.set_time(1, 7, 30)
+	return true
+
+# ---------------------------------------------------
+# シナリオ53: セーブ／ロード（ビルの状態を保存して、続きから遊ぶ）
+# ---------------------------------------------------
+func run_save_scenario() -> bool:
+	print("[シナリオ] セーブとロード")
+	var save_path := "user://test_save.json"
+	main.funds = 5000000
+	focus_camera(Vector2i(8, 16))
+	await wait_frames(1)
+	# ビルを少し作る（エレベーター・カゴ・待機階・稼働時間帯・客室・住宅）
+	await choose_mode("elevator")
+	for y in range(18, 13, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	await choose_mode("add_car")
+	await click_cell(Vector2i(8, 15), MOUSE_BUTTON_LEFT)
+	await choose_mode("set_home")
+	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
+	await choose_mode("service")
+	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
+	build_support(cells_row(18, 9, 14), "lobby")
+	main.select_mode("hotel")
+	main.build_at(Vector2i(9, 17))
+	main.select_mode("housing")
+	main.build_at(Vector2i(12, 17))
+	main.clock.set_time(7, 15, 30)
+	main.rating_system.stars = 2
+	main.economy_system.pollution = 3
+	main.hotel_system.rooms[Vector2i(9, 17)].state = main.hotel_system.RoomState.DIRTY
+	main.housing_system.homes[Vector2i(12, 17)].moved_in = true
+	main.tenant_system.offices[Vector2i(0, 17)] = {"rating": main.tenant_system.Rating.BAD, "average": 70.0, "bad_days": 2, "vacant": false, "vacant_days": 0}
+	var funds_before: int = main.funds
+	var buildings_before: int = main.building_grid.size()
+	
+	# セーブする
+	check(main.save_system.save_game(save_path), "セーブできる")
+	check(FileAccess.file_exists(save_path), "セーブデータのファイルができる")
+	check(logged("セーブしました"), "セーブしたことがメッセージで出る")
+	
+	# ビルを壊してから読み込むと、元に戻る
+	main.clear_world()
+	main.funds = 0
+	main.clock.set_time(1, 7, 30)
+	main.rating_system.stars = 1
+	main.economy_system.pollution = 0
+	check(main.building_grid.is_empty(), "いったん更地にする")
+	check(main.save_system.load_game(save_path), "セーブデータを読み込める")
+	check(main.building_grid.size() == buildings_before, "建物が元どおりになる")
+	check(main.funds == funds_before, "資金が戻る")
+	check(main.clock.day == 7 and main.clock.minute_of_day() == 15 * 60 + 30, "日付と時刻が戻る")
+	check(main.rating_system.stars == 2, "ビルの評価（★）が戻る")
+	check(main.economy_system.pollution == 3, "衛生の悪化が戻る")
+	check(main.get_building_type(Vector2i(9, 17)) == "hotel" and main.get_building_type(Vector2i(12, 17)) == "housing", "客室と住宅が元の場所に戻る")
+	check(main.hotel_system.rooms[Vector2i(9, 17)].state == main.hotel_system.RoomState.DIRTY, "客室が清掃待ちのまま戻る")
+	check(main.housing_system.homes[Vector2i(12, 17)].moved_in, "住宅の入居ずみの状態が戻る")
+	check(main.tenant_system.offices[Vector2i(0, 17)].bad_days == 2, "テナントの評価（悪い日が続いた日数）も戻る")
+	
+	# エレベーターの設定も戻る
+	var elevators = main.elevator_system
+	check(elevators.get_cars_at(Vector2i(8, 16)).size() == 2, "カゴの台数が戻る")
+	check(elevators.get_home(Vector2i(8, 16)) == 16, "待機階が戻る")
+	check(elevators.get_service(Vector2i(8, 16)).name == "6時〜24時", "稼働時間帯が戻る")
+	await capture("save_01_loaded")
+	
+	# セーブデータがないときは、読み込んでも何も起きない
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
+	check(not main.save_system.load_game(save_path), "セーブデータがなければ読み込まない")
+	check(logged("セーブデータがありません"), "その旨がメッセージで出る")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

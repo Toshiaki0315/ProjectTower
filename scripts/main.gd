@@ -10,6 +10,7 @@ const NoiseSystem := preload("res://scripts/systems/noise_system.gd")
 const VipSystem := preload("res://scripts/systems/vip_system.gd")
 const IncidentSystem := preload("res://scripts/systems/incident_system.gd")
 const WeatherSystem := preload("res://scripts/systems/weather_system.gd")
+const SaveSystem := preload("res://scripts/systems/save_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -104,6 +105,7 @@ var noise_system    # 騒音（うるさい建物のまわりのマスに広が�
 var vip_system      # VIPの宿泊（★4への昇格イベント）
 var incident_system # 事件（爆破予告・火災・ゴキブリ・埋蔵金）
 var weather_system  # 天気（晴れ・くもり・雨）
+var save_system     # セーブ／ロード
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -164,6 +166,9 @@ func _ready() -> void:
 	weather_system = WeatherSystem.new()
 	weather_system.setup(self)
 	add_child(weather_system)
+	save_system = SaveSystem.new()
+	save_system.setup(self)
+	add_child(save_system)
 	parking_system = ParkingSystem.new()
 	parking_system.setup(self)
 	add_child(parking_system)
@@ -368,6 +373,7 @@ func create_ui():
 		"入口: 1階の左端と地下鉄駅（地下にだけ建てられる）。人は近い方の入口から出入りする",
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
 		"ショートカット: ⌘H（この説明の開閉） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
+		"セーブ: ⌘S で保存、⌘O で読み込み（ビル・資金・日付・評価・各設備の状態が戻る）",
 		"天気: 日ごとに晴れ・くもり・雨が決まる（6月は梅雨）。雨の日は入口から来る店の客が半分（車で来る客は減らない）",
 		"日付: 1日目は4月1日（月）。1年は365日で、12月24日・25日の夜にはサンタクロースのソリが空を横切る",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
@@ -1106,12 +1112,17 @@ func _unhandled_input(event: InputEvent) -> void:
 # ⌘（Ctrl）と組み合わせるショートカット。受け付けたら true
 #   ⌘H: 操作説明の開閉 / ⌘L: メッセージの記録の開閉
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
+#   ⌘S: セーブ / ⌘O: セーブデータの読み込み
 func handle_shortcut(event: InputEventKey) -> bool:
 	if not (event.meta_pressed or event.ctrl_pressed):
 		return false
 	match event.keycode:
 		KEY_H:
 			help_panel.visible = not help_panel.visible
+		KEY_S:
+			save_system.save_game()
+		KEY_O:
+			save_system.load_game()
 		KEY_L:
 			log_panel.visible = not log_panel.visible
 			if log_panel.visible:
@@ -1169,21 +1180,35 @@ func build_at(map_pos: Vector2i):
 		show_message(problem)
 		return
 	
-	var data = BUILDINGS[current_mode]
-	funds -= data.cost
-	var height := get_height(current_mode)
-	for cell in get_footprint(map_pos, current_mode):
-		# ドット絵の区画: 横は左端からの位置、縦は上から数えた位置（一番下の階が一番下の区画）
-		var atlas := Vector2i(cell.x - map_pos.x, height - 1 - (map_pos.y - cell.y))
-		tile_map.set_cell(cell, data.source_id, atlas)
-		building_grid[cell] = {"type": current_mode, "origin": map_pos}
+	funds -= BUILDINGS[current_mode].cost
+	place_unit(map_pos, current_mode)
 	rebuild_systems()
 	update_funds_display()
-	show_message("%sを建設しました %s" % [data.name, map_pos])
+	show_message("%sを建設しました %s" % [BUILDINGS[current_mode].name, map_pos])
 	incident_system.on_built(get_footprint(map_pos, current_mode)) # 地下なら埋蔵金が見つかることがある
 
-# 撤去（売却）処理（建物のどのマスをクリックしても、その建物全体を撤去する）
-# 建物を壊す（爆発など。払い戻しはなく、支えのルールも見ない）
+# 建物をマップに置く（費用やルールは見ない。建設とセーブの読み込みで使う）
+func place_unit(origin: Vector2i, type: String) -> void:
+	var data = BUILDINGS[type]
+	var height := get_height(type)
+	for cell in get_footprint(origin, type):
+		# ドット絵の区画: 横は左端からの位置、縦は上から数えた位置（一番下の階が一番下の区画）
+		var atlas := Vector2i(cell.x - origin.x, height - 1 - (origin.y - cell.y))
+		tile_map.set_cell(cell, data.source_id, atlas)
+		building_grid[cell] = {"type": type, "origin": origin}
+
+# 建物と住人をすべて消す（セーブの読み込みで使う）
+func clear_world() -> void:
+	for cell in building_grid.keys():
+		tile_map.erase_cell(cell)
+	building_grid.clear()
+	for resident in residents:
+		if is_instance_valid(resident):
+			resident.queue_free()
+	residents.clear()
+	rebuild_systems()
+
+# 建物を壊す（爆発・火災など。払い戻しはなく、支えのルールも見ない）
 func destroy_unit(cell: Vector2i) -> void:
 	if is_cell_empty(cell):
 		return
@@ -1192,6 +1217,7 @@ func destroy_unit(cell: Vector2i) -> void:
 		building_grid.erase(c)
 	rebuild_systems()
 
+# 撤去（売却）処理（建物のどのマスをクリックしても、その建物全体を撤去する）
 func demolish_at(map_pos: Vector2i):
 	if is_cell_empty(map_pos):
 		return
