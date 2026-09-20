@@ -14,6 +14,7 @@ extends Node
 #   評価ボーナス: 賃料と宿泊料に、ビルの評価（★）に応じた割合を上乗せ（rating_system）
 #   維持費:   建物ごとの MAINTENANCE × 建物（ユニット）の数
 #   ゴミ処理: その日の活動で出たゴミのうち、ゴミ処理場で処理しきれない分を外部に委託する費用
+#   ショップ: 外から来たお客さんの買い物代（visitor_system が記録する）
 #             ゴミの量 = 出勤があったオフィス数 + チェックアウトした客室数 + 飲食店の客数 / 10
 #                        + 入居済みの住宅数 + 会場の来客数 / 10
 #             処理能力 = ゴミ処理場の数 × RECYCLING_CAPACITY
@@ -26,6 +27,7 @@ const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーター�
 	"escalator": 2000,
 	"service_elevator": 1500,
 	"housekeeping": 10000,
+	"shop": 3000,
 	"recycling": 5000,
 	"security": 5000,
 	"medical": 10000,
@@ -71,22 +73,24 @@ func settle(day: int) -> void:
 	var meals: int = food / world.commerce_system.MEAL_PRICE
 	var housing: int = world.housing_system.revenue_by_day.get(day, 0)
 	var event: int = world.event_system.revenue_by_day.get(day, 0)
+	var shop: int = world.visitor_system.revenue_by_day.get(day, 0)
+	var shop_customers: int = world.visitor_system.customers_by_day.get(day, 0)
 	var event_visitors: int = world.event_system.visitors_by_day.get(day, 0)
 	var garbage: int = active_offices + checkouts + meals / MEALS_PER_GARBAGE + world.housing_system.count_moved_in() \
-		+ event_visitors / MEALS_PER_GARBAGE
+		+ (event_visitors + shop_customers) / MEALS_PER_GARBAGE
 	var garbage_cost := maxi(garbage - recycling_capacity(), 0) * OUTSOURCE_COST
 	var bonus := int((rent + hotel) * world.rating_system.bonus_rate())
 	# テナントの評価（人のストレスから）と、オフィス・住宅の退去・入居。住宅の退去では販売収入を返金する
 	var tenants: Dictionary = world.tenant_system.evaluate_day(day)
 	var refund: int = tenants.refund
-	var total := rent + hotel + food + housing + event + bonus - maintenance - garbage_cost - refund
-	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "housing": housing, "event": event, "bonus": bonus, "maintenance": maintenance,
+	var total := rent + hotel + food + shop + housing + event + bonus - maintenance - garbage_cost - refund
+	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "shop": shop, "housing": housing, "event": event, "bonus": bonus, "maintenance": maintenance,
 		"garbage": garbage, "garbage_cost": garbage_cost, "refund": refund, "total": total}
 	world.funds += total
 	world.update_funds_display() # last_reportを更新してから表示する（前日の収支も表示されるため）
 	# 0円の項目は省いて短くする
 	var items: Array[String] = []
-	for item in [["賃料", rent], ["宿泊料", hotel], ["飲食", food], ["住宅販売", housing], ["イベント", event], ["評価ボーナス", bonus]]:
+	for item in [["賃料", rent], ["宿泊料", hotel], ["飲食", food], ["ショップ", shop], ["住宅販売", housing], ["イベント", event], ["評価ボーナス", bonus]]:
 		if item[1] > 0:
 			items.append("%s +%s円" % [item[0], world.format_money(item[1])])
 	if maintenance > 0:

@@ -19,6 +19,7 @@ const HotelSystem := preload("res://scripts/systems/hotel_system.gd")
 const HousingSystem := preload("res://scripts/systems/housing_system.gd")
 const EventSystem := preload("res://scripts/systems/event_system.gd")
 const ParkingSystem := preload("res://scripts/systems/parking_system.gd")
+const VisitorSystem := preload("res://scripts/systems/visitor_system.gd")
 const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 
 const OUT := "res://docs/images"
@@ -51,8 +52,8 @@ func save_building_images() -> void:
 	for type in PixelArt.TILES:
 		save_scaled(PixelArt.make_tile_image(type), BUILDING_SCALE, OUT.path_join("buildings/%s.png" % type))
 
-# 人のドット絵（resident.gd の BODY_SPRITE）を、服の色を変えて画像にする
-func make_person_image(clothes: Color) -> Image:
+# 人のドット絵（resident.gd の BODY_SPRITE）を、服と顔の色を変えて画像にする
+func make_person_image(clothes: Color, face := Resident.BODY_COLORS["s"]) -> Image:
 	var rows: Array = Resident.BODY_SPRITE
 	var image := Image.create(rows[0].length() + 2, rows.size() + 2, false, Image.FORMAT_RGBA8)
 	for y in rows.size():
@@ -60,7 +61,8 @@ func make_person_image(clothes: Color) -> Image:
 			var ch: String = rows[y][x]
 			if ch == ".":
 				continue
-			image.set_pixel(x + 1, y + 1, clothes if ch == "c" else Resident.BODY_COLORS[ch])
+			var color: Color = clothes if ch == "c" else (face if ch == "s" else Resident.BODY_COLORS[ch])
+			image.set_pixel(x + 1, y + 1, color)
 	return image
 
 func save_people_images() -> void:
@@ -72,13 +74,20 @@ func save_people_images() -> void:
 		"wedding": EventSystem.EVENT_TYPES.wedding.color,    # 結婚式の来客
 		"event": EventSystem.EVENT_TYPES.event_hall.color,   # イベントの来客
 		"parking": ParkingSystem.VISITOR_COLOR,              # 車で来たお客さん
+		"restaurant_customer": VisitorSystem.SHOP_TYPES.restaurant.color, # 飲食店の外からの客
+		"shop_customer": VisitorSystem.SHOP_TYPES.shop.color,             # ショップのお客さん
 		"selected": Color(1.0, 0.85, 0.1),                   # 選択中（住人モード）
-		"stress_low": Color.WHITE,                           # ストレス 0〜39
-		"stress_mid": Resident.PINK_COLOR,                   # ストレス 40〜69
-		"stress_high": Resident.RED_COLOR,                   # ストレス 70〜100
+	}
+	# ストレスは顔（肌）の色で表す（服は種類の色のまま）
+	var faces := {
+		"stress_low": Resident.BODY_COLORS["s"], # ストレス 0〜39
+		"stress_mid": Resident.PINK_COLOR,       # ストレス 40〜69
+		"stress_high": Resident.RED_COLOR,       # ストレス 70〜100
 	}
 	for name in people:
 		save_scaled(make_person_image(people[name]), PERSON_SCALE, OUT.path_join("people/%s.png" % name))
+	for name in faces:
+		save_scaled(make_person_image(Color.WHITE, faces[name]), PERSON_SCALE, OUT.path_join("people/%s.png" % name))
 
 # エレベーターのカゴ（elevator_car.gd の描き方と同じ色・形）
 func save_elevator_images() -> void:

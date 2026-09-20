@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -488,7 +488,8 @@ func run_stress_scenario() -> bool:
 	var resident = main.residents.back()
 	var goal := Vector2i(5, 13)
 	await click_cell(goal, MOUSE_BUTTON_LEFT)
-	check(resident.stress == 0.0 and resident.get_body_color() == Color.WHITE, "最初はストレス0で白")
+	check(resident.stress == 0.0 and resident.get_face_color() == resident.BODY_COLORS["s"], "最初はストレス0で、顔はふつうの肌色")
+	check(resident.get_body_color() == Color.WHITE, "服の色は種類の色（社員は白）のまま")
 	
 	car.set_process(false) # カゴを止めて、住人を待たせ続ける
 	Engine.time_scale = 4.0
@@ -497,13 +498,13 @@ func run_stress_scenario() -> bool:
 	check(walking_stress == 0.0, "歩いている間はストレスがたまらない")
 	
 	await wait_until(func(): return resident.stress >= resident.STRESS_PINK, 10.0)
-	check(resident.get_body_color() == resident.PINK_COLOR, "ストレス40以上でピンクになる")
+	check(resident.get_face_color() == resident.PINK_COLOR and resident.get_body_color() == Color.WHITE, "ストレス40以上で顔がピンクになる（服は白のまま）")
 	await hover_cell(resident.cell)
 	check(main.hover_label.text.contains("住人のストレス"), "カーソルを合わせると下部バーにストレスが出る")
 	await capture("stress_01_pink")
 	
 	await wait_until(func(): return resident.stress >= resident.STRESS_RED, 10.0)
-	check(resident.get_body_color() == resident.RED_COLOR, "ストレス70以上で赤になる")
+	check(resident.get_face_color() == resident.RED_COLOR, "ストレス70以上で顔が赤くなる")
 	await wait_until(func(): return resident.stress >= resident.MAX_STRESS, 10.0)
 	check(resident.stress == resident.MAX_STRESS, "ストレスは100で止まる")
 	await capture("stress_02_red")
@@ -515,7 +516,7 @@ func run_stress_scenario() -> bool:
 	var arrived_stress: float = resident.stress
 	check(arrived_stress == resident.MAX_STRESS, "乗車中はストレスが変わらない")
 	await wait_until(func(): return resident.stress < resident.STRESS_RED, 10.0)
-	check(resident.stress < arrived_stress and resident.get_body_color() == resident.PINK_COLOR, "目的地に着くとストレスが回復して赤からピンクに戻る")
+	check(resident.stress < arrived_stress and resident.get_face_color() == resident.PINK_COLOR, "目的地に着くとストレスが回復して、顔が赤からピンクに戻る")
 	Engine.time_scale = 1.0
 	return true
 
@@ -797,7 +798,7 @@ func run_lunch_scenario() -> bool:
 		return main.clock.minute_of_day() >= 15 * 60 + 45, 30.0) # 店の奥の席まで歩く人・エレベーターの定員待ちがあるので余裕をもつ
 	check(max_eating[0] > 0, "昼に社員が飲食店で食事をする")
 	check(lunch_stops[0] > 0, "上の階の社員はエレベーターで飲食店へ行き来する")
-	check(commerce.revenue_by_day.get(1, 0) == 52000, "52人が食事をして売上5.2万円になる")
+	check(commerce.revenue_by_day.get(1, 0) == 54000, "社員52人＋外からの客2人が食事をして売上5.4万円になる")
 	check(commute.count_at_office() == 52, "15時45分には全員がオフィスに戻っている")
 	
 	# 1日目の決算に飲食店の売上が入る
@@ -805,8 +806,8 @@ func run_lunch_scenario() -> bool:
 	await wait_until(func(): return main.economy_system.last_report.get("day") == 1, 10.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
-	check(main.economy_system.last_report.get("food") == 52000, "決算に飲食店の売上5.2万円が入る")
-	check(main.message_label.text.contains("飲食 +52,000円"), "決算のメッセージに飲食の売上が出る")
+	check(main.economy_system.last_report.get("food") == 54000, "決算に飲食店の売上5.4万円が入る")
+	check(main.message_label.text.contains("飲食 +54,000円"), "決算のメッセージに飲食の売上が出る")
 	return true
 
 # ---------------------------------------------------
@@ -2303,6 +2304,61 @@ func run_parking_scenario() -> bool:
 	check(main.commerce_system.revenue_by_day.get(1, 0) >= 8000, "食事の代金8,000円が飲食店の売上になる")
 	check(parking.count_visitors() == 0, "食事が済んだお客さんは車で帰る")
 	check(main.economy_system.MAINTENANCE["parking"] == 5000 and main.economy_system.MAINTENANCE["ramp"] == 2000, "維持費は駐車場5,000円・スロープ2,000円")
+	return true
+
+# ---------------------------------------------------
+# シナリオ39: ショップと、外から来るお客さん（休日営業）
+#   2階（y=17）にショップ(x=9〜11)と飲食店(x=12〜14)。入口から外のお客さんが来る。
+#   平日はショップ3人・飲食店2人、休日はショップ10人・飲食店8人。
+# ---------------------------------------------------
+func run_shop_scenario() -> bool:
+	print("[シナリオ] ショップと外からのお客さん")
+	main.funds = 10000000
+	var visitors = main.visitor_system
+	focus_camera(Vector2i(11, 17))
+	await wait_frames(1)
+	# 足場: 1階にロビーを足し、(9,18)はショップへ上がる階段にする
+	build_support([Vector2i(8, 18)] + cells_row(18, 10, 14), "lobby")
+	build_support([Vector2i(9, 18)])
+	await choose_mode("shop")
+	check(main.mode_info_label.text == "建設費 250,000円・横3マス", "ショップは横3マス・25万円")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(11, 17)) == "shop", "2階にショップを建てられる")
+	main.select_mode("restaurant")
+	main.build_at(Vector2i(12, 17))
+	check(main.funds == 10000000 - 250000 - 200000, "ショップ25万円・飲食店20万円がかかる")
+	
+	# 平日（1日目・月曜）: ショップ3人・飲食店2人が入口から来る
+	main.clock.set_time(1, 10, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return visitors.count_visitors() > 0, 30.0)
+	check(visitors.count_visitors() > 0, "昼になると、外からお客さんが入口に現れる")
+	await wait_until(func(): return main.clock.minute_of_day() >= 15 * 60, 60.0)
+	check(visitors.customers_by_day.get(1, 0) == 5, "平日はショップ3人・飲食店2人の計5人が来る")
+	check(visitors.revenue_by_day.get(1, 0) == 3 * 1500, "ショップの売上は1人1,500円")
+	check(main.commerce_system.revenue_by_day.get(1, 0) >= 2 * 1000, "飲食店の外からの客の代金は飲食の売上に入る")
+	await capture("shop_01_weekday")
+	
+	# 休日（6日目・土曜）: 社員は来ないが、店にはもっとお客さんが来る
+	main.clock.set_time(6, 9, 59)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return visitors.count_visitors() > 0, 30.0)
+	check(main.clock.is_holiday(6), "6日目は休日")
+	await wait_until(func(): return main.clock.minute_of_day() >= 19 * 60, 90.0)
+	Engine.time_scale = 1.0
+	check(visitors.customers_by_day.get(6, 0) == 18, "休日はショップ10人・飲食店8人の計18人が来る")
+	check(visitors.revenue_by_day.get(6, 0) == 10 * 1500, "休日のショップの売上は1.5万円")
+	await hover_cell(Vector2i(10, 17))
+	check(main.hover_label.text.contains("ショップ（客"), "カーソルを合わせると店にいる客の数が出る")
+	
+	# 決算にショップの売上が出る
+	main.clock.set_time(6, 23, 58)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == 6, 20.0)
+	main.clock.set_process(false)
+	check(main.economy_system.last_report.get("shop") == 15000, "決算にショップの売上1.5万円が入る")
+	check(main.message_label.text.contains("ショップ +15,000円"), "決算のメッセージにショップの売上が出る")
+	check(main.economy_system.MAINTENANCE["shop"] == 3000, "ショップの維持費は3,000円/日")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

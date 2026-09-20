@@ -72,13 +72,20 @@ func _draw() -> void:
 		if world.building_grid[cell].origin == cell:
 			draw_rect(cells_rect(world.get_unit_cells(cell), tile_size).grow(-width / 2.0), BORDER_COLOR, false, width)
 
-	# 入口（マスの左端に扉と、中へ向かう矢印。1階の入口は緑、地下鉄駅は水色）
+	# 入口（両開きの扉の絵と、中へ向かう矢印。1階の入口は緑、地下鉄駅は水色）
 	for entrance in world.get_entrances():
 		var color := ENTRANCE_COLOR if entrance == world.get_entrance() else SUBWAY_ENTRANCE_COLOR
-		var rect := cell_rect(entrance, tile_size)
-		draw_rect(Rect2(rect.position, Vector2(3, tile_size.y)), color)
-		var mid := rect.position + Vector2(5, tile_size.y / 2.0)
-		draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -3), mid + Vector2(4, 0), mid + Vector2(0, 3)]), color)
+		var pos := cell_rect(entrance, tile_size).position
+		draw_rect(Rect2(pos + Vector2(1, 2), Vector2(10, 1)), color)         # 庇（ひさし）
+		var door := Rect2(pos + Vector2(2, 4), Vector2(8, tile_size.y - 5))
+		draw_rect(door, Color(color, 0.18))                                  # 扉のガラス
+		draw_rect(door, color, false, 0.7)                                   # 扉の枠
+		var seam := door.position.x + door.size.x / 2.0
+		draw_rect(Rect2(seam - 0.35, door.position.y, 0.7, door.size.y), color) # 両開きの合わせ目
+		draw_rect(Rect2(seam - 2, door.position.y + 4.5, 1, 1), color)       # ドアノブ（左右）
+		draw_rect(Rect2(seam + 1, door.position.y + 4.5, 1, 1), color)
+		var mid := pos + Vector2(12, tile_size.y / 2.0)                      # 中へ向かう矢印
+		draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -3), mid + Vector2(3.5, 0), mid + Vector2(0, 3)]), color)
 	
 	# カーソル下のマス
 	# 建設モードなら、建てたときに使うマス全体を強調する

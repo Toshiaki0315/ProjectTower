@@ -15,7 +15,8 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 #
 # ストレス（0〜100）:
 #   カゴを待っている間たまり、目的地に着いて立ち止まっている間は回復する。
-#   体の色で表す: 白（平常）→ ピンク（40以上）→ 赤（70以上）
+#   顔（肌）の色で表す: ふつうの肌色（平常）→ ピンク（40以上）→ 赤（70以上）。
+#   服の色はその人の種類（社員は白・宿泊客は薄紫など）を表すので、ストレスでは変えない
 # ---------------------------------------------------
 
 enum State { WALKING, WAITING, RIDING }
@@ -194,12 +195,18 @@ func update_stress(delta: float) -> void:
 		stress = maxf(stress - STRESS_RECOVER_RATE * delta, 0.0)
 
 # ストレスに応じた体の色
+# 服の色（種類ごとの色。選択中は黄色）
 func get_body_color() -> Color:
+	return Color(1.0, 0.85, 0.1) if selected else base_color
+
+# 顔（肌）の色。ストレスが高いほど赤くなる
+#（服は種類を表す色なので、ストレスは顔色で見せる）
+func get_face_color() -> Color:
 	if stress >= STRESS_RED:
 		return RED_COLOR
 	if stress >= STRESS_PINK:
 		return PINK_COLOR
-	return base_color
+	return BODY_COLORS["s"]
 
 func leave(message: String) -> void:
 	world.show_message(message)
@@ -213,15 +220,16 @@ func _draw() -> void:
 			points.append(world.tile_map.map_to_local(c) - position)
 		draw_polyline(points, Color(1.0, 1.0, 0.4, 0.8), 1.5)
 
-	# 体（ドット絵）。服の色は、選択中なら黄色、それ以外は種類とストレスに応じた色
-	var clothes := Color(1.0, 0.85, 0.1) if selected else get_body_color()
+	# 体（ドット絵）。服は種類ごとの色（選択中は黄色）、顔はストレスに応じた色
+	var clothes := get_body_color()
+	var face := get_face_color()
 	for y in BODY_SPRITE.size():
 		var row: String = BODY_SPRITE[y]
 		for x in row.length():
 			var ch := row[x]
 			if ch == ".":
 				continue
-			var color: Color = clothes if ch == "c" else BODY_COLORS[ch]
+			var color: Color = clothes if ch == "c" else (face if ch == "s" else BODY_COLORS[ch])
 			draw_rect(Rect2(BODY_ORIGIN + sprite_offset + Vector2(x, y), Vector2.ONE), color)
 
 	# カゴを待っている間は頭の上に「…」を出す

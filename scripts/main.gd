@@ -5,6 +5,7 @@ const PixelArt := preload("res://scripts/view/pixel_art.gd")
 const GridOverlay := preload("res://scripts/view/grid_overlay.gd")
 const ElevatorSystem := preload("res://scripts/systems/elevator_system.gd")
 const ParkingSystem := preload("res://scripts/systems/parking_system.gd")
+const VisitorSystem := preload("res://scripts/systems/visitor_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -39,6 +40,7 @@ const BUILDINGS := {
 	"hotel_suite": {"name": "スイート", "cost": 500000, "source_id": 11, "width": 4},
 	"housekeeping": {"name": "ハウスキーパー室", "cost": 200000, "source_id": 4, "width": 2},
 	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5, "width": 3},
+	"shop": {"name": "ショップ", "cost": 250000, "source_id": 24, "width": 3},
 	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6, "width": 3},
 	"security": {"name": "警備室", "cost": 100000, "source_id": 7, "width": 2},
 	"medical": {"name": "メディカルセンター", "cost": 200000, "source_id": 8, "width": 3},
@@ -56,6 +58,8 @@ const BUILDINGS := {
 	"escalator": {"name": "エスカレーター", "cost": 100000, "source_id": 20, "width": 2, "floors": "any"},
 	"service_elevator": {"name": "サービスエレベーター", "cost": 80000, "source_id": 21, "floors": "any"},
 }
+const UI_SCALE := 2      # 画面表示（文字・ボタン・余白）の大きさの倍率
+const BASE_FONT_SIZE := 16 # 倍率をかける前の文字の大きさ
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
 const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴを追加するモード
@@ -64,7 +68,7 @@ const MODE_SERVICE := "service"   # エレベーターの稼働時間帯を切�
 
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
-	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "housing", "wedding", "event_hall"]},
+	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "shop", "housing", "wedding", "event_hall"]},
 	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "service_elevator", "add_car", "set_home", "service"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking"]},
 	{"name": "その他", "modes": ["resident"]},
@@ -84,6 +88,7 @@ var v_scroll: VScrollBar # マップの上下スクロールバー
 var grid_overlay # マス目の表示
 var elevator_system # エレベーターのシャフトとカゴの管理
 var parking_system  # 地下駐車場とスロープ（車で来るお客さん）
+var visitor_system  # 外から来るお客さん（店の客・車で来た客）の動き
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -120,6 +125,9 @@ func _ready() -> void:
 	elevator_system.setup(self)
 	add_child(elevator_system)
 	elevator_system.rebuild()
+	visitor_system = VisitorSystem.new()
+	visitor_system.setup(self)
+	add_child(visitor_system)
 	parking_system = ParkingSystem.new()
 	parking_system.setup(self)
 	add_child(parking_system)
@@ -217,6 +225,11 @@ func create_ui():
 	add_child(canvas)
 	
 	var layout = VBoxContainer.new()
+	# 画面の文字・ボタン・余白をまとめて UI_SCALE 倍にする（テーマで文字の大きさを決め、
+	# 余白や幅の指定にも同じ倍率をかける）
+	var theme := Theme.new()
+	theme.default_font_size = BASE_FONT_SIZE * UI_SCALE
+	layout.theme = theme
 	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layout.add_theme_constant_override("separation", 0)
@@ -226,22 +239,22 @@ func create_ui():
 	#   1段目: 資金 / 日付と時刻 / 速度 / 操作説明
 	#   2段目: モード切り替えボタン
 	var top_rows = VBoxContainer.new()
-	top_rows.add_theme_constant_override("separation", 4)
+	top_rows.add_theme_constant_override("separation", 4 * UI_SCALE)
 	layout.add_child(make_bar(top_rows))
 	var status_row = HBoxContainer.new()
-	status_row.add_theme_constant_override("separation", 8)
+	status_row.add_theme_constant_override("separation", 8 * UI_SCALE)
 	top_rows.add_child(status_row)
 	var build_row = HBoxContainer.new()
-	build_row.add_theme_constant_override("separation", 8)
+	build_row.add_theme_constant_override("separation", 8 * UI_SCALE)
 	top_rows.add_child(build_row)
 	
 	funds_label = Label.new()
-	funds_label.add_theme_font_size_override("font_size", 20)
-	funds_label.custom_minimum_size.x = 420 # 金額の桁が変わっても時刻の位置がずれないように
+	funds_label.add_theme_font_size_override("font_size", 20 * UI_SCALE)
+	funds_label.custom_minimum_size.x = 420 * UI_SCALE # 金額の桁が変わっても時刻の位置がずれないように
 	status_row.add_child(funds_label)
 	
 	clock_label = Label.new()
-	clock_label.add_theme_font_size_override("font_size", 20)
+	clock_label.add_theme_font_size_override("font_size", 20 * UI_SCALE)
 	status_row.add_child(clock_label)
 	
 	status_row.add_child(make_spacer())
@@ -268,7 +281,7 @@ func create_ui():
 	build_label.text = "建設:"
 	build_row.add_child(build_label)
 	mode_select = OptionButton.new()
-	mode_select.custom_minimum_size.x = 260
+	mode_select.custom_minimum_size.x = 260 * UI_SCALE
 	for group in MODE_GROUPS:
 		mode_select.add_separator(group.name)
 		for mode in group.modes:
@@ -319,7 +332,11 @@ func create_ui():
 		"ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 	])
-	help_panel = make_bar(help_label)
+	help_label.add_theme_font_size_override("font_size", 13 * UI_SCALE) # 行数が多いので少し小さめ
+	var help_scroll = ScrollContainer.new()
+	help_scroll.custom_minimum_size = Vector2(1000, 420) # 画面に収まる高さ。はみ出す分はスクロールする
+	help_scroll.add_child(help_label)
+	help_panel = make_bar(help_scroll)
 	help_panel.visible = false
 	help_row.add_child(help_panel)
 	
@@ -330,7 +347,7 @@ func create_ui():
 	layout.add_child(map_row)
 	map_row.add_child(make_spacer())
 	v_scroll = VScrollBar.new()
-	v_scroll.custom_minimum_size.x = 14
+	v_scroll.custom_minimum_size.x = 14 * UI_SCALE
 	v_scroll.value_changed.connect(func(value): camera.position.y = value + v_scroll.page / 2.0)
 	map_row.add_child(v_scroll)
 	
@@ -338,7 +355,7 @@ func create_ui():
 	#   1段目: 操作結果のメッセージ
 	#   2段目: 評価（★）・社員・客室の状況 / カーソル下のマスの情報
 	var bottom_rows = VBoxContainer.new()
-	bottom_rows.add_theme_constant_override("separation", 2)
+	bottom_rows.add_theme_constant_override("separation", 2 * UI_SCALE)
 	layout.add_child(make_bar(bottom_rows))
 	
 	message_label = Label.new()
@@ -369,9 +386,9 @@ func make_bar(content: Control) -> PanelContainer:
 	var panel = PanelContainer.new()
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color(0.1, 0.1, 0.13, 0.9)
-	style.set_content_margin_all(6)
-	style.content_margin_left = 12
-	style.content_margin_right = 12
+	style.set_content_margin_all(6 * UI_SCALE)
+	style.content_margin_left = 12 * UI_SCALE
+	style.content_margin_right = 12 * UI_SCALE
 	panel.add_theme_stylebox_override("panel", style)
 	panel.add_child(content)
 	return panel
@@ -483,7 +500,9 @@ func update_hover_label():
 		var room_rating: String = tenant_system.get_room_rating_text(cell)
 		text += "（%s%s）" % [hotel_system.get_room_state_text(cell), "・" + room_rating if room_rating != "" else ""]
 	elif type == "restaurant":
-		text += "（客 %d人）" % commerce_system.count_eating_at(cell)
+		text += "（客 %d人）" % (commerce_system.count_eating_at(cell) + visitor_system.count_at_shop(cell))
+	elif type == "shop":
+		text += "（客 %d人）" % visitor_system.count_at_shop(cell)
 	elif event_system.is_hall_type(type):
 		text += "（来客 %d人）" % event_system.count_at_hall(cell)
 	elif elevator_system.is_shaft_type(type):
