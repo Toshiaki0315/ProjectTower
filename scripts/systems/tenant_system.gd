@@ -84,7 +84,7 @@ func evaluate_day(day: int) -> Dictionary:
 	var result := {"left": 0, "moved_in": 0, "homes_left": 0, "refund": 0}
 	evaluate_homes(result)
 	var workers: Dictionary = world.commute_system.workers
-	var origins: Array[Vector2i] = world.find_units_of_type("office")
+	var origins: Array[Vector2i] = world.find_office_units()
 	for origin in origins:
 		if not offices.has(origin):
 			offices[origin] = new_tenant()

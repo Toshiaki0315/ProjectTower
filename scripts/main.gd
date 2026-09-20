@@ -38,6 +38,7 @@ const SKY_LOBBY_INTERVAL := Buildings.SKY_LOBBY_INTERVAL
 const MAX_FLOORS_ABOVE := Buildings.MAX_FLOORS_ABOVE
 const MAX_FLOORS_BELOW := Buildings.MAX_FLOORS_BELOW
 const MAX_WIDTH := Buildings.MAX_WIDTH
+const OFFICE_TYPES := Buildings.OFFICE_TYPES
 const SUBWAY_MIN_DEPTH := Buildings.SUBWAY_MIN_DEPTH
 const REFUND_RATE := 0.5 # 撤去時の払い戻し率
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -48,7 +49,7 @@ const MODE_DEMOLISH := "demolish" # 左クリックで撤去するモード（�
 
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
-	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "fastfood", "shop", "cinema", "housing", "wedding", "event_hall"]},
+	{"name": "テナント", "modes": ["small_office", "office", "large_office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "fastfood", "shop", "cinema", "housing", "wedding", "event_hall"]},
 	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "service_elevator", "add_car", "set_home", "service"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking", "helipad", "garden"]},
 	{"name": "その他", "modes": ["demolish", "resident"]},
@@ -413,6 +414,20 @@ func find_units_of_type(type: String) -> Array[Vector2i]:
 	for cell in building_grid:
 		if building_grid[cell].type == type and building_grid[cell].origin == cell:
 			result.append(cell)
+	return result
+
+# オフィス（小・普通・大）の左端のマスをすべて返す
+func find_office_units() -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for type in OFFICE_TYPES:
+		result.append_array(find_units_of_type(type))
+	return result
+
+# オフィス（小・普通・大）のマスをすべて返す（1マスにつき社員1人）
+func find_office_cells() -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for type in OFFICE_TYPES:
+		result.append_array(find_cells_of_type(type))
 	return result
 
 # 指定した種類の建物がある座標をすべて返す（住人AIの目的地探索用）

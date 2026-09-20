@@ -140,6 +140,8 @@ func save_screenshots() -> void:
 	for y in [17, 16, 15]:
 		build(m, "office", [Vector2i(-12, y), Vector2i(-8, y), Vector2i(-4, y), Vector2i(0, y), Vector2i(4, y)])
 	build(m, "office", [Vector2i(0, 14), Vector2i(4, 14)])
+	build(m, "small_office", [Vector2i(-12, 14)])
+	build(m, "large_office", [Vector2i(-10, 14)])
 	build(m, "event_hall", [Vector2i(2, 13)])
 	build(m, "restaurant", [Vector2i(9, 17)])
 	build(m, "hotel", [Vector2i(12, 17)])

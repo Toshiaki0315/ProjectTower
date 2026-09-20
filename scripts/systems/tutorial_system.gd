@@ -46,7 +46,7 @@ func is_step_done(index: int) -> bool:
 					return true
 			return false
 		2:
-			return not world.find_units_of_type("office").is_empty()
+			return not world.find_office_units().is_empty()
 		3:
 			return world.clock.minute_of_day() >= 9 * 60 or Engine.time_scale > 1.0
 		4:

@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -3899,4 +3899,53 @@ func run_fastfood_scenario() -> bool:
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
 	check(commerce.revenue_by_day.get(1, 0) > 0, "ファストフードの売上が飲食の売上に入る")
+	return true
+
+# シナリオ63: オフィスの種類（小さいオフィス・大きいオフィス）
+# 横2マス2人・横4マス4人・横6マス6人の3種類を建てて、
+# 社員の数と1マスの賃料が種類ごとに違うことを確かめる。
+# ---------------------------------------------------
+func run_office_types_scenario() -> bool:
+	print("[シナリオ] オフィスの種類")
+	main.clear_world()
+	main.funds = 10000000
+	var economy = main.economy_system
+	build_support(cells_row(18, 9, 22), "lobby")
+	build_support([Vector2i(8, 18), Vector2i(8, 17)], "elevator")
+	var small := Vector2i(9, 17)  # 小さいオフィス（x=9〜10）
+	var large := Vector2i(11, 17) # 大きいオフィス（x=11〜16）
+	var normal := Vector2i(17, 17) # ふつうのオフィス（x=17〜20）
+
+	await choose_mode("small_office")
+	await click_cell(small, MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(small) == "small_office", "小さいオフィスを建てられる（24万円）")
+	check(main.funds == 10000000 - 240000, "小さいオフィスの建設費24万円がかかる")
+	check(main.get_unit_cells(small).size() == 2, "小さいオフィスは横2マス")
+	await choose_mode("large_office")
+	await click_cell(large, MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(large) == "large_office", "大きいオフィスを建てられる（48万円）")
+	check(main.get_unit_cells(large).size() == 6, "大きいオフィスは横6マス")
+	await choose_mode("office")
+	await click_cell(normal, MOUSE_BUTTON_LEFT)
+	main.funds = 10000000
+
+	# 社員は1マスに1人
+	check(main.commute_system.workers.size() == 12, "社員は1マスに1人（2+6+4=12人）")
+	check(economy.office_rent(small) > economy.office_rent(normal), "小さいオフィスは1マスの賃料が高い")
+	check(economy.office_rent(large) < economy.office_rent(normal), "大きいオフィスは1マスの賃料が安い")
+	check(economy.office_rent(small) == 11000 and economy.office_rent(large) == 9000, "賃料は1マス1日 1.1万円・0.9万円")
+
+	# 1日目の決算: 出勤した12人ぶんの賃料が種類ごとに計算される
+	main.clock.set_time(1, 7, 59)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return main.commute_system.count_at_office() == 12, 40.0)
+	focus_camera(Vector2i(14, 17))
+	await wait_frames(2)
+	await capture("office_types_01")
+	main.clock.set_time(1, 23, 59)
+	await wait_until(func(): return economy.last_report.get("day") == 1, 20.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(economy.last_report.get("rent") == 2 * 11000 + 6 * 9000 + 4 * 10000, "決算の賃料は種類ごとの合計（2.2万＋5.4万＋4万＝11.6万円）")
 	return true

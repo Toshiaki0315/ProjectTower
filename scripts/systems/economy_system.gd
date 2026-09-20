@@ -2,7 +2,7 @@ extends Node
 
 # ---------------------------------------------------
 # 収支：毎日0:00に前日分の決算をして、資金に反映する。
-#   賃料収入: その日に社員が出勤したオフィス1マスにつき OFFICE_RENT
+#   賃料収入: その日に社員が出勤したオフィス1マスにつき OFFICE_RENTS（オフィスの種類で変わる）
 #             （社員が通勤できない空きオフィスからは入らない）
 #             休日はオフィスが休みだが、入口からたどり着けるオフィスからは契約どおり入る
 #             空室のオフィス（テナントが退去した）からは入らない
@@ -22,7 +22,12 @@ extends Node
 #             処理能力 = ゴミ処理場の数 × RECYCLING_CAPACITY
 # ---------------------------------------------------
 
-const OFFICE_RENT := 10000 # オフィス1マスの1日の賃料
+# オフィス1マスの1日の賃料。小さいオフィスは割高、大きいオフィスはまとめ借りで割安
+const OFFICE_RENTS := {
+	"small_office": 11000,
+	"office": 10000,
+	"large_office": 9000,
+}
 const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーターは1マスが1つ）
 	"elevator": 2000,
 	"express_elevator": 3000,
@@ -73,13 +78,13 @@ func pollution_stress() -> float:
 # 指定した日の決算
 func settle(day: int) -> void:
 	var active_offices := 0
+	var rent := 0
 	for cell in world.commute_system.workers:
 		if world.commute_system.workers[cell].arrived_day == day and not world.commute_system.workers[cell].unreachable:
 			active_offices += 1
-	var rent_offices := active_offices
+			rent += office_rent(cell)
 	if world.clock.is_holiday(day):
-		rent_offices = count_reachable_offices()
-	var rent := rent_offices * OFFICE_RENT
+		rent = holiday_rent() # 休日はオフィスが休みでも、契約どおり賃料が入る
 	var maintenance := 0
 	for type in MAINTENANCE:
 		maintenance += MAINTENANCE[type] * world.find_units_of_type(type).size()
@@ -143,13 +148,17 @@ func settle(day: int) -> void:
 	world.show_message(message)
 	world.goal_system.check_day(day) # 目標を達成したか確かめる
 
-# 入口からたどり着けるオフィスの数（休日の賃料の計算用）
-func count_reachable_offices() -> int:
-	var n := 0
+# オフィスの1マスの1日の賃料（オフィスの種類で変わる）
+func office_rent(cell: Vector2i) -> int:
+	return OFFICE_RENTS.get(world.get_building_type(cell), 0)
+
+# 入口からたどり着けるオフィスの賃料の合計（休日の計算用）
+func holiday_rent() -> int:
+	var total := 0
 	for cell in world.commute_system.workers:
 		if not world.tenant_system.is_vacant(cell) and world.nearest_entrance(cell) != null:
-			n += 1
-	return n
+			total += office_rent(cell)
+	return total
 
 # ビル全体のゴミ処理能力（1日あたり）
 func recycling_capacity() -> int:

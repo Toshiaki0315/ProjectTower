@@ -29,7 +29,7 @@ func setup(p_world: Node2D) -> void:
 
 # オフィスの増減に合わせて社員を登録・削除する
 func rebuild() -> void:
-	var offices: Array[Vector2i] = world.find_cells_of_type("office")
+	var offices: Array[Vector2i] = world.find_office_cells()
 	for cell in offices:
 		if not workers.has(cell):
 			workers[cell] = create_worker(cell)

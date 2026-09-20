@@ -221,6 +221,7 @@ func build_bars() -> void:
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
 		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
+		"オフィスの大きさ: 小さいオフィス（横2マス・2人・賃料1.1万円/マス）と大きいオフィス（横6マス・6人・0.9万円/マス）もある",
 		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
 		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
 		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
@@ -435,7 +436,7 @@ func update_hover_label():
 	var text = "%s: %s" % [world.get_floor_name(cell.y), world.BUILDINGS[type].name if type != "" else "空き"]
 	if world.incident_system.has_roach_at(cell):
 		text += "（ゴキブリ発生中）"
-	if type == "office" and world.tenant_system.get_rating_text(cell) != "":
+	if type in world.OFFICE_TYPES and world.tenant_system.get_rating_text(cell) != "":
 		text += "（%s）" % world.tenant_system.get_rating_text(cell)
 	if world.hotel_system.is_room_type(type):
 		var room_rating: String = world.tenant_system.get_room_rating_text(cell)

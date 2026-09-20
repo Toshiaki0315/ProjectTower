@@ -7,7 +7,9 @@ extends Node
 # ---------------------------------------------------
 
 const TABLE := {
+	"small_office": {"name": "小さいオフィス", "cost": 240000, "source_id": 29, "width": 2},
 	"office": {"name": "オフィス", "cost": 400000, "source_id": 0, "width": 4},
+	"large_office": {"name": "大きいオフィス", "cost": 480000, "source_id": 30, "width": 6},
 	"stairs": {"name": "階段", "cost": 50000, "source_id": 1, "floors": "any"},
 	"elevator": {"name": "エレベーター", "cost": 80000, "source_id": 2, "floors": "any"},
 	"hotel": {"name": "シングル", "cost": 150000, "source_id": 3, "width": 2},
@@ -43,6 +45,9 @@ const MAX_FLOORS_ABOVE := 150  # 建てられる一番上の階（地上150階�
 const MAX_FLOORS_BELOW := 50   # 掘れる一番下の階（地下50階）
 const MAX_WIDTH := 100         # ビルの横幅（マス数）。0を中心に左右へ半分ずつ
 const SUBWAY_MIN_DEPTH := 5    # 地下鉄駅を建てられる深さ（地下5階より下）
+
+# オフィスの種類（1マスにつき社員1人。1マスの賃料は economy_system.OFFICE_RENTS）
+const OFFICE_TYPES := ["small_office", "office", "large_office"]
 
 var world: Node2D # main.gd
 
