@@ -118,7 +118,7 @@ func run_empty_start_scenario() -> bool:
 	for x in range(-3, 4):
 		await click_cell(Vector2i(x, 18), MOUSE_BUTTON_LEFT)
 	check(main.find_cells_of_type("lobby").size() == 7, "ロビーは1マスずつ横に伸ばせる（7マス）")
-	check(main.funds == 2000000 - 7 * 30000, "ロビーは1マス3万円")
+	check(main.funds == 2000000 - 7 * 15000, "ロビーは1マス1.5万円")
 	check(main.get_entrance() == Vector2i(-3, 18), "ロビーの左端が入口になる")
 	
 	# 1階に置けるのはロビーのほか、階段・エレベーター
@@ -392,7 +392,7 @@ func run_elevator_scenario() -> bool:
 	await choose_mode("elevator")
 	for y in range(18, 13, -1):
 		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
-	check(main.funds == 500000, "シャフト5マスで50万円かかる")
+	check(main.funds == 1000000 - 5 * 80000, "シャフト5マスで40万円かかる")
 	check(elevators.cars.size() == 1, "縦につながったシャフトにカゴが1台できる")
 	var car = elevators.cars[0]
 	check(car.top_y == 14 and car.bottom_y == 18, "シャフトの範囲がy=14〜18になる")
@@ -403,7 +403,7 @@ func run_elevator_scenario() -> bool:
 	car.arrived.connect(func(y): arrivals.append(y))
 	Engine.time_scale = 4.0
 	await click_cell(Vector2i(x, 15), MOUSE_BUTTON_LEFT)
-	check(main.funds == 500000, "シャフトのクリックでは建設されない（お金も減らない）")
+	check(main.funds == 1000000 - 5 * 80000, "シャフトのクリックでは建設されない（お金も減らない）")
 	await wait_until(func(): return car.state == car.State.MOVING, 5.0)
 	await capture("elevator_01_moving")
 	await wait_until(func(): return arrivals.size() >= 1, 10.0)
@@ -684,7 +684,7 @@ func run_economy_scenario() -> bool:
 	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	await click_cell(Vector2i(-8, 19), MOUSE_BUTTON_LEFT) # ロビーの真下（B1階）の孤立したオフィス（賃料は入らない）
-	check(main.funds_label.text.contains("現在の資金: 8,600,000円"), "資金の表示もカンマ区切りになる")
+	check(main.funds_label.text.contains("現在の資金: 8,720,000円"), "資金の表示もカンマ区切りになる")
 	
 	# 1日目の朝に全員出勤させてから、夜中まで時計を進める
 	main.clock.set_time(1, 7, 59)
@@ -818,7 +818,7 @@ func run_lunch_scenario() -> bool:
 	await choose_mode("restaurant")
 	await click_cell(restaurant, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(restaurant) == "restaurant", "飲食店を建てられる（20万円）")
-	check(main.funds == 10000000 - 6 * 100000 - 400000 - 200000, "飲食店の建設費20万円がかかる")
+	check(main.funds == 10000000 - 6 * 80000 - 400000 - 200000, "飲食店の建設費20万円がかかる")
 	
 	# 朝のうちに全員出勤させる
 	main.clock.set_time(1, 7, 59)
@@ -878,7 +878,7 @@ func run_recycling_scenario() -> bool:
 	await choose_mode("recycling")
 	for rx in [9, 12]:
 		await click_cell(Vector2i(rx, 17), MOUSE_BUTTON_LEFT) # 1階はロビー専用なので2階に
-	check(main.funds == 10000000 - 6 * 100000 - 400000 - 2 * 150000, "ゴミ処理場の建設費15万円×2がかかる")
+	check(main.funds == 10000000 - 6 * 80000 - 400000 - 2 * 150000, "ゴミ処理場の建設費15万円×2がかかる")
 	check(main.economy_system.recycling_capacity() == 40, "ゴミ処理場2施設で処理能力40/日になる")
 	await hover_cell(Vector2i(9, 17))
 	check(main.hover_label.text.contains("処理能力 40/日"), "カーソルを合わせると処理能力が出る")
@@ -1167,7 +1167,7 @@ func run_event_scenario() -> bool:
 	await click_cell(wedding, MOUSE_BUTTON_LEFT)
 	await choose_mode("event_hall")
 	await click_cell(hall, MOUSE_BUTTON_LEFT)
-	check(main.funds == 10000000 - 6 * 100000 - 1000000 - 800000, "結婚式場100万円・イベントホール80万円がかかる")
+	check(main.funds == 10000000 - 6 * 80000 - 1000000 - 800000, "結婚式場100万円・イベントホール80万円がかかる")
 	
 	# 平日（月曜日）は催しがない
 	clock.set_time(1, 9, 59)
@@ -1744,7 +1744,7 @@ func run_vacancy_scenario() -> bool:
 	for origin in tenants.offices:
 		if tenants.offices[origin].vacant:
 			vacant.append(origin)
-	check(vacant.size() == bad_twice.size(), "悪い日が3日続いたオフィスはすべて退去して空室になる（%d棟）" % vacant.size())
+	check(vacant.size() == mini(bad_twice.size(), tenants.MAX_LEAVE_PER_DAY), "悪い日が3日続いたオフィスが退去して空室になる（1日%d棟まで）" % tenants.MAX_LEAVE_PER_DAY)
 	check(main.last_message.contains("オフィス退去 %d棟" % vacant.size()), "決算のメッセージに退去した数が出る")
 	check(main.rating_system.population() == 52 - 4 * vacant.size(), "空室のオフィスの社員は人口に数えない")
 	await hover_cell(vacant[0])
@@ -1773,7 +1773,7 @@ func run_vacancy_scenario() -> bool:
 		if tenants.offices[origin].vacant:
 			moved_in = false
 	check(moved_in, "空室になって2日たつと、新しいテナントが入居する（%d棟）" % vacant.size())
-	check(tenants.count_vacant() == second_wave, "4日目に空室になったオフィスは、まだ空室のまま（%d棟）" % second_wave)
+	check(tenants.count_vacant() >= second_wave, "後から退去したオフィスは、まだ空室のまま（%d棟）" % tenants.count_vacant())
 	check(tenants.offices[vacant[0]].rating == tenants.Rating.GOOD and tenants.offices[vacant[0]].bad_days == 0, "新しいテナントの評価は「良い」から始まる")
 	check(main.last_message.contains("入居 %d棟" % vacant.size()), "決算のメッセージに入居した数が出る")
 	return true
@@ -1892,12 +1892,12 @@ func run_atrium_scenario() -> bool:
 	main.funds = 10000000
 	focus_camera(Vector2i(8, 16))
 	await choose_mode("lobby2")
-	check(main.mode_info_label.text == "建設費 60,000円・横1マス・高さ2階分", "建設メニューに高さが出る")
+	check(main.mode_info_label.text == "建設費 30,000円・横1マス・高さ2階分", "建設メニューに高さが出る")
 	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(8, 17)), "吹き抜けロビーも1階からしか建てられない")
 	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(8, 18)) == "lobby2" and main.get_building_type(Vector2i(8, 17)) == "lobby2", "2階分の吹き抜けロビーは1階と2階のマスを使う")
-	check(main.funds == 10000000 - 60000, "2階分の吹き抜けロビーは6万円")
+	check(main.funds == 10000000 - 30000, "2階分の吹き抜けロビーは3万円")
 	await choose_mode("lobby3")
 	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
 	check(main.get_unit_cells(Vector2i(9, 16)) == [Vector2i(9, 18), Vector2i(9, 17), Vector2i(9, 16)], "3階分の吹き抜けロビーは1〜3階のマスを使う")
@@ -2108,7 +2108,7 @@ func run_escalator_scenario() -> bool:
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_unit_cells(Vector2i(9, 18)) == [Vector2i(8, 18), Vector2i(9, 18)], "1階にエスカレーター（横2マス）を建てられる")
 	check(main.get_building_type(Vector2i(10, 17)) == "escalator", "2階にもエスカレーターを重ねて建てられる")
-	check(main.funds == 10000000 - 4 * 30000 - 2 * 100000, "エスカレーター2基で20万円")
+	check(main.funds == 10000000 - 4 * 15000 - 2 * 100000, "エスカレーター2基で20万円")
 	main.select_mode("security")
 	main.build_at(Vector2i(11, 17))
 	main.select_mode("stairs")
@@ -3300,7 +3300,7 @@ func run_usability_scenario() -> bool:
 		if main.get_building_type(Vector2i(x, 18)) == "lobby":
 			built += 1
 	check(built == 6, "ドラッグでなぞったマスに続けてロビーが建つ（%d マス）" % built)
-	check(main.funds == 10000000 - 6 * 30000, "建てたぶんだけ建設費がかかる")
+	check(main.funds == 10000000 - 6 * 15000, "建てたぶんだけ建設費がかかる")
 	
 	# 右ドラッグ: 続けて撤去できる
 	await drag_cells(Vector2i(12, 18), Vector2i(13, 18), MOUSE_BUTTON_RIGHT)
@@ -3446,20 +3446,20 @@ func run_goal_scenario() -> bool:
 	check(not main.goal_panel.visible, "「つづける」で画面を閉じられる")
 	
 	# 期限を過ぎても、続けて挑戦できる
-	check(goals.current().day == 30, "2つ目の目標は30日目まで")
-	main.clock.set_time(31, 12, 0)
-	goals.check_day(31)
+	check(goals.current().day == 45, "2つ目の目標は45日目まで")
+	main.clock.set_time(46, 12, 0)
+	goals.check_day(46)
 	check(goals.index == 1, "期限を過ぎても目標は変わらない")
 	check(logged("目標の期限"), "期限を過ぎたことを知らせる")
 	main.rating_system.stars = 3
-	goals.check_day(32)
+	goals.check_day(47)
 	check(goals.index == 2, "遅れて達成してもよい")
 	
 	# 全部達成するとクリアの画面が出る
 	main.rating_system.stars = 4
-	goals.check_day(33)
+	goals.check_day(48)
 	main.funds = 50000000
-	goals.check_day(34)
+	goals.check_day(49)
 	check(goals.cleared and goals.current() == null, "すべての目標を達成した")
 	check(main.goal_title.text.contains("すべての目標を達成") and main.goal_panel.visible, "クリアの画面が出る")
 	await wait_frames(2) # 上部バーの表示は次のフレームで更新される

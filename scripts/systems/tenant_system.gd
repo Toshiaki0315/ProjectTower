@@ -11,6 +11,7 @@ extends Node2D
 #                     出勤がなかった日（休日など）は前の評価のまま
 #   激怒:            退去まであと WARN_BEFORE_LEAVE 日になると、評価のマークが点滅して知らせる
 #   退去:            評価が「悪い」の日が LEAVE_AFTER_BAD_DAYS 日続くと、テナントが退去して空室になる
+#                     （1日に退去するのは MAX_LEAVE_PER_DAY 棟まで。一度に全部出ていかないようにする）
 #                     （空室の間は社員が出勤せず、賃料も入らず、人口にも数えない）
 #   入居:            空室になって VACANT_DAYS 日たつと、新しいテナントが入居する（評価は「良い」から）
 # ■ ホテルの客室
@@ -35,6 +36,7 @@ const GOOD_BELOW := 30.0
 const BAD_FROM := 60.0
 const LEAVE_AFTER_BAD_DAYS := 3 # 評価が悪い日がこの日数続くと退去する
 const VACANT_DAYS := 2          # 空室になってから新しいテナントが入居するまでの日数
+const MAX_LEAVE_PER_DAY := 2    # 1日に退去するテナントの数の上限（一度に全部出ていかないように）
 const CHECKIN_CHANCE := {Rating.GOOD: 1.0, Rating.NORMAL: 0.6, Rating.BAD: 0.2} # 客室の評価ごとの、客が来る確率
 const RATING_NAMES := {Rating.GOOD: "良い", Rating.NORMAL: "普通", Rating.BAD: "悪い"}
 const WARN_BEFORE_LEAVE := 1 # 退去まで残りこの日数になると、評価のマークが点滅して知らせる
@@ -106,8 +108,8 @@ func evaluate_day(day: int) -> Dictionary:
 		office.average = total / count + world.economy_system.pollution_stress() + world.incident_system.roach_stress(origin)
 		office.rating = rating_for(office.average)
 		office.bad_days = office.bad_days + 1 if office.rating == Rating.BAD else 0
-		# 評価の悪い日が続いたら退去する
-		if office.bad_days >= LEAVE_AFTER_BAD_DAYS:
+		# 評価の悪い日が続いたら退去する（1日に退去するのは MAX_LEAVE_PER_DAY 棟まで）
+		if office.bad_days >= LEAVE_AFTER_BAD_DAYS and result.left < MAX_LEAVE_PER_DAY:
 			office.vacant = true
 			office.vacant_days = 0
 			result.left += 1
@@ -146,7 +148,7 @@ func evaluate_homes(result: Dictionary) -> void:
 			+ world.incident_system.roach_stress(origin)
 		record.rating = rating_for(record.average)
 		record.bad_days = record.bad_days + 1 if record.rating == Rating.BAD else 0
-		if record.bad_days >= LEAVE_AFTER_BAD_DAYS:
+		if record.bad_days >= LEAVE_AFTER_BAD_DAYS and result.homes_left < MAX_LEAVE_PER_DAY:
 			record.vacant = true
 			record.vacant_days = 0
 			result.refund += housing.move_out(origin)
