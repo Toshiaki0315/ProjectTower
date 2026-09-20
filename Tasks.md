@@ -103,7 +103,7 @@
 
 ### コードの整理
 - [x] main.gd からUIの組み立てを別ファイル（scripts/view/ui.gd）に分ける（1456行→958行）
-- [ ] 建物の定義（BUILDINGS）と建設ルールを別ファイルに分ける
+- [x] 建物の定義（BUILDINGS）と建設ルールを別ファイルに分ける（buildings.gd・pathfinding.gd）
 - [ ] 長くなった main.gd の残りを見直す（1ファイル500行以内をめやす）
 
 ### テストの高速化
