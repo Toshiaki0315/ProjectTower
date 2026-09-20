@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -702,6 +702,15 @@ func run_economy_scenario() -> bool:
 	check(main.funds_label.text.contains("（前日 +456,000円）"), "資金の横に前日の収支が出る")
 	check(main.last_message.contains("4月1日（1日目）の決算"), "決算の内容が日付つきでメッセージに出る")
 	await capture("economy_01_settled")
+	
+	# 収支のグラフ（⌘G）に、決算の記録がたまっていく
+	await run_day(2)
+	await run_day(3)
+	await press_shortcut(KEY_G)
+	await wait_frames(2)
+	check(main.chart_panel.visible and main.economy_system.history.size() == 3, "3日ぶんの決算がグラフに出る")
+	await capture("economy_02_chart")
+	await press_shortcut(KEY_G)
 	return true
 
 # ---------------------------------------------------
@@ -3271,6 +3280,56 @@ func run_helipad_scenario() -> bool:
 	check(incidents.HELI_MINUTES < incidents.EXTINGUISH_MINUTES, "ヘリは警備員より早く1マスを消せる")
 	return true
 
+# ---------------------------------------------------
+# シナリオ55: 遊びやすさ（ドラッグで連続建設・撤去モード・収支のグラフ）
+# ---------------------------------------------------
+func run_usability_scenario() -> bool:
+	print("[シナリオ] 遊びやすさ")
+	main.funds = 10000000
+	focus_camera(Vector2i(10, 16))
+	await wait_frames(1)
+	
+	# ドラッグ: 押したままなぞると、続けて建つ
+	await choose_mode("lobby")
+	await drag_cells(Vector2i(8, 18), Vector2i(13, 18), MOUSE_BUTTON_LEFT)
+	var built := 0
+	for x in range(8, 14):
+		if main.get_building_type(Vector2i(x, 18)) == "lobby":
+			built += 1
+	check(built == 6, "ドラッグでなぞったマスに続けてロビーが建つ（%d マス）" % built)
+	check(main.funds == 10000000 - 6 * 30000, "建てたぶんだけ建設費がかかる")
+	
+	# 右ドラッグ: 続けて撤去できる
+	await drag_cells(Vector2i(12, 18), Vector2i(13, 18), MOUSE_BUTTON_RIGHT)
+	check(main.is_cell_empty(Vector2i(12, 18)) and main.is_cell_empty(Vector2i(13, 18)), "右ドラッグで続けて撤去できる")
+	
+	# 撤去モード: 左クリックで撤去できる
+	await choose_mode("demolish")
+	check(main.mode_select.text == "撤去", "建設メニューに「撤去」がある")
+	check(main.can_click_cell(Vector2i(11, 18)) and not main.can_click_cell(Vector2i(13, 18)), "建物のあるマスだけ操作できる（緑）")
+	await click_cell(Vector2i(11, 18), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(11, 18)), "撤去モードでは左クリックで撤去できる")
+	check(main.last_message.contains("撤去しました"), "撤去したことがメッセージで出る")
+	await drag_cells(Vector2i(10, 18), Vector2i(9, 18), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(10, 18)) and main.is_cell_empty(Vector2i(9, 18)), "撤去モードでもドラッグで続けて撤去できる")
+	
+	# 収支のグラフ（⌘G）
+	check(not main.chart_panel.visible, "グラフは最初は閉じている")
+	await press_shortcut(KEY_G)
+	check(main.chart_panel.visible, "⌘Gで収支のグラフが開く")
+	check(main.economy_system.history.is_empty(), "まだ決算がないので記録も空")
+	await capture("usability_01_chart_empty")
+	await run_day(1)
+	await run_day(2)
+	await run_day(3)
+	check(main.economy_system.history.size() == 3, "決算のたびに記録が増える")
+	check(main.economy_system.history[2].day == 3, "新しい決算が後ろに入る")
+	await wait_frames(2)
+	await capture("usability_02_chart")
+	await press_shortcut(KEY_G)
+	check(not main.chart_panel.visible, "もう一度⌘Gを押すと閉じる")
+	return true
+
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
 func run_day(day: int) -> void:
 	main.clock.set_time(day, 7, 59)
@@ -3313,6 +3372,34 @@ func cells_row(y: int, x0: int, x1: int) -> Array:
 #（メッセージはほかの知らせで上書きされることがあるので、記録から探す）
 func logged(text: String) -> bool:
 	return main.message_log.any(func(line: String): return line.contains(text))
+
+# マウスのボタンを押したまま、fromのマスからtoのマスまでなぞる（ドラッグでの連続建設・撤去）
+func drag_cells(from: Vector2i, to: Vector2i, button: MouseButton) -> void:
+	var tile_map: TileMapLayer = main.tile_map
+	var step := Vector2i(signi(to.x - from.x), signi(to.y - from.y))
+	var press := InputEventMouseButton.new()
+	press.button_index = button
+	press.pressed = true
+	press.position = tile_map.get_global_transform_with_canvas() * tile_map.map_to_local(from)
+	press.global_position = press.position
+	root.push_input(press)
+	await wait_frames(1)
+	var cell := from
+	while cell != to:
+		cell += step
+		var motion := InputEventMouseMotion.new()
+		motion.position = tile_map.get_global_transform_with_canvas() * tile_map.map_to_local(cell)
+		motion.global_position = motion.position
+		motion.button_mask = MOUSE_BUTTON_MASK_LEFT if button == MOUSE_BUTTON_LEFT else MOUSE_BUTTON_MASK_RIGHT
+		root.push_input(motion)
+		await wait_frames(1)
+	var release := InputEventMouseButton.new()
+	release.button_index = button
+	release.pressed = false
+	release.position = tile_map.get_global_transform_with_canvas() * tile_map.map_to_local(to)
+	release.global_position = release.position
+	root.push_input(release)
+	await wait_frames(1)
 
 # ⌘（Command）を押しながらキーを押す（⌘H・⌘Lなどのショートカット）
 func press_shortcut(keycode: Key) -> void:

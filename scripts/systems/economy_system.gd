@@ -42,6 +42,7 @@ const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーター�
 const MEALS_PER_GARBAGE := 10   # 飲食店の客・会場の来客の何人分でゴミ1になるか
 const RECYCLING_CAPACITY := 20  # ゴミ処理場1施設が1日に処理できるゴミの量
 const OUTSOURCE_COST := 1000    # 処理しきれないゴミ1あたりの外部委託費
+const HISTORY_MAX := 60         # 収支のグラフに残す日数
 # 衛生の悪化: ゴミ処理が追いつかない日が続くと、ビルが汚れてテナントの評価が下がる
 const GARBAGE_PER_POLLUTION := 5 # 処理しきれないゴミがこの量になるごとに、悪化のレベルが1上がる
 const POLLUTION_MAX := 5         # 悪化のレベルの上限
@@ -50,6 +51,7 @@ const POLLUTION_STRESS := 5.0    # 悪化のレベル1につき、テナント�
 var world: Node2D # main.gd
 var last_day := 1 # 最後に決算した日の翌日（= 今日）
 var pollution := 0    # 衛生の悪化のレベル（0〜POLLUTION_MAX）
+var history: Array = [] # 決算の記録（新しいものが後ろ。収支のグラフで使う）
 var last_report := {} # 最後の決算: {"day", "rent", "hotel", "food", "housing", "event", "bonus", "maintenance", "garbage", "garbage_cost", "refund", "total"}
 
 func setup(p_world: Node2D) -> void:
@@ -106,6 +108,9 @@ func settle(day: int) -> void:
 	var total := rent + hotel + food + shop + cinema + housing + event + bonus - maintenance - garbage_cost - refund
 	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "shop": shop, "cinema": cinema, "housing": housing, "event": event, "bonus": bonus, "maintenance": maintenance,
 		"garbage": garbage, "garbage_cost": garbage_cost, "pollution": pollution, "refund": refund, "total": total}
+	history.append(last_report)
+	if history.size() > HISTORY_MAX:
+		history.remove_at(0)
 	world.funds += total
 	world.update_funds_display() # last_reportを更新してから表示する（前日の収支も表示されるため）
 	# 0円の項目は省いて短くする

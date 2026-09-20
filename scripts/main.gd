@@ -11,6 +11,7 @@ const VipSystem := preload("res://scripts/systems/vip_system.gd")
 const IncidentSystem := preload("res://scripts/systems/incident_system.gd")
 const WeatherSystem := preload("res://scripts/systems/weather_system.gd")
 const SaveSystem := preload("res://scripts/systems/save_system.gd")
+const ChartView := preload("res://scripts/view/chart_view.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -74,13 +75,14 @@ const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
 const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴを追加するモード
 const MODE_SET_HOME := "set_home" # エレベーターの待機階（呼び出しがないとカゴが戻る階）を決めるモード
 const MODE_SERVICE := "service"   # エレベーターの稼働時間帯を切り替えるモード
+const MODE_DEMOLISH := "demolish" # 左クリックで撤去するモード（右クリックでも撤去できる）
 
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "shop", "cinema", "housing", "wedding", "event_hall"]},
 	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "service_elevator", "add_car", "set_home", "service"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking", "helipad"]},
-	{"name": "その他", "modes": ["resident"]},
+	{"name": "その他", "modes": ["demolish", "resident"]},
 ]
 const SKY_LOBBY_INTERVAL := 15 # スカイロビーを建てられる階の間隔（15階・30階・45階…）
 const SCROLL_MARGIN_ROWS := 10 # スクロールできる範囲の、建物の上下に足す余白（行数）
@@ -90,8 +92,11 @@ var current_mode: String = "lobby" # 更地から始めるので、最初はロ�
 var funds_label: Label # 資金表示用のUIラベル
 var message_label: Label # 操作結果のメッセージ（下から数行ぶん流れる）
 var log_panel: Control   # ゲーム開始からのメッセージの記録（⌘Lで開閉）
+var chart_panel: Control # 収支のグラフ（⌘Gで開閉）
 var log_label: Label
 var log_scroll: ScrollContainer
+var drag_button := 0          # 押したままなぞっているマウスのボタン（0なら押していない）
+var drag_last_cell := Vector2i.ZERO # なぞっている間に、最後に処理したマス
 var message_log: Array[String] = [] # ゲーム開始からのメッセージ（時刻つき）
 var last_message := ""              # 一番新しいメッセージ（時刻なし）
 var hover_label: Label   # カーソル下のマスの情報（マウスの横に出る吹き出しの中身）
@@ -378,6 +383,8 @@ func create_ui():
 		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
 		"ショートカット: ⌘H（この説明の開閉） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
+		"収支のグラフ: ⌘G で、最近60日ぶんの決算の合計を棒グラフで見られる",
+		"撤去: 建設メニューの「撤去」を選ぶと左クリックで撤去できる（右クリックはいつでも撤去）。ドラッグで続けて建設・撤去できる",
 		"セーブ: ⌘S で保存、⌘O で読み込み（ビル・資金・日付・評価・各設備の状態が戻る）",
 		"天気: 日ごとに晴れ・くもり・雨が決まる（6月は梅雨）。雨の日は入口から来る店の客が半分（車で来る客は減らない）",
 		"日付: 1日目は4月1日（月）。1年は365日で、12月24日・25日の夜にはサンタクロースのソリが空を横切る",
@@ -432,6 +439,18 @@ func create_ui():
 	log_panel.visible = false
 	log_row.add_child(log_panel)
 	log_row.add_child(make_spacer())
+	
+	# --- 収支のグラフ（⌘Gで開閉） ---
+	var chart_row = HBoxContainer.new()
+	chart_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(chart_row)
+	var chart_view = ChartView.new()
+	chart_view.world = self
+	chart_view.custom_minimum_size = Vector2(620 * UI_SCALE, 150 * UI_SCALE)
+	chart_panel = make_bar(chart_view)
+	chart_panel.visible = false
+	chart_row.add_child(chart_panel)
+	chart_row.add_child(make_spacer())
 	
 	# --- マップ部分（クリックはそのまま通す）。右端に上下スクロールバー ---
 	var map_row = HBoxContainer.new()
@@ -509,6 +528,8 @@ func get_mode_label(mode: String) -> String:
 		return "待機階を設定"
 	if mode == MODE_SERVICE:
 		return "稼働時間帯"
+	if mode == MODE_DEMOLISH:
+		return "撤去"
 	var width := get_width(mode)
 	return BUILDINGS[mode].name + ("（横%dマス）" % width if width > 1 else "")
 
@@ -520,6 +541,8 @@ func get_mode_info(mode: String) -> String:
 		return "無料（シャフトをクリックでその階を待機階に。もう一度クリックで解除）"
 	if mode == MODE_SERVICE:
 		return "無料（シャフトをクリックで 終日 → 6時〜24時 → 8時〜20時 と切り替え）"
+	if mode == MODE_DEMOLISH:
+		return "クリックした建物を撤去（建設費の半額が戻る。ドラッグで続けて撤去）"
 	if mode == MODE_ADD_CAR:
 		return "1台 %s円（シャフトをクリック。1本に%d台まで）" % [format_money(elevator_system.CAR_COST), elevator_system.MAX_CARS]
 	var info := "建設費 %s円・横%dマス" % [format_money(BUILDINGS[mode].cost), get_width(mode)]
@@ -998,13 +1021,16 @@ func can_click_cell(cell: Vector2i) -> bool:
 		return elevator_system.get_add_car_problem(cell) == ""
 	if current_mode == MODE_SET_HOME or current_mode == MODE_SERVICE:
 		return elevator_system.is_shaft_type(get_building_type(cell))
+	if current_mode == MODE_DEMOLISH:
+		return not is_cell_empty(cell) and get_demolish_problem(cell) == ""
 	if elevator_system.is_shaft_type(current_mode) and get_building_type(cell) == current_mode:
 		return elevator_system.get_car_at(cell) != null and elevator_system.get_car_at(cell).is_stop_floor(cell.y) # シャフトをクリックするとカゴを呼べる
 	return get_build_problem(cell, current_mode) == ""
 
 # カーソル下で強調表示するマス（建設モードなら、建てたときに使うマス全部）
 func get_hover_footprint(cell: Vector2i) -> Array[Vector2i]:
-	if current_mode == MODE_RESIDENT or current_mode == MODE_ADD_CAR or current_mode == MODE_SET_HOME or current_mode == MODE_SERVICE \
+	if current_mode == MODE_RESIDENT or current_mode == MODE_ADD_CAR or current_mode == MODE_SET_HOME \
+			or current_mode == MODE_SERVICE or current_mode == MODE_DEMOLISH \
 			or elevator_system.is_shaft_type(get_building_type(cell)):
 		return [cell]
 	return get_footprint(cell, current_mode)
@@ -1101,6 +1127,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		grid_overlay.hover_screen_pos = event.position
 		grid_overlay.hover_enabled = true
+		# ボタンを押したままなぞると、続けて建てる（右ボタンなら続けて撤去する）
+		if drag_button != 0:
+			var drag_cell: Vector2i = tile_map.local_to_map(tile_map.make_input_local(event).position)
+			if drag_cell != drag_last_cell:
+				drag_last_cell = drag_cell
+				click_cell(drag_cell, drag_button)
+		return
+	if event is InputEventMouseButton and not event.pressed:
+		drag_button = 0 # ボタンを離したら、なぞるのは終わり
 		return
 	if not (event is InputEventMouseButton and event.pressed):
 		return
@@ -1108,32 +1143,43 @@ func _unhandled_input(event: InputEvent) -> void:
 	# イベントに含まれるクリック位置をタイルマップの座標系に変換する
 	var local_event = tile_map.make_input_local(event)
 	var map_pos: Vector2i = tile_map.local_to_map(local_event.position)
-	if event.button_index == MOUSE_BUTTON_LEFT:
-		if current_mode == MODE_RESIDENT:
-			handle_resident_click(map_pos)
-		elif current_mode == MODE_ADD_CAR:
-			add_elevator_car(map_pos)
-		elif current_mode == MODE_SET_HOME:
-			show_message(elevator_system.set_home(map_pos))
-		elif current_mode == MODE_SERVICE:
-			show_message(elevator_system.cycle_service(map_pos))
-		elif elevator_system.is_shaft_type(current_mode) and get_building_type(map_pos) == current_mode:
-			call_elevator(map_pos)
-		else:
-			build_at(map_pos)
-	elif event.button_index == MOUSE_BUTTON_RIGHT:
+	if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
+		drag_button = event.button_index # 押したままなぞれば続けて建てられる
+		drag_last_cell = map_pos
+		click_cell(map_pos, event.button_index)
+
+# マップのマスをクリック（またはドラッグでなぞった）ときの処理
+func click_cell(map_pos: Vector2i, button: int) -> void:
+	if button == MOUSE_BUTTON_RIGHT:
 		demolish_at(map_pos)
+		return
+	if current_mode == MODE_RESIDENT:
+		handle_resident_click(map_pos)
+	elif current_mode == MODE_ADD_CAR:
+		add_elevator_car(map_pos)
+	elif current_mode == MODE_SET_HOME:
+		show_message(elevator_system.set_home(map_pos))
+	elif current_mode == MODE_SERVICE:
+		show_message(elevator_system.cycle_service(map_pos))
+	elif current_mode == MODE_DEMOLISH:
+		demolish_at(map_pos)
+	elif elevator_system.is_shaft_type(current_mode) and get_building_type(map_pos) == current_mode:
+		call_elevator(map_pos)
+	else:
+		build_at(map_pos)
 
 # ⌘（Ctrl）と組み合わせるショートカット。受け付けたら true
 #   ⌘H: 操作説明の開閉 / ⌘L: メッセージの記録の開閉
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
-#   ⌘S: セーブ / ⌘O: セーブデータの読み込み
+#   ⌘S: セーブ / ⌘O: セーブデータの読み込み / ⌘G: 収支のグラフの開閉
 func handle_shortcut(event: InputEventKey) -> bool:
 	if not (event.meta_pressed or event.ctrl_pressed):
 		return false
 	match event.keycode:
 		KEY_H:
 			help_panel.visible = not help_panel.visible
+		KEY_G:
+			chart_panel.visible = not chart_panel.visible
 		KEY_S:
 			save_system.save_game()
 		KEY_O:
