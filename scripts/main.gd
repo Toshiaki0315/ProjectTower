@@ -50,7 +50,7 @@ const MODE_DEMOLISH := "demolish" # 左クリックで撤去するモード（�
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "shop", "cinema", "housing", "wedding", "event_hall"]},
 	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "service_elevator", "add_car", "set_home", "service"]},
-	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking", "helipad"]},
+	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking", "helipad", "garden"]},
 	{"name": "その他", "modes": ["demolish", "resident"]},
 ]
 const SCROLL_MARGIN_ROWS := 10 # スクロールできる範囲の、建物の上下に足す余白（行数）
@@ -104,6 +104,7 @@ var v_scroll: VScrollBar:
 const GROUND_FLOOR_Y := 18
 const SPEEDS := [1, 4, 16]    # ゲームの速度（押すたびにこの順に切り替わる）
 const MEDICAL_RECOVER_BONUS := 0.5 # メディカルセンター1施設で、ストレスの回復が何割速くなるか
+const GARDEN_RECOVER_BONUS := 0.3  # 屋上庭園1つで、ストレスの回復が何割速くなるか
 const MEDICAL_RECOVER_MAX := 2.5   # 回復の速さの上限（何倍まで）
 const MESSAGE_LOG_MAX := 500  # ⌘Lで見られるメッセージの記録の数
 
@@ -473,7 +474,8 @@ func get_hover_footprint(cell: Vector2i) -> Array[Vector2i]:
 # ストレスの回復の速さ（メディカルセンターがあるほど速い。1.0が標準）
 func stress_recover_rate() -> float:
 	var medical := find_units_of_type("medical").size()
-	return minf(1.0 + MEDICAL_RECOVER_BONUS * medical, MEDICAL_RECOVER_MAX)
+	var garden := find_units_of_type("garden").size()
+	return minf(1.0 + MEDICAL_RECOVER_BONUS * medical + GARDEN_RECOVER_BONUS * garden, MEDICAL_RECOVER_MAX)
 
 func spawn_resident(cell: Vector2i):
 	var resident = Resident.new()

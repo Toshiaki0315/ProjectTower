@@ -468,6 +468,8 @@ func update_hover_label():
 			world.noise_system.get_noise_text(cell)]
 	elif type == "parking":
 		text += "（%s）" % world.parking_system.get_parking_text(cell)
+	elif type == "garden":
+		text += "（ストレスの回復 %.1f倍・騒音をやわらげる）" % world.stress_recover_rate()
 	elif type == "medical":
 		text += "（ビル全体のストレスの回復 %.1f倍）" % world.stress_recover_rate()
 	elif type == "recycling":

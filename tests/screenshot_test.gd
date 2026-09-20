@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -3595,6 +3595,50 @@ func run_effects_scenario() -> bool:
 	print("    足の形の数: ", shapes.size())
 	check(shapes.size() >= 2, "歩いている間に足の形が切り替わる")
 	check(resident.walked > 0.0, "歩いた距離を数えている")
+	return true
+
+# ---------------------------------------------------
+# シナリオ61: 屋上庭園（ストレスの回復が速くなり、騒音がやわらぐ）
+# ---------------------------------------------------
+func run_garden_scenario() -> bool:
+	print("[シナリオ] 屋上庭園")
+	main.funds = 10000000
+	var noise = main.noise_system
+	focus_camera(Vector2i(11, 16))
+	await wait_frames(1)
+	build_support(cells_row(18, 8, 16), "lobby")
+	main.select_mode("cinema")
+	main.build_at(Vector2i(8, 17)) # うるさい建物（x=8〜15、2階分）
+	main.select_mode("housing")
+	main.build_at(Vector2i(16, 17)) # その隣の住宅
+	var home := Vector2i(16, 17)
+	var noisy_before: float = noise.noise_stress(home)
+	var recover_before: float = main.stress_recover_rate()
+	check(noisy_before > 0.0 and is_equal_approx(recover_before, 1.0), "屋上庭園がないと、騒音はそのままで回復も標準")
+	
+	# 屋上庭園は屋上にだけ建てられる
+	await choose_mode("garden")
+	check(main.mode_info_label.text == "建設費 400,000円・横4マス", "屋上庭園は横4マス・40万円")
+	check(main.get_build_problem(Vector2i(20, 18), "garden").contains("屋上"), "1階（地上）には建てられない")
+	await click_cell(Vector2i(8, 15), MOUSE_BUTTON_LEFT) # 映画館（y=17〜16）の上が屋上
+	check(main.get_building_type(Vector2i(11, 15)) == "garden", "映画館の屋上に庭園を建てられる")
+	await hover_cell(Vector2i(10, 15))
+	check(main.hover_label.text.contains("屋上庭園（ストレスの回復"), "カーソルを合わせると効果が出る")
+	await capture("garden_01")
+	
+	# 効果: 回復が速くなり、騒音がやわらぐ
+	check(main.stress_recover_rate() > recover_before, "ストレスの回復が速くなる（%.1f倍）" % main.stress_recover_rate())
+	check(noise.quiet_bonus() == noise.GARDEN_QUIET, "騒音を和らげる分が増える")
+	check(noise.noise_stress(home) < noisy_before, "隣の住宅の騒音のつらさが減る")
+	
+	# メディカルセンターと合わせても、回復の速さには上限がある
+	build_support(cells_row(18, 17, 22), "lobby")
+	main.select_mode("medical")
+	for x in [17, 20]:
+		main.build_at(Vector2i(x, 17))
+	main.select_mode("garden")
+	main.build_at(Vector2i(17, 16)) # メディカルセンター（y=17）の上
+	check(is_equal_approx(main.stress_recover_rate(), main.MEDICAL_RECOVER_MAX), "回復の速さは2.5倍で頭打ち")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

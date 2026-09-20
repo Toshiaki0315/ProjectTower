@@ -31,6 +31,7 @@ const NOISE_SOURCES := {
 }
 const NOISE_MAX := 10      # 1マスの騒音の上限
 const NOISE_TOLERANCE := 1 # これ以下の騒音は気にならない（静か）
+const GARDEN_QUIET := 3    # 屋上庭園1つにつき、ビル全体の騒音をこれだけ和らげる
 const NOISE_STRESS := 6.0  # これを超えた騒音1につき、住宅・客室の評価に足されるストレス
 
 var world: Node2D # main.gd
@@ -76,11 +77,15 @@ func get_unit_noise(cell: Vector2i) -> int:
 # 騒音のぶん、評価に足されるストレス（住宅・客室用）。
 # NOISE_TOLERANCE までの騒音は気にならないので、それを超えた分だけ効く
 func noise_stress(cell: Vector2i) -> float:
-	return maxi(get_unit_noise(cell) - NOISE_TOLERANCE, 0) * NOISE_STRESS
+	return maxi(get_unit_noise(cell) - NOISE_TOLERANCE - quiet_bonus(), 0) * NOISE_STRESS
+
+# 屋上庭園があると、ビル全体の騒音が少し和らぐ
+func quiet_bonus() -> int:
+	return GARDEN_QUIET * world.find_units_of_type("garden").size()
 
 # カーソル下の説明用（うるさいほど言葉が変わる）
 func get_noise_text(cell: Vector2i) -> String:
-	var noise := get_unit_noise(cell)
+	var noise := get_unit_noise(cell) - quiet_bonus()
 	if noise <= NOISE_TOLERANCE:
 		return "静か"
 	if noise <= 3:
