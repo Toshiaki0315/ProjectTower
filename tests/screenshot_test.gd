@@ -360,9 +360,18 @@ func run_ui_scenario() -> bool:
 	await press_shortcut(KEY_0)
 	check(is_equal_approx(main.camera.zoom.x, main.camera.DEFAULT_ZOOM), "⌘0で拡大率がもとに戻る")
 	
+	# 速度のボタンは1つで、押すたびに 1x → 4x → 16x → 1x と切り替わる
+	check(main.speed_button.text == "1x" and is_equal_approx(Engine.time_scale, 1.0), "最初は1x")
+	await click_button(main.speed_button)
+	check(main.speed_button.text == "4x" and is_equal_approx(Engine.time_scale, 4.0), "1回押すと4xになる")
+	await click_button(main.speed_button)
+	check(main.speed_button.text == "16x" and is_equal_approx(Engine.time_scale, 16.0), "もう1回押すと16xになる")
+	await click_button(main.speed_button)
+	check(main.speed_button.text == "1x" and is_equal_approx(Engine.time_scale, 1.0), "次に押すと1xに戻る")
+	
 	# ビルの状況（★の行）は上部バーにある
 	check(main.stats_label.text.begins_with("★"), "ビルの状況（★）は上部バーに出る")
-	check(main.stats_label.get_global_rect().position.y < main.hover_label.get_global_rect().position.y, "★の行は、カーソルの情報より上にある")
+	check(main.stats_label.get_global_rect().position.y < main.mode_select.get_global_rect().position.y, "★の行は、建設メニューの行より上にある")
 	return true
 
 # ---------------------------------------------------

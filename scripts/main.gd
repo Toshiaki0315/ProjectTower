@@ -106,7 +106,8 @@ var event_system # 結婚式場・イベントホール（休日の来客）
 var lighting # 夜の明かり
 var tenant_system # テナント（オフィス）の評価
 var clock_label: Label # 日付と時刻の表示
-var stats_label: Label # 社員の人数の表示
+var stats_label: Label   # ビルの状況（★・人口・社員・客室）の表示
+var speed_button: Button # ゲームの速度（押すたびに切り替わる）
 
 var residents: Array = [] # 配置済みの住人
 var selected_resident = null # 行き先の指示を待っている住人
@@ -124,6 +125,7 @@ const GROUND_FLOOR_Y := 18
 const MAX_FLOORS_ABOVE := 150 # 建てられる一番上の階（地上150階）
 const MAX_FLOORS_BELOW := 50  # 掘れる一番下の階（地下50階）
 const MAX_WIDTH := 100        # ビルの横幅（マス数）。0を中心に左右へ半分ずつ
+const SPEEDS := [1, 4, 16] # ゲームの速度（押すたびにこの順に切り替わる）
 const MESSAGE_LINES := 3      # 下部バーに出しておくメッセージの行数（古いものは上へ流れて消える）
 const MESSAGE_LOG_MAX := 500  # ⌘Lで見られるメッセージの記録の数
 var ground_y := GROUND_FLOOR_Y
@@ -225,8 +227,8 @@ func focus_camera_on_building():
 # ---------------------------------------------------
 # 画面構成:
 #   上部バー    … 1段目: 資金 / 日付と時刻 / 速度
-#                  2段目: モード切り替えボタン（入りきらなければ折り返す）
-#                  3段目: ビルの状況（★・人口・社員・客室）
+#                  2段目: ビルの状況（★・人口・社員・客室）
+#                  3段目: 建設メニュー
 #   操作説明    … 上部バーの下に表示（⌘Hで開閉）。メッセージの記録は⌘Lで開閉
 #   （マップ）  … クリックはそのままマップに届く
 #   下部バー    … 1段目: 操作結果のメッセージ（新しいものが下に出て、古いものは流れる）
@@ -256,14 +258,14 @@ func create_ui():
 	var status_row = HBoxContainer.new()
 	status_row.add_theme_constant_override("separation", 8 * UI_SCALE)
 	top_rows.add_child(status_row)
-	var build_row = HBoxContainer.new()
-	build_row.add_theme_constant_override("separation", 8 * UI_SCALE)
-	top_rows.add_child(build_row)
-	# ビルの状況（★・人口・社員・客室）は上部バーの3段目
+	# ビルの状況（★・人口・社員・客室）は上部バーの2段目
 	stats_label = Label.new()
 	stats_label.clip_text = true
 	stats_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	top_rows.add_child(stats_label)
+	var build_row = HBoxContainer.new()
+	build_row.add_theme_constant_override("separation", 8 * UI_SCALE)
+	top_rows.add_child(build_row)
 	
 	funds_label = Label.new()
 	funds_label.add_theme_font_size_override("font_size", 20 * UI_SCALE)
@@ -276,16 +278,13 @@ func create_ui():
 	
 	status_row.add_child(make_spacer())
 	
-	# ゲームの速度（Engine.time_scaleで、時計・住人・エレベーターをまとめて早送りする）
-	var speed_group = ButtonGroup.new()
-	for speed in [1, 4, 16]:
-		var btn = Button.new()
-		btn.text = "%dx" % speed
-		btn.toggle_mode = true
-		btn.button_group = speed_group
-		btn.button_pressed = speed == 1
-		btn.pressed.connect(func(): Engine.time_scale = speed)
-		status_row.add_child(btn)
+	# ゲームの速度（Engine.time_scaleで、時計・住人・エレベーターをまとめて早送りする）。
+	# ボタンは1つで、押すたびに 1x → 4x → 16x → 1x と切り替わり、今の速度だけを表示する
+	speed_button = Button.new()
+	speed_button.custom_minimum_size.x = 60 * UI_SCALE
+	speed_button.pressed.connect(func(): set_speed(SPEEDS[(SPEEDS.find(int(Engine.time_scale)) + 1) % SPEEDS.size()]))
+	status_row.add_child(speed_button)
+	set_speed(1)
 	
 	# 操作説明（⌘H）とメッセージの記録（⌘L）は、ボタンではなくショートカットで開く
 	
@@ -325,7 +324,7 @@ func create_ui():
 		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
 		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
 		"入口: 1階の左端と地下鉄駅（地下にだけ建てられる）。人は近い方の入口から出入りする",
-		"速度: 1x / 4x / 16x で時間の進みを早送り",
+		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
 		"ショートカット: ⌘H（この説明の開閉） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
 		"結婚式場（横6マス）: 休日の10〜11時に12人が来て13時まで（1人1万円）",
@@ -389,11 +388,13 @@ func create_ui():
 	
 	message_label = Label.new()
 	message_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	# メッセージは行数が多いので、ほかの文字の半分の大きさにする
+	message_label.add_theme_font_size_override("font_size", BASE_FONT_SIZE * UI_SCALE / 2)
 	message_label.clip_text = true
 	message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	# 新しいメッセージが一番下に出て、古いメッセージは上へ流れていく（MESSAGE_LINES 行ぶん）
 	message_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	message_label.custom_minimum_size.y = MESSAGE_LINES * BASE_FONT_SIZE * UI_SCALE * 1.2
+	message_label.custom_minimum_size.y = MESSAGE_LINES * BASE_FONT_SIZE * UI_SCALE / 2 * 1.3
 	bottom_rows.add_child(message_label)
 	
 	hover_label = Label.new()
@@ -1038,6 +1039,12 @@ func handle_shortcut(event: InputEventKey) -> bool:
 		_:
 			return false
 	return true
+
+# ゲームの速度を変える（ボタンの表示も合わせる）
+func set_speed(speed: int) -> void:
+	Engine.time_scale = speed
+	if speed_button:
+		speed_button.text = "%dx" % speed
 
 # カゴ追加モードでシャフトのマスをクリックしたとき、その階にカゴを1台追加する
 func add_elevator_car(cell: Vector2i):
