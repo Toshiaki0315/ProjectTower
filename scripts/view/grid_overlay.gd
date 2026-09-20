@@ -123,6 +123,10 @@ class HomeMarkers extends Node2D:
 				draw_roach(Vector2(cell) * tile_size + Vector2(4, tile_size.y - 4), world.tenant_system.blink_on())
 				draw_roach(Vector2(cell) * tile_size + Vector2(11, tile_size.y - 6), not world.tenant_system.blink_on())
 
+		# 消防ヘリ（火事のときにヘリポートから飛んでくる）
+		if world.incident_system.has_heli():
+			draw_heli(world.incident_system.heli.pos)
+
 		# 燃えているマス（炎の色が交互に変わる）
 		for cell in world.incident_system.fire:
 			var flame_rect := Rect2(Vector2(cell) * tile_size, tile_size)
@@ -153,6 +157,22 @@ class HomeMarkers extends Node2D:
 		draw_rect(Rect2(pos - Vector2(1.5, 1.0), Vector2(3, 2)), overlay.ROACH_COLOR)
 		draw_line(pos + Vector2(1.5 * dir, -1.0), pos + Vector2(3.0 * dir, -2.5), overlay.ROACH_COLOR, 0.6)
 		draw_line(pos + Vector2(1.5 * dir, -1.0), pos + Vector2(3.0 * dir, 0.0), overlay.ROACH_COLOR, 0.6)
+
+	# 消防ヘリ（胴体・ローター・放水）
+	func draw_heli(pos: Vector2) -> void:
+		var body := Color(0.9, 0.35, 0.2)
+		var glass := Color(0.75, 0.9, 1.0)
+		draw_rect(Rect2(pos - Vector2(6, 3), Vector2(12, 5)), body)      # 胴体
+		draw_rect(Rect2(pos + Vector2(2, -2), Vector2(4, 3)), glass)     # 窓
+		draw_rect(Rect2(pos - Vector2(10, 1), Vector2(5, 2)), body)      # 尾
+		draw_rect(Rect2(pos - Vector2(11, 4), Vector2(2, 4)), body)      # 尾翼
+		draw_rect(Rect2(pos - Vector2(1, 5), Vector2(2, 2)), body)       # ローターの軸
+		var blade := 9.0 if fmod(Time.get_ticks_msec() / 100.0, 2.0) < 1.0 else 4.0 # 回って見えるように長さを変える
+		draw_line(pos + Vector2(-blade, -5), pos + Vector2(blade, -5), Color(0.2, 0.2, 0.25), 0.8)
+		draw_line(pos + Vector2(-5, 2), pos + Vector2(5, 2), Color(0.3, 0.3, 0.35), 0.6) # 脚
+		# 放水
+		for i in 4:
+			draw_line(pos + Vector2(-2 + i, 3), pos + Vector2(-3 + i, 10), Color(0.6, 0.85, 1.0, 0.7), 0.7)
 
 	# 入口のアイコンを、左上を pos として1ドットずつ描く（"C" は入口の色）
 	func draw_entrance(pos: Vector2, color: Color) -> void:

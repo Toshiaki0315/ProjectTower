@@ -17,6 +17,8 @@ extends Node
 #   燃えているマスは SPREAD_MINUTES ごとに、隣（左右）と上のマスの建物へ燃え広がる。
 #   1マスが BURN_MINUTES 燃え続けると、そのテナントは焼け落ちる（払い戻しなし）。
 #   警備員が燃えているマスへ行き、EXTINGUISH_MINUTES 分かけて1マスずつ消し止める。
+#   ヘリポートがあると消防ヘリが飛んできて、上の階の火から順に HELI_MINUTES 分で消していく
+#   （警備員より速く、高い階に強い）。
 #   燃えているマスがなくなれば鎮火。
 # ■ ゴキブリの大繁殖
 #   衛生の悪化（economy_system.pollution）が ROACH_POLLUTION 以上の日が ROACH_DAYS 日続くと発生し、
@@ -40,6 +42,9 @@ const FIRE_MINUTE := 20 * 60   # 出火する時刻
 const SPREAD_MINUTES := 20.0   # 隣のマスへ燃え広がるまでの時間（分）
 const BURN_MINUTES := 60.0     # 1マスが燃え尽きる（建物が焼け落ちる）までの時間（分）
 const EXTINGUISH_MINUTES := 10.0 # 警備員が1マスを消し止めるのにかかる時間（分）
+const HELI_MINUTES := 5.0      # 消防ヘリが1マスを消すのにかかる時間（分）
+const HELI_SPEED := 90.0       # 消防ヘリの飛ぶ速さ（px/秒）
+const HELI_ARRIVE := 6.0       # このくらいまで近づいたら、消火を始める（px）
 
 const ROACH_POLLUTION := 4   # 衛生の悪化がこのレベル以上の日が続くと、ゴキブリが出る
 const ROACH_DAYS := 2        # 続く日数
@@ -63,6 +68,7 @@ var bomb = null     # 今の爆破予告 {"cell": 仕掛けられたマス, "lef
 var bomb_day := 0   # 最後に予告の判定をした日
 var fire := {}      # 燃えているマス -> {"burn_left": 焼け落ちるまでの分, "work_left": 消火の残りの分}
 var fire_spread_left := 0.0 # 次に燃え広がるまでの分
+var heli = null     # 消防ヘリ {"pos": 今の位置, "target": 消しに行くマス, "work_left": 残りの分}
 var fire_day := 0   # 最後に出火の判定をした日
 var roaches := {}   # ゴキブリがいるテナント（左端のマス） -> true
 var roach_days := 0 # 衛生の悪化が続いている日数
@@ -115,6 +121,7 @@ func _process(_delta: float) -> void:
 			start_fire(pick_target(day))
 	if has_fire():
 		process_fire(minutes)
+	process_heli(minutes) # 火が消えたらヘリは帰る
 	if roach_day != day and now >= ROACH_MINUTE:
 		roach_day = day
 		update_roaches(day)
@@ -279,6 +286,48 @@ func spread_fire() -> void:
 			var next: Vector2i = cell + dir
 			if not world.is_cell_empty(next) and not fire.has(next):
 				burn(next)
+
+# ---------------------------------------------------
+# 消防ヘリ（ヘリポートがあるときだけ飛んでくる）
+# ---------------------------------------------------
+
+func has_heli() -> bool:
+	return heli != null
+
+# ヘリが消しに行くマス（燃えているマスのうち、一番上の階のもの）
+func heli_target():
+	var best = null
+	for cell in fire:
+		if best == null or cell.y < best.y:
+			best = cell
+	return best
+
+func process_heli(minutes: float) -> void:
+	var pads: Array[Vector2i] = world.find_units_of_type("helipad")
+	if pads.is_empty():
+		heli = null
+		return
+	var target = heli_target()
+	if target == null:
+		heli = null
+		return
+	if not has_heli():
+		# ヘリポートの少し上から飛び立つ
+		heli = {"pos": world.tile_map.map_to_local(pads[0]) + Vector2(0, -24), "target": target, "work_left": HELI_MINUTES}
+	if not fire.has(heli.target):
+		heli.target = target
+		heli.work_left = HELI_MINUTES
+	var goal: Vector2 = world.tile_map.map_to_local(heli.target) + Vector2(0, -12) # マスの少し上でホバリングする
+	heli.pos = heli.pos.move_toward(goal, HELI_SPEED * world.get_process_delta_time() * Engine.time_scale)
+	if heli.pos.distance_to(goal) > HELI_ARRIVE:
+		return
+	# 真上から放水して火を消す
+	heli.work_left -= minutes
+	if heli.work_left <= 0.0:
+		var cell: Vector2i = heli.target
+		fire.erase(cell)
+		heli.work_left = HELI_MINUTES
+		world.show_message("消防ヘリが %s の火を消しました" % world.get_floor_name(cell.y))
 
 # 燃えているマスにいる警備員（いなければnull）
 func guard_at(cell: Vector2i):

@@ -34,7 +34,8 @@ const TenantSystem := preload("res://scripts/systems/tenant_system.gd")
 # floors: 建てられる階。"ground" = 1階だけ / "basement" = 地下だけ / "any" = どこでも /
 #         "sky_lobby" = 15階・30階・45階…だけ（SKY_LOBBY_INTERVAL 階ごと） /
 #         "basement1" = 地下1階だけ（1階から車で下りられる深さ） /
-#         "deep_basement" = 地下SUBWAY_MIN_DEPTH階より深いところだけ（地下鉄駅） / 省略 = 1階以外
+#         "deep_basement" = 地下SUBWAY_MIN_DEPTH階より深いところだけ（地下鉄駅） /
+#         "rooftop" = 屋上（地上で、上に建物がないマス）だけ / 省略 = 1階以外
 #         （1階はロビー専用のフロアなので、テナントや設備は1階に建てられない）
 # ---------------------------------------------------
 const BUILDINGS := {
@@ -55,6 +56,7 @@ const BUILDINGS := {
 	"wedding": {"name": "結婚式場", "cost": 1000000, "source_id": 12, "width": 6},
 	"event_hall": {"name": "イベントホール", "cost": 800000, "source_id": 13, "width": 6},
 	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14, "width": 4, "floors": "deep_basement"},
+	"helipad": {"name": "ヘリポート", "cost": 800000, "source_id": 26, "width": 4, "floors": "rooftop"},
 	"parking": {"name": "地下駐車場", "cost": 300000, "source_id": 22, "width": 4, "floors": "basement"},
 	"ramp": {"name": "スロープ", "cost": 200000, "source_id": 23, "width": 2, "floors": "basement1"},
 	"lobby": {"name": "ロビー", "cost": 30000, "source_id": 15, "floors": "ground", "lobby": true},
@@ -77,7 +79,7 @@ const MODE_SERVICE := "service"   # エレベーターの稼働時間帯を切�
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "shop", "cinema", "housing", "wedding", "event_hall"]},
 	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "service_elevator", "add_car", "set_home", "service"]},
-	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking"]},
+	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking", "helipad"]},
 	{"name": "その他", "modes": ["resident"]},
 ]
 const SKY_LOBBY_INTERVAL := 15 # スカイロビーを建てられる階の間隔（15階・30階・45階…）
@@ -392,6 +394,7 @@ func create_ui():
 		"メディカルセンター（横3マス）: ビル全体のストレスの回復が速くなる（1施設で1.5倍・最大2.5倍）",
 		"埋蔵金: 地下に建てるとマスごとに見つかることがある（深いほど確率も金額も上がる。同じマスは一度きり）",
 		"ゴキブリ: 衛生の悪化が続くと大繁殖し、いるテナントの評価がストレス15ぶん悪くなる（悪化が0に戻ると消える）",
+		"ヘリポート（横4マス）: 屋上にだけ建てられる。火事のとき消防ヘリが飛んできて、上の階の火から消す",
 		"火災: ★2以上のビルでときどき出火。20分ごとに隣と上へ燃え広がり、60分燃えたテナントは焼け落ちる（警備員が消火する）",
 		"爆破予告: ★2以上のビルにときどき届く。警備員が現場で解体できないと、120分後にそのテナントが吹き飛ぶ",
 		"VIP: ★4の条件がそろうと16時にVIPが来館。ストレス30以下できれいな空きスイートに着けば合格（不合格なら翌日また来る）",
@@ -801,6 +804,13 @@ func get_build_problem(origin: Vector2i, type: String) -> String:
 		return "%sは1階にしか建てられません" % BUILDINGS[type].name
 	if floors == "basement" and origin.y <= ground_y:
 		return "%sは地下（1階より下）にしか建てられません" % BUILDINGS[type].name
+	if floors == "rooftop":
+		for cell in get_footprint(origin, type):
+			if cell.y >= ground_y or not is_cell_empty(cell + Vector2i.UP):
+				return "%sは屋上（上に建物がないところ）にしか建てられません" % BUILDINGS[type].name
+	for cell in get_footprint(origin, type):
+		if get_building_type(cell + Vector2i.DOWN) == "helipad":
+			return "ヘリポートの上には建てられません"
 	if floors == "deep_basement" and origin.y < ground_y + SUBWAY_MIN_DEPTH:
 		return "%sは地下%d階より深いところにしか建てられません（ここは%s）" % [BUILDINGS[type].name, SUBWAY_MIN_DEPTH, get_floor_name(origin.y)]
 	if floors == "basement1" and origin.y != ground_y + 1:

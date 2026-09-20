@@ -35,6 +35,7 @@ const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーター�
 	"security": 5000,
 	"medical": 10000,
 	"subway": 10000,
+	"helipad": 10000,
 	"parking": 5000,
 	"ramp": 2000,
 }
