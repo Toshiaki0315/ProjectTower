@@ -59,6 +59,7 @@ func collect() -> Dictionary:
 		"minute": world.clock.minute,
 		"stars": world.rating_system.stars,
 		"vip_passed": world.vip_system.passed,
+		"goal_index": world.goal_system.index,
 		"pollution": world.economy_system.pollution,
 		"last_day": world.economy_system.last_day,
 		"treasure_total": world.incident_system.treasure_total,
@@ -130,6 +131,8 @@ func apply(data: Dictionary) -> void:
 	world.clock.minute = float(data.minute)
 	world.rating_system.stars = int(data.stars)
 	world.vip_system.passed = bool(data.vip_passed)
+	world.goal_system.index = int(data.get("goal_index", 0))
+	world.goal_system.cleared = world.goal_system.current() == null
 	world.economy_system.pollution = int(data.pollution)
 	world.economy_system.last_day = int(data.last_day)
 	world.incident_system.treasure_total = int(data.treasure_total)

@@ -13,6 +13,7 @@ const WeatherSystem := preload("res://scripts/systems/weather_system.gd")
 const SaveSystem := preload("res://scripts/systems/save_system.gd")
 const ChartView := preload("res://scripts/view/chart_view.gd")
 const AudioSystem := preload("res://scripts/systems/audio_system.gd")
+const GoalSystem := preload("res://scripts/systems/goal_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -95,6 +96,9 @@ var message_label: Label # 操作結果のメッセージ（下から数行ぶ�
 var log_panel: Control   # ゲーム開始からのメッセージの記録（⌘Lで開閉）
 var chart_panel: Control # 収支のグラフ（⌘Gで開閉）
 var title_panel: Control # タイトル画面（はじめから／続きから）
+var goal_panel: Control  # 目標を達成したときの画面
+var goal_title: Label
+var goal_text: Label
 var started := false     # ゲームが始まっているか（タイトル画面の間は false）
 var log_label: Label
 var log_scroll: ScrollContainer
@@ -118,6 +122,7 @@ var incident_system # 事件（爆破予告・火災・ゴキブリ・埋蔵金�
 var weather_system  # 天気（晴れ・くもり・雨）
 var save_system     # セーブ／ロード
 var audio_system    # 音（効果音とBGM）
+var goal_system     # 目標（シナリオ）
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -185,6 +190,9 @@ func _ready() -> void:
 	audio_system = AudioSystem.new()
 	add_child(audio_system)
 	audio_system.setup(self)
+	goal_system = GoalSystem.new()
+	goal_system.setup(self)
+	add_child(goal_system)
 	parking_system = ParkingSystem.new()
 	parking_system.setup(self)
 	add_child(parking_system)
@@ -243,6 +251,7 @@ func _process(_delta: float) -> void:
 			angry += 1
 	if angry > 0:
 		stats_label.text += " / 怒っている人 %d人" % angry
+	stats_label.text += " / " + goal_system.get_goal_text()
 	if incident_system.has_roaches():
 		stats_label.text += " / " + incident_system.get_roach_text()
 	if incident_system.has_fire():
@@ -1231,6 +1240,42 @@ func create_title() -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
 	title_panel = back
+	create_goal_panel(canvas, theme)
+
+# 目標を達成したときの画面を作る（中身はそのつど差し替える）
+func create_goal_panel(canvas: CanvasLayer, theme: Theme) -> void:
+	var back = ColorRect.new()
+	back.color = Color(0.06, 0.07, 0.12, 0.88)
+	back.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	back.visible = false
+	canvas.add_child(back)
+	var box = VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 12 * UI_SCALE)
+	box.theme = theme
+	back.add_child(box)
+	goal_title = Label.new()
+	goal_title.add_theme_font_size_override("font_size", 32 * UI_SCALE)
+	goal_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(goal_title)
+	goal_text = Label.new()
+	goal_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(goal_text)
+	var close_button = Button.new()
+	close_button.text = "つづける"
+	close_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close_button.custom_minimum_size.x = 240 * UI_SCALE
+	close_button.pressed.connect(func(): goal_panel.visible = false)
+	box.add_child(close_button)
+	goal_panel = back
+
+# 目標の達成などを画面で知らせる（時間は止めずに、ボタンで閉じる）
+func show_goal_panel(title: String, text: String) -> void:
+	goal_title.text = title
+	goal_text.text = text
+	goal_panel.visible = true
+	show_message("%s %s" % [title, text.replace("\n", " ")])
 
 # ゲームを始める（タイトル画面を閉じて、時計を動かす）
 func start_game() -> void:

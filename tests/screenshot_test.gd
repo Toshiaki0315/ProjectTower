@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -928,7 +928,7 @@ func run_rating_scenario() -> bool:
 	await run_day(1)
 	var report = main.economy_system.last_report
 	check(rating.stars == 2, "1日目の決算で★2に上がる")
-	check(main.last_message.begins_with("ビルの評価が★2に上がりました！"), "昇格がメッセージで知らされる")
+	check(logged("ビルの評価が★2に上がりました！"), "昇格がメッセージで知らされる")
 	check(report.get("bonus") == 0, "昇格した日の決算にはまだボーナスが付かない")
 	check(report.get("maintenance") == 12000 + 5000, "警備室の維持費5千円がかかる")
 	await capture("rating_01_star2")
@@ -3416,7 +3416,70 @@ func run_title_scenario() -> bool:
 	check(main.get_building_type(Vector2i(0, 18)) == "lobby", "始まった後はマップを操作できる")
 	return true
 
+# ---------------------------------------------------
+# シナリオ58: 目標（シナリオ）と達成の画面
+# ---------------------------------------------------
+func run_goal_scenario() -> bool:
+	print("[シナリオ] 目標")
+	var goals = main.goal_system
+	focus_camera(Vector2i(0, 16))
+	await wait_frames(2)
+	check(goals.index == 0 and not goals.cleared, "はじめは1つ目の目標に挑戦している")
+	check(goals.current().stars == 2, "1つ目の目標は★2")
+	check(main.stats_label.text.contains("目標:"), "上部バーに今の目標が出る")
+	check(not main.goal_panel.visible, "達成の画面は出ていない")
+	
+	# 達成すると、画面で知らせて次の目標に進む
+	main.rating_system.stars = 2
+	goals.check_day(1)
+	check(goals.index == 1, "★2になると1つ目の目標を達成して、次の目標に進む")
+	check(main.goal_panel.visible and main.goal_title.text == "目標を達成しました！", "達成の画面が出る")
+	check(main.goal_text.text.contains("次の目標"), "次の目標が書いてある")
+	check(logged("目標を達成しました"), "メッセージにも残る")
+	await capture("goal_01_achieved")
+	var close_button: Button = null
+	for node in main.goal_panel.find_children("*", "Button", true, false):
+		close_button = node
+	await click_button(close_button)
+	check(not main.goal_panel.visible, "「つづける」で画面を閉じられる")
+	
+	# 期限を過ぎても、続けて挑戦できる
+	check(goals.current().day == 30, "2つ目の目標は30日目まで")
+	main.clock.set_time(31, 12, 0)
+	goals.check_day(31)
+	check(goals.index == 1, "期限を過ぎても目標は変わらない")
+	check(logged("目標の期限"), "期限を過ぎたことを知らせる")
+	main.rating_system.stars = 3
+	goals.check_day(32)
+	check(goals.index == 2, "遅れて達成してもよい")
+	
+	# 全部達成するとクリアの画面が出る
+	main.rating_system.stars = 4
+	goals.check_day(33)
+	main.funds = 50000000
+	goals.check_day(34)
+	check(goals.cleared and goals.current() == null, "すべての目標を達成した")
+	check(main.goal_title.text.contains("すべての目標を達成") and main.goal_panel.visible, "クリアの画面が出る")
+	await wait_frames(2) # 上部バーの表示は次のフレームで更新される
+	check(main.stats_label.text.contains("すべて達成"), "上部バーもクリアの表示になる")
+	await capture("goal_02_cleared")
+	
+	# 目標の進み具合はセーブに入る
+	var save_path := "user://test_goal.json"
+	check(main.save_system.save_game(save_path), "セーブできる")
+	goals.index = 0
+	goals.cleared = false
+	check(main.save_system.load_game(save_path), "読み込める")
+	check(goals.index == goals.GOALS.size() and goals.cleared, "目標の進み具合が戻る")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
+	return true
+
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
+# 目標の達成画面は、ほかのシナリオの操作の邪魔になるので閉じておく
+func close_goal_panel() -> void:
+	if main.goal_panel and main.goal_panel.visible:
+		main.goal_panel.visible = false
+
 func run_day(day: int) -> void:
 	main.clock.set_time(day, 7, 59)
 	main.clock.set_process(true)
@@ -3426,6 +3489,7 @@ func run_day(day: int) -> void:
 	await wait_until(func(): return main.economy_system.last_report.get("day") == day, 10.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
+	close_goal_panel()
 
 func count_rides(path: Array[Vector2i]) -> int:
 	var rides := 0

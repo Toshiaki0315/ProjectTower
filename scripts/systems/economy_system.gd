@@ -135,6 +135,7 @@ func settle(day: int) -> void:
 		message = "ビルの評価が★%dに上がりました！ %s" % [world.rating_system.stars, message]
 	world.audio_system.play("money")
 	world.show_message(message)
+	world.goal_system.check_day(day) # 目標を達成したか確かめる
 
 # 入口からたどり着けるオフィスの数（休日の賃料の計算用）
 func count_reachable_offices() -> int:
