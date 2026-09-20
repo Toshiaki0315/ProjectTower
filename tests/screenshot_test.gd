@@ -100,7 +100,7 @@ func run_empty_start_scenario() -> bool:
 	await choose_mode("office")
 	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(0, 18)), "1階にはオフィスを建てられない")
-	check(main.message_label.text.contains("1階はロビー専用"), "建てられない理由（1階はロビー専用）がメッセージで出る")
+	check(main.last_message.contains("1階はロビー専用"), "建てられない理由（1階はロビー専用）がメッセージで出る")
 	await hover_cell(Vector2i(0, 18))
 	check(not main.can_click_cell(Vector2i(0, 18)), "1階にオフィスを建てようとすると赤く表示される")
 	await choose_mode("hotel")
@@ -111,7 +111,7 @@ func run_empty_start_scenario() -> bool:
 	await choose_mode("lobby")
 	await click_cell(Vector2i(0, 17), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(0, 17)), "ロビーは2階には建てられない")
-	check(main.message_label.text.contains("ロビーは1階にしか建てられません"), "建てられない理由（ロビーは1階だけ）がメッセージで出る")
+	check(main.last_message.contains("ロビーは1階にしか建てられません"), "建てられない理由（ロビーは1階だけ）がメッセージで出る")
 	for x in range(-3, 4):
 		await click_cell(Vector2i(x, 18), MOUSE_BUTTON_LEFT)
 	check(main.find_cells_of_type("lobby").size() == 7, "ロビーは1マスずつ横に伸ばせる（7マス）")
@@ -215,7 +215,7 @@ func run_stairs_scenario() -> bool:
 	# 経路のない行き先 → 移動しない
 	await click_cell(Vector2i(-8, 19), MOUSE_BUTTON_LEFT)
 	check(not resident.is_moving(), "経路のない行き先では移動しない")
-	check(main.message_label.text.contains("経路がありません"), "経路がないことがメッセージで表示される")
+	check(main.last_message.contains("経路がありません"), "経路がないことがメッセージで表示される")
 	
 	# 上の階へ移動
 	var goal := Vector2i(5, 14)
@@ -329,17 +329,40 @@ func run_ui_scenario() -> bool:
 	check(not main.can_click_cell(office_cell), "建物のあるマスは建設不可（赤）と判定される")
 	check(main.hover_label.text.contains("オフィス"), "下部バーに建物の種類が出る")
 	
-	# 操作説明の開閉
-	var help_button: Button = null
-	for node in main.find_children("*", "Button", true, false):
-		if node.text == "操作説明":
-			help_button = node
-	check(help_button != null and not main.help_panel.visible, "操作説明は最初は閉じている")
-	await click_button(help_button)
-	check(main.help_panel.visible, "操作説明ボタンで説明が開く")
+	# 操作説明の開閉（⌘H）
+	check(not main.help_panel.visible, "操作説明は最初は閉じている")
+	await press_shortcut(KEY_H)
+	check(main.help_panel.visible, "⌘Hで操作説明が開く")
 	await capture("ui_02_help_open")
-	await click_button(help_button)
-	check(not main.help_panel.visible, "もう一度押すと説明が閉じる")
+	await press_shortcut(KEY_H)
+	check(not main.help_panel.visible, "もう一度⌘Hを押すと閉じる")
+	
+	# メッセージの記録（⌘L）
+	main.show_message("テストのメッセージ1")
+	main.show_message("テストのメッセージ2")
+	check(main.last_message == "テストのメッセージ2" and main.message_label.text.contains("テストのメッセージ1"), "下部バーには新しいメッセージが下に出て、前のメッセージも残る")
+	check(not main.log_panel.visible, "メッセージの記録は最初は閉じている")
+	await press_shortcut(KEY_L)
+	await wait_frames(2)
+	check(main.log_panel.visible, "⌘Lでメッセージの記録が開く")
+	check(main.log_label.text.contains("テストのメッセージ1") and main.log_label.text.contains("テストのメッセージ2"), "記録にはゲーム開始からのメッセージが時刻つきで並ぶ")
+	await capture("ui_03_log_open")
+	await press_shortcut(KEY_L)
+	check(not main.log_panel.visible, "もう一度⌘Lを押すと閉じる")
+	
+	# 画面の拡大・縮小（⌘+ / ⌘- / ⌘0）
+	var zoom_before: float = main.camera.zoom.x
+	await press_shortcut(KEY_EQUAL)
+	check(main.camera.zoom.x > zoom_before, "⌘+で画面が拡大する")
+	await press_shortcut(KEY_MINUS)
+	await press_shortcut(KEY_MINUS)
+	check(main.camera.zoom.x < zoom_before, "⌘-で画面が縮小する")
+	await press_shortcut(KEY_0)
+	check(is_equal_approx(main.camera.zoom.x, main.camera.DEFAULT_ZOOM), "⌘0で拡大率がもとに戻る")
+	
+	# ビルの状況（★の行）は上部バーにある
+	check(main.stats_label.text.begins_with("★"), "ビルの状況（★）は上部バーに出る")
+	check(main.stats_label.get_global_rect().position.y < main.hover_label.get_global_rect().position.y, "★の行は、カーソルの情報より上にある")
 	return true
 
 # ---------------------------------------------------
@@ -371,7 +394,7 @@ func run_elevator_scenario() -> bool:
 	check(arrivals == [15], "呼んだ階(y=15)に停まる")
 	check(car.position == main.tile_map.map_to_local(Vector2i(x, 15)), "カゴが階の位置にぴったり停まる")
 	check(car.state == car.State.DOORS_OPEN, "停まったら扉が開く")
-	check(main.message_label.text.contains("到着"), "到着メッセージが出る")
+	check(main.last_message.contains("到着"), "到着メッセージが出る")
 	await capture("elevator_02_arrived")
 	
 	# 集合制御: 下(18)へ向かう途中で17を呼ぶ → 先に17に寄ってから18へ
@@ -403,7 +426,7 @@ func run_elevator_scenario() -> bool:
 	await click_cell(Vector2i(x, 18), MOUSE_BUTTON_RIGHT)
 	await click_cell(Vector2i(x, 16), MOUSE_BUTTON_RIGHT)
 	check(main.get_building_type(Vector2i(x, 18)) == "elevator" and main.get_building_type(Vector2i(x, 16)) == "elevator", "シャフトの途中や最下段は撤去できない")
-	check(main.message_label.text.begins_with("上の階の建物を支えているため撤去できません"), "撤去できない理由がメッセージで出る")
+	check(main.last_message.begins_with("上の階の建物を支えているため撤去できません"), "撤去できない理由がメッセージで出る")
 	
 	# 一番上のマスを撤去 → 同じカゴのまま範囲が縮む
 	await click_cell(Vector2i(x, 14), MOUSE_BUTTON_RIGHT)
@@ -609,7 +632,7 @@ func run_commute_scenario() -> bool:
 	print("    at_office=", commute.count_at_office(), " in_building=", commute.count_in_building(), " unreachable=", commute.count_unreachable())
 	check(commute.count_at_office() == 52, "10時45分には通勤できる52人全員が自分のオフィスに着いている")
 	check(commute.count_unreachable() == 4, "孤立したオフィスの4人は通勤できない")
-	check(main.stats_label.text.contains("通勤できない 4人"), "下部バーに通勤できない人数が出る")
+	check(main.stats_label.text.contains("通勤できない 4人"), "上部バーに通勤できない人数が出る")
 	check(elevator_stops[0] > 0, "上の階の社員はエレベーターで出勤する")
 	check(max_stress > 0.0, "エレベーター待ちで社員にストレスがたまる")
 	await capture("commute_02_at_office")
@@ -664,7 +687,7 @@ func run_economy_scenario() -> bool:
 	check(report.get("garbage") == 52 and report.get("garbage_cost") == 52000, "ゴミ処理場がないとゴミ52を外部委託して5.2万円かかる")
 	check(main.funds == funds_before + 456000, "資金が差し引き45.6万円増える")
 	check(main.funds_label.text.contains("（前日 +456,000円）"), "資金の横に前日の収支が出る")
-	check(main.message_label.text.contains("1日目の決算"), "決算の内容がメッセージに出る")
+	check(main.last_message.contains("1日目の決算"), "決算の内容がメッセージに出る")
 	await capture("economy_01_settled")
 	return true
 
@@ -710,12 +733,13 @@ func run_hotel_scenario() -> bool:
 	check(guests_in_room == 3, "薄紫の宿泊客がそれぞれの部屋に着いている")
 	await hover_cell(room_cells[0] + Vector2i(1, 0))
 	check(main.hover_label.text.contains("シングル（宿泊中）"), "部屋のどのマスにカーソルを合わせても部屋の状態が出る")
-	check(main.stats_label.text.contains("客室: 宿泊 3"), "下部バーに客室の状況が出る")
+	check(main.stats_label.text.contains("客室: 宿泊 3"), "上部バーに客室の状況が出る")
 	var viewport_width: float = main.get_viewport_rect().size.x
-	var help_button_right := 0.0
+	var ui_right := 0.0
 	for node in main.find_children("*", "Button", true, false):
-		help_button_right = maxf(help_button_right, node.get_global_rect().end.x)
-	check(help_button_right <= viewport_width, "文字が増えてもUIのボタンが画面からはみ出さない")
+		ui_right = maxf(ui_right, node.get_global_rect().end.x)
+	check(ui_right <= viewport_width, "文字が増えてもUIのボタンが画面からはみ出さない")
+	check(main.stats_label.get_global_rect().end.x <= viewport_width, "上部バーのビルの状況も画面からはみ出さない")
 	await capture("hotel_01_night")
 	
 	# 翌朝 → チェックアウトして帰り、部屋は清掃待ち → 清掃員が掃除する
@@ -744,7 +768,7 @@ func run_hotel_scenario() -> bool:
 	main.clock.set_process(false)
 	check(main.economy_system.last_report.get("hotel") == 60000, "2日目の決算に宿泊料6万円が入る")
 	check(main.economy_system.last_report.get("maintenance") == 10000, "ハウスキーパー室の維持費1万円がかかる")
-	check(main.message_label.text.contains("宿泊料 +60,000円"), "決算のメッセージに宿泊料が出る")
+	check(main.last_message.contains("宿泊料 +60,000円"), "決算のメッセージに宿泊料が出る")
 	return true
 
 # ---------------------------------------------------
@@ -807,7 +831,7 @@ func run_lunch_scenario() -> bool:
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
 	check(main.economy_system.last_report.get("food") == 54000, "決算に飲食店の売上5.4万円が入る")
-	check(main.message_label.text.contains("飲食 +54,000円"), "決算のメッセージに飲食の売上が出る")
+	check(main.last_message.contains("飲食 +54,000円"), "決算のメッセージに飲食の売上が出る")
 	return true
 
 # ---------------------------------------------------
@@ -848,7 +872,7 @@ func run_recycling_scenario() -> bool:
 	check(report.get("garbage_cost") == 12000, "処理しきれない12を外部委託して1.2万円かかる")
 	check(report.get("maintenance") == 22000, "維持費はエレベーター1.2万円＋ゴミ処理場1万円")
 	check(report.get("total") == 520000 - 22000 - 12000, "合計は+48.6万円（ゴミ処理場なしより3万円得）")
-	check(main.message_label.text.contains("ゴミ処理 -12,000円（ゴミ52・処理能力40）"), "決算のメッセージにゴミの量と処理能力が出る")
+	check(main.last_message.contains("ゴミ処理 -12,000円（ゴミ52・処理能力40）"), "決算のメッセージにゴミの量と処理能力が出る")
 	return true
 
 # ---------------------------------------------------
@@ -869,7 +893,7 @@ func run_rating_scenario() -> bool:
 	check(rating.stars == 1 and rating.population() == 52, "最初は★1、人口52（社員52人）")
 	check(rating.missing_for_next() == ["警備室"], "★2に足りないのは警備室だけ")
 	await wait_frames(2)
-	check(main.stats_label.text.begins_with("★1 人口52（★2まで: 警備室）"), "下部バーに評価と次の★に足りないものが出る")
+	check(main.stats_label.text.begins_with("★1 人口52（★2まで: 警備室）"), "上部バーに評価と次の★に足りないものが出る")
 	
 	build_support(cells_row(18, 9, 13), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	await choose_mode("security")
@@ -881,7 +905,7 @@ func run_rating_scenario() -> bool:
 	await run_day(1)
 	var report = main.economy_system.last_report
 	check(rating.stars == 2, "1日目の決算で★2に上がる")
-	check(main.message_label.text.begins_with("ビルの評価が★2に上がりました！"), "昇格がメッセージで知らされる")
+	check(main.last_message.begins_with("ビルの評価が★2に上がりました！"), "昇格がメッセージで知らされる")
 	check(report.get("bonus") == 0, "昇格した日の決算にはまだボーナスが付かない")
 	check(report.get("maintenance") == 12000 + 5000, "警備室の維持費5千円がかかる")
 	await capture("rating_01_star2")
@@ -890,7 +914,7 @@ func run_rating_scenario() -> bool:
 	await run_day(2)
 	report = main.economy_system.last_report
 	check(report.get("bonus") == 130000, "★2では賃料に25%（13万円）の評価ボーナスが付く")
-	check(main.message_label.text.contains("評価ボーナス +130,000円"), "決算のメッセージに評価ボーナスが出る")
+	check(main.last_message.contains("評価ボーナス +130,000円"), "決算のメッセージに評価ボーナスが出る")
 	
 	# ★3の条件
 	check(rating.missing_for_next() == ["人口120", "メディカルセンター", "ゴミ処理場"], "★3には人口120・メディカルセンター・ゴミ処理場が必要")
@@ -947,7 +971,7 @@ func run_housing_scenario() -> bool:
 	main.clock.set_time(2, 6, 59)
 	await wait_until(func(): return main.economy_system.last_report.get("day") == 1, 10.0)
 	check(main.economy_system.last_report.get("housing") == 1400000, "1日目の決算に住宅販売140万円が入る")
-	check(main.message_label.text.contains("住宅販売 +1,400,000円"), "決算のメッセージに住宅販売が出る")
+	check(main.last_message.contains("住宅販売 +1,400,000円"), "決算のメッセージに住宅販売が出る")
 	check(main.economy_system.last_report.get("garbage") >= 2, "入居済みの住宅2戸からゴミが出る（1戸につき1）")
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
 	check(housing.count_at_home() == 0, "朝のうちに入居者は全員出かけている")
@@ -1158,7 +1182,7 @@ func run_event_scenario() -> bool:
 	Engine.time_scale = 1.0
 	clock.set_process(false)
 	check(main.economy_system.last_report.get("event") == 165000, "決算にイベントの売上16.5万円が入る")
-	check(main.message_label.text.contains("イベント +165,000円"), "決算のメッセージにイベントの売上が出る")
+	check(main.last_message.contains("イベント +165,000円"), "決算のメッセージにイベントの売上が出る")
 	check(main.economy_system.last_report.get("garbage") == 2, "来客27人分のゴミ2が出る")
 	return true
 
@@ -1190,7 +1214,7 @@ func run_subway_scenario() -> bool:
 	await choose_mode("subway")
 	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(9, 18)), "1階には地下鉄駅を建てられない")
-	check(main.message_label.text.contains("地下鉄駅は地下（1階より下）にしか建てられません"), "建てられない理由がメッセージで出る")
+	check(main.last_message.contains("地下鉄駅は地下（1階より下）にしか建てられません"), "建てられない理由がメッセージで出る")
 	var station := Vector2i(9, 19)
 	build_support(cells_row(18, 9, 12), "lobby") # 足場: 地下の駅は1階の真下にしか掘れないので、1階にロビーを足す
 	await click_cell(station, MOUSE_BUTTON_LEFT)
@@ -1321,9 +1345,9 @@ func run_multi_car_scenario() -> bool:
 	check(elevators.get_cars_at(Vector2i(8, 15)).size() == 4, "カゴを4台まで増やせる")
 	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_LEFT)
 	check(elevators.get_cars_at(Vector2i(8, 15)).size() == 4, "5台目は追加できない")
-	check(main.message_label.text.contains("4台まで"), "追加できない理由がメッセージで出る")
+	check(main.last_message.contains("4台まで"), "追加できない理由がメッセージで出る")
 	await click_cell(Vector2i(6, 13), MOUSE_BUTTON_LEFT)
-	check(main.message_label.text.contains("シャフトに追加します"), "シャフト以外をクリックすると理由がメッセージで出る")
+	check(main.last_message.contains("シャフトに追加します"), "シャフト以外をクリックすると理由がメッセージで出る")
 	await hover_cell(Vector2i(8, 14))
 	check(main.hover_label.text.contains("カゴ4台: 0/8・0/8・0/8・0/8人"), "カーソルを合わせると各カゴの人数が出る")
 	
@@ -1669,7 +1693,7 @@ func run_vacancy_scenario() -> bool:
 		if tenants.offices[origin].vacant:
 			vacant.append(origin)
 	check(vacant.size() == bad_twice.size(), "悪い日が3日続いたオフィスはすべて退去して空室になる（%d棟）" % vacant.size())
-	check(main.message_label.text.contains("オフィス退去 %d棟" % vacant.size()), "決算のメッセージに退去した数が出る")
+	check(main.last_message.contains("オフィス退去 %d棟" % vacant.size()), "決算のメッセージに退去した数が出る")
 	check(main.rating_system.population() == 52 - 4 * vacant.size(), "空室のオフィスの社員は人口に数えない")
 	await hover_cell(vacant[0])
 	check(main.hover_label.text.contains("空室・2日後に新しいテナントが入居"), "空室にカーソルを合わせると入居までの日数が出る")
@@ -1699,7 +1723,7 @@ func run_vacancy_scenario() -> bool:
 	check(moved_in, "空室になって2日たつと、新しいテナントが入居する（%d棟）" % vacant.size())
 	check(tenants.count_vacant() == second_wave, "4日目に空室になったオフィスは、まだ空室のまま（%d棟）" % second_wave)
 	check(tenants.offices[vacant[0]].rating == tenants.Rating.GOOD and tenants.offices[vacant[0]].bad_days == 0, "新しいテナントの評価は「良い」から始まる")
-	check(main.message_label.text.contains("入居 %d棟" % vacant.size()), "決算のメッセージに入居した数が出る")
+	check(main.last_message.contains("入居 %d棟" % vacant.size()), "決算のメッセージに入居した数が出る")
 	return true
 
 # ---------------------------------------------------
@@ -1773,7 +1797,7 @@ func run_home_rating_scenario() -> bool:
 	check(tenants.homes[home].vacant, "家族のストレスが高い日が3日続くと、家族が退去する")
 	check(not housing.homes[home].moved_in and housing.count_at_home() == 0, "退去すると住宅は空になる")
 	check(main.economy_system.last_report.get("refund") == 700000, "退去した住宅の販売収入70万円を返金する")
-	check(main.message_label.text.contains("住宅の返金 -700,000円（1戸退去）"), "決算のメッセージに返金が出る")
+	check(main.last_message.contains("住宅の返金 -700,000円（1戸退去）"), "決算のメッセージに返金が出る")
 	await hover_cell(home)
 	check(main.hover_label.text.contains("退去・2日後に入居者を募集"), "カーソルを合わせると、入居者の募集までの日数が出る")
 	await capture("home_rating_01_moved_out")
@@ -1857,7 +1881,7 @@ func run_sky_lobby_scenario() -> bool:
 	await choose_mode("sky_lobby")
 	await click_cell(Vector2i(6, 5), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(6, 5)), "14階にはスカイロビーを建てられない")
-	check(main.message_label.text.contains("15階・30階・45階…にしか建てられません（ここは14階）"), "建てられる階と、今の階がメッセージで出る")
+	check(main.last_message.contains("15階・30階・45階…にしか建てられません（ここは14階）"), "建てられる階と、今の階がメッセージで出る")
 	for x in range(0, 5):
 		await click_cell(Vector2i(x, 4), MOUSE_BUTTON_LEFT)
 	check(main.find_cells_of_type("sky_lobby").size() == 5, "15階にはスカイロビーを1マスずつ横に伸ばせる")
@@ -1921,7 +1945,7 @@ func run_express_elevator_scenario() -> bool:
 	check(not main.can_click_cell(Vector2i(8, 10)), "急行モードで途中の階のシャフトは赤く表示される")
 	check(main.can_click_cell(Vector2i(8, 18)), "1階のシャフトはクリックでカゴを呼べる")
 	await click_cell(Vector2i(8, 10), MOUSE_BUTTON_LEFT)
-	check(main.message_label.text == "急行エレベーターは1階とスカイロビーの階にしか停まりません", "途中の階ではカゴを呼べない")
+	check(main.last_message == "急行エレベーターは1階とスカイロビーの階にしか停まりません", "途中の階ではカゴを呼べない")
 	check(main.get_building_type(Vector2i(8, 10)) == "express_elevator", "シャフトをクリックしても建て直さない")
 	
 	# 1階の入口から、急行 → 15階で標準に乗り換え → 17階のオフィスへ
@@ -1968,7 +1992,7 @@ func run_support_scenario() -> bool:
 	# 右にはみ出す（x=8・9 の下が空いている）と建てられない
 	await click_cell(Vector2i(6, 14), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(6, 14)), "一部でも下が空いていると建てられない")
-	check(main.message_label.text.begins_with("下の階に建物がないと建てられません"), "建てられない理由（支えがない）がメッセージで出る")
+	check(main.last_message.begins_with("下の階に建物がないと建てられません"), "建てられない理由（支えがない）がメッセージで出る")
 	await hover_cell(Vector2i(6, 14))
 	check(not main.can_click_cell(Vector2i(6, 14)), "支えがない場所は赤く表示される")
 	await click_cell(Vector2i(0, 12), MOUSE_BUTTON_LEFT)
@@ -1988,20 +2012,20 @@ func run_support_scenario() -> bool:
 	check(main.get_building_type(Vector2i(0, 20)) == "office", "B1階の真下のB2階にも建てられる")
 	await click_cell(Vector2i(10, 19), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(10, 19)), "上の階に建物がない地下には建てられない")
-	check(main.message_label.text == "地下は、上の階に建物がある場所にしか建てられません", "建てられない理由（地下）がメッセージで出る")
+	check(main.last_message == "地下は、上の階に建物がある場所にしか建てられません", "建てられない理由（地下）がメッセージで出る")
 	await capture("support_01")
 	
 	# 支えている建物は撤去できない（上の階から＝地下は下の階から撤去する）
 	var funds_before: int = main.funds
 	await click_cell(Vector2i(2, 15), MOUSE_BUTTON_RIGHT)
 	check(main.get_building_type(Vector2i(2, 15)) == "office", "上の階の建物を支えているオフィスは撤去できない")
-	check(main.message_label.text.begins_with("上の階の建物を支えているため撤去できません"), "撤去できない理由がメッセージで出る")
+	check(main.last_message.begins_with("上の階の建物を支えているため撤去できません"), "撤去できない理由がメッセージで出る")
 	check(main.funds == funds_before, "撤去できないときは払い戻しもない")
 	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_RIGHT)
 	check(main.get_building_type(Vector2i(0, 18)) == "lobby", "上にオフィスが乗っているロビーは撤去できない")
 	await click_cell(Vector2i(0, 19), MOUSE_BUTTON_RIGHT)
 	check(main.get_building_type(Vector2i(0, 19)) == "office", "下にB2階があるB1階は撤去できない")
-	check(main.message_label.text.begins_with("下の階の建物を支えているため撤去できません"), "地下は下の階から撤去する")
+	check(main.last_message.begins_with("下の階の建物を支えているため撤去できません"), "地下は下の階から撤去する")
 	await click_cell(Vector2i(0, 14), MOUSE_BUTTON_RIGHT)
 	check(main.is_cell_empty(Vector2i(0, 14)), "一番上の建物は撤去できる")
 	await click_cell(Vector2i(2, 15), MOUSE_BUTTON_RIGHT)
@@ -2095,11 +2119,11 @@ func run_home_floor_scenario() -> bool:
 	await choose_mode("set_home")
 	check(main.mode_select.text == "待機階を設定" and main.mode_info_label.text.begins_with("無料"), "建設メニューに「待機階を設定」がある")
 	await click_cell(Vector2i(0, 17), MOUSE_BUTTON_LEFT)
-	check(main.message_label.text == "待機階はエレベーターのシャフトに設定します", "シャフト以外をクリックすると理由がメッセージで出る")
+	check(main.last_message == "待機階はエレベーターのシャフトに設定します", "シャフト以外をクリックすると理由がメッセージで出る")
 	check(not main.can_click_cell(Vector2i(0, 17)) and main.can_click_cell(Vector2i(8, 16)), "シャフトのマスだけ操作できる（緑）")
 	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
 	check(elevators.get_home(Vector2i(8, 18)) == 16, "クリックした階がシャフトの待機階になる")
-	check(main.message_label.text.begins_with("3階を待機階にしました"), "何階を待機階にしたかがメッセージで出る")
+	check(main.last_message.begins_with("3階を待機階にしました"), "何階を待機階にしたかがメッセージで出る")
 	check(car.has_home_floor and car.home_y == 16, "シャフトのカゴに待機階が伝わる")
 	check(elevators.get_home_cells() == [Vector2i(8, 16)], "待機階のマスに印を描く")
 	await hover_cell(Vector2i(8, 16))
@@ -2123,7 +2147,7 @@ func run_home_floor_scenario() -> bool:
 	await choose_mode("set_home")
 	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
 	check(elevators.get_home(Vector2i(8, 18)) == null and not car.has_home_floor, "同じ階をもう一度クリックすると待機階を解除する")
-	check(main.message_label.text.begins_with("待機階を解除しました"), "解除したことがメッセージで出る")
+	check(main.last_message.begins_with("待機階を解除しました"), "解除したことがメッセージで出る")
 	check(elevators.get_home_cells().is_empty(), "印も消える")
 	return true
 
@@ -2150,12 +2174,12 @@ func run_service_hours_scenario() -> bool:
 	await choose_mode("service")
 	check(main.mode_select.text == "稼働時間帯", "建設メニューに「稼働時間帯」がある")
 	await click_cell(Vector2i(0, 17), MOUSE_BUTTON_LEFT)
-	check(main.message_label.text == "稼働時間帯はエレベーターのシャフトに設定します", "シャフト以外をクリックすると理由がメッセージで出る")
+	check(main.last_message == "稼働時間帯はエレベーターのシャフトに設定します", "シャフト以外をクリックすると理由がメッセージで出る")
 	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
 	check(elevators.get_service(Vector2i(8, 16)).name == "6時〜24時", "1回クリックすると6時〜24時になる")
 	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
 	check(elevators.get_service(Vector2i(8, 16)).name == "8時〜20時", "もう1回クリックすると8時〜20時になる")
-	check(main.message_label.text.contains("「8時〜20時」にしました"), "切り替えた時間帯がメッセージで出る")
+	check(main.last_message.contains("「8時〜20時」にしました"), "切り替えた時間帯がメッセージで出る")
 	
 	# 時間帯の外（朝7時）: 呼べず、経路にも使われない
 	main.clock.set_time(1, 7, 0)
@@ -2273,7 +2297,7 @@ func run_parking_scenario() -> bool:
 	check(main.get_building_type(Vector2i(9, 19)) == "ramp", "地下1階にはスロープを建てられる")
 	await click_cell(Vector2i(13, 20), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(13, 20)), "地下2階にはスロープを建てられない")
-	check(main.message_label.text.contains("スロープは地下1階にしか建てられません"), "建てられない理由がメッセージで出る")
+	check(main.last_message.contains("スロープは地下1階にしか建てられません"), "建てられない理由がメッセージで出る")
 	
 	# 駐車場は、スロープまで車で行けるときだけ使える
 	await choose_mode("parking")
@@ -2357,7 +2381,7 @@ func run_shop_scenario() -> bool:
 	await wait_until(func(): return main.economy_system.last_report.get("day") == 6, 20.0)
 	main.clock.set_process(false)
 	check(main.economy_system.last_report.get("shop") == 15000, "決算にショップの売上1.5万円が入る")
-	check(main.message_label.text.contains("ショップ +15,000円"), "決算のメッセージにショップの売上が出る")
+	check(main.last_message.contains("ショップ +15,000円"), "決算のメッセージにショップの売上が出る")
 	check(main.economy_system.MAINTENANCE["shop"] == 3000, "ショップの維持費は3,000円/日")
 	return true
 
@@ -2417,7 +2441,7 @@ func run_cinema_scenario() -> bool:
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
 	check(main.economy_system.last_report.get("cinema") == 3 * 14 * 1800, "決算に3回の上映の売上（75,600円）が入る")
-	check(main.message_label.text.contains("映画館 +75,600円"), "決算のメッセージに映画館の売上が出る")
+	check(main.last_message.contains("映画館 +75,600円"), "決算のメッセージに映画館の売上が出る")
 	check(main.economy_system.MAINTENANCE["cinema"] == 20000, "映画館の維持費は2万円/日")
 	return true
 
@@ -2452,7 +2476,7 @@ func run_size_limit_scenario() -> bool:
 	await choose_mode("elevator")
 	await click_cell(Vector2i(50, 18), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(50, 18)), "上限の外はクリックしても建たない")
-	check(main.message_label.text.begins_with("ビルの幅は100マスまでです"), "建てられない理由がメッセージで出る")
+	check(main.last_message.begins_with("ビルの幅は100マスまでです"), "建てられない理由がメッセージで出る")
 	check(not main.can_click_cell(Vector2i(50, 18)), "上限の外は赤く表示される")
 	return true
 
@@ -2493,6 +2517,15 @@ func cells_row(y: int, x0: int, x1: int) -> Array:
 	for x in range(x0, x1 + 1):
 		cells.append(Vector2i(x, y))
 	return cells
+
+# ⌘（Command）を押しながらキーを押す（⌘H・⌘Lなどのショートカット）
+func press_shortcut(keycode: Key) -> void:
+	var press := InputEventKey.new()
+	press.keycode = keycode
+	press.pressed = true
+	press.meta_pressed = true
+	root.push_input(press)
+	await wait_frames(2)
 
 # 建設メニューから選ぶ（プレイヤーがリストで項目を選んだときと同じく item_selected を送る）
 func choose_mode(mode: String) -> void:

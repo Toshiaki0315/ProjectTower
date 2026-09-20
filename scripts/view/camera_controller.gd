@@ -8,6 +8,7 @@ extends Camera2D
 # ---------------------------------------------------
 
 const DEFAULT_ZOOM := 3.0
+const KEY_ZOOM_STEP := 1.25 # ⌘+ / ⌘- で1回に変える拡大率
 const MIN_ZOOM := 1.0
 const MAX_ZOOM := 6.0
 const WHEEL_ZOOM_STEP := 1.15 # ホイール1回あたりの拡大率
@@ -82,5 +83,13 @@ func zoom_at(screen_pos: Vector2, factor: float) -> void:
 	zoom = Vector2.ONE * new_zoom
 
 # 画面上の点に写っているワールド座標
+# 画面の真ん中を動かさずに拡大・縮小する（⌘+ / ⌘-）
+func zoom_by(factor: float) -> void:
+	zoom_at(get_viewport_rect().size / 2.0, factor)
+
+# 拡大率を最初の大きさに戻す（⌘0）
+func reset_zoom() -> void:
+	zoom = Vector2.ONE * DEFAULT_ZOOM
+
 func screen_to_world(screen_pos: Vector2) -> Vector2:
 	return position + (screen_pos - get_viewport_rect().size / 2.0) / zoom.x

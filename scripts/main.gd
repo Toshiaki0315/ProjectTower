@@ -80,9 +80,14 @@ const SCROLL_MARGIN_ROWS := 10 # スクロールできる範囲の、建物の�
 var funds: int = 2000000
 var current_mode: String = "lobby" # 更地から始めるので、最初はロビーを選んでおく
 var funds_label: Label # 資金表示用のUIラベル
-var message_label: Label # 操作結果のメッセージ表示用
+var message_label: Label # 操作結果のメッセージ（下から数行ぶん流れる）
+var log_panel: Control   # ゲーム開始からのメッセージの記録（⌘Lで開閉）
+var log_label: Label
+var log_scroll: ScrollContainer
+var message_log: Array[String] = [] # ゲーム開始からのメッセージ（時刻つき）
+var last_message := ""              # 一番新しいメッセージ（時刻なし）
 var hover_label: Label # カーソル下のマスの情報表示用
-var help_panel: Control # 操作説明（ボタンで表示/非表示）
+var help_panel: Control # 操作説明（⌘Hで開閉）
 var mode_select: OptionButton # 建設メニュー（リストから建物などを選ぶ）
 var mode_info_label: Label # 選んだものの費用・大きさの表示
 var v_scroll: VScrollBar # マップの上下スクロールバー
@@ -119,6 +124,8 @@ const GROUND_FLOOR_Y := 18
 const MAX_FLOORS_ABOVE := 150 # 建てられる一番上の階（地上150階）
 const MAX_FLOORS_BELOW := 50  # 掘れる一番下の階（地下50階）
 const MAX_WIDTH := 100        # ビルの横幅（マス数）。0を中心に左右へ半分ずつ
+const MESSAGE_LINES := 3      # 下部バーに出しておくメッセージの行数（古いものは上へ流れて消える）
+const MESSAGE_LOG_MAX := 500  # ⌘Lで見られるメッセージの記録の数
 var ground_y := GROUND_FLOOR_Y
 
 func _ready() -> void:
@@ -217,12 +224,13 @@ func focus_camera_on_building():
 # UIの自動生成ロジック
 # ---------------------------------------------------
 # 画面構成:
-#   上部バー    … 1段目: 資金 / 日付と時刻 / 速度 / 操作説明ボタン
+#   上部バー    … 1段目: 資金 / 日付と時刻 / 速度
 #                  2段目: モード切り替えボタン（入りきらなければ折り返す）
-#   操作説明    … 上部バーの下に表示（ボタンで開閉）
+#                  3段目: ビルの状況（★・人口・社員・客室）
+#   操作説明    … 上部バーの下に表示（⌘Hで開閉）。メッセージの記録は⌘Lで開閉
 #   （マップ）  … クリックはそのままマップに届く
-#   下部バー    … 1段目: 操作結果のメッセージ
-#                  2段目: 評価（★）・社員・客室の状況 / カーソル下のマスの情報
+#   下部バー    … 1段目: 操作結果のメッセージ（新しいものが下に出て、古いものは流れる）
+#                  2段目: カーソル下のマスの情報
 # バーの上のクリックはバーが受け止めるので、下のマスに建設されることはない。
 func create_ui():
 	var canvas = CanvasLayer.new()
@@ -240,7 +248,7 @@ func create_ui():
 	canvas.add_child(layout)
 	
 	# --- 上部バー（2段） ---
-	#   1段目: 資金 / 日付と時刻 / 速度 / 操作説明
+	#   1段目: 資金 / 日付と時刻 / 速度
 	#   2段目: モード切り替えボタン
 	var top_rows = VBoxContainer.new()
 	top_rows.add_theme_constant_override("separation", 4 * UI_SCALE)
@@ -251,6 +259,11 @@ func create_ui():
 	var build_row = HBoxContainer.new()
 	build_row.add_theme_constant_override("separation", 8 * UI_SCALE)
 	top_rows.add_child(build_row)
+	# ビルの状況（★・人口・社員・客室）は上部バーの3段目
+	stats_label = Label.new()
+	stats_label.clip_text = true
+	stats_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	top_rows.add_child(stats_label)
 	
 	funds_label = Label.new()
 	funds_label.add_theme_font_size_override("font_size", 20 * UI_SCALE)
@@ -274,11 +287,7 @@ func create_ui():
 		btn.pressed.connect(func(): Engine.time_scale = speed)
 		status_row.add_child(btn)
 	
-	var help_button = Button.new()
-	help_button.text = "操作説明"
-	help_button.toggle_mode = true
-	help_button.toggled.connect(func(on): help_panel.visible = on)
-	status_row.add_child(help_button)
+	# 操作説明（⌘H）とメッセージの記録（⌘L）は、ボタンではなくショートカットで開く
 	
 	# 建設メニュー: リストから選んで、マップをクリックして建てる（見出しごとにまとめる）
 	var build_label = Label.new()
@@ -317,6 +326,7 @@ func create_ui():
 		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
 		"入口: 1階の左端と地下鉄駅（地下にだけ建てられる）。人は近い方の入口から出入りする",
 		"速度: 1x / 4x / 16x で時間の進みを早送り",
+		"ショートカット: ⌘H（この説明の開閉） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
 		"結婚式場（横6マス）: 休日の10〜11時に12人が来て13時まで（1人1万円）",
 		"イベントホール（横6マス）: 休日の13〜14時に15人が来て17時まで（1人3千円）",
@@ -344,6 +354,21 @@ func create_ui():
 	help_panel.visible = false
 	help_row.add_child(help_panel)
 	
+	# --- メッセージの記録（⌘Lで開閉。ゲーム開始からのメッセージを全部見られる） ---
+	var log_row = HBoxContainer.new()
+	log_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(log_row)
+	log_label = Label.new()
+	log_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	log_label.add_theme_font_size_override("font_size", 13 * UI_SCALE)
+	log_scroll = ScrollContainer.new()
+	log_scroll.custom_minimum_size = Vector2(1000, 420)
+	log_scroll.add_child(log_label)
+	log_panel = make_bar(log_scroll)
+	log_panel.visible = false
+	log_row.add_child(log_panel)
+	log_row.add_child(make_spacer())
+	
 	# --- マップ部分（クリックはそのまま通す）。右端に上下スクロールバー ---
 	var map_row = HBoxContainer.new()
 	map_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -356,32 +381,25 @@ func create_ui():
 	map_row.add_child(v_scroll)
 	
 	# --- 下部バー（2段） ---
-	#   1段目: 操作結果のメッセージ
-	#   2段目: 評価（★）・社員・客室の状況 / カーソル下のマスの情報
+	#   1段目: 操作結果のメッセージ（新しいものが下に出て、古いものは流れていく）
+	#   2段目: カーソル下のマスの情報
 	var bottom_rows = VBoxContainer.new()
 	bottom_rows.add_theme_constant_override("separation", 2 * UI_SCALE)
 	layout.add_child(make_bar(bottom_rows))
 	
 	message_label = Label.new()
 	message_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
-	# 長いメッセージ（決算など）は折り返して全文を表示する（バーが画面幅を超えないように）
-	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	message_label.clip_text = true
+	message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	# 新しいメッセージが一番下に出て、古いメッセージは上へ流れていく（MESSAGE_LINES 行ぶん）
+	message_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	message_label.custom_minimum_size.y = MESSAGE_LINES * BASE_FONT_SIZE * UI_SCALE * 1.2
 	bottom_rows.add_child(message_label)
 	
-	var info_row = HBoxContainer.new()
-	bottom_rows.add_child(info_row)
-	
-	stats_label = Label.new()
-	stats_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stats_label.clip_text = true
-	stats_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	info_row.add_child(stats_label)
-	
-	var separator = VSeparator.new()
-	info_row.add_child(separator)
-	
 	hover_label = Label.new()
-	info_row.add_child(hover_label)
+	hover_label.clip_text = true
+	hover_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	bottom_rows.add_child(hover_label)
 	
 	update_mode_select()
 
@@ -539,9 +557,26 @@ func update_hover_label():
 
 # 画面とログにメッセージを出す
 func show_message(text: String):
+	last_message = text
+	if text == "": # 表示を消すだけ（記録には残さない）
+		if message_label:
+			message_label.text = ""
+		return
+	message_log.append("%d日目 %02d:%02d  %s" % [clock.day, clock.minute_of_day() / 60, clock.minute_of_day() % 60, text] if clock else text)
+	if message_log.size() > MESSAGE_LOG_MAX:
+		message_log.remove_at(0)
 	if message_label:
-		message_label.text = text
+		# 下部バーには新しい方から MESSAGE_LINES 行ぶんだけ出す（古いものは上へ流れて消える）
+		message_label.text = "\n".join(message_log.slice(maxi(message_log.size() - MESSAGE_LINES, 0)))
+	if log_label and log_panel.visible:
+		update_log_panel()
 	print(text)
+
+# ⌘Lで開くメッセージの記録を、最新のメッセージまでスクロールして表示する
+func update_log_panel() -> void:
+	log_label.text = "\n".join(message_log)
+	await get_tree().process_frame
+	log_scroll.scroll_vertical = int(log_scroll.get_v_scroll_bar().max_value)
 
 # ---------------------------------------------------
 # グリッド情報の管理
@@ -951,6 +986,9 @@ func handle_resident_click(cell: Vector2i):
 # クリックして建設・撤去するロジック
 # ---------------------------------------------------
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and handle_shortcut(event):
+		get_viewport().set_input_as_handled()
+		return
 	# UIの上以外でマウスが動いたら、カーソル下のマスの強調表示を更新する
 	if event is InputEventMouseMotion:
 		grid_overlay.hover_screen_pos = event.position
@@ -977,6 +1015,29 @@ func _unhandled_input(event: InputEvent) -> void:
 			build_at(map_pos)
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
 		demolish_at(map_pos)
+
+# ⌘（Ctrl）と組み合わせるショートカット。受け付けたら true
+#   ⌘H: 操作説明の開閉 / ⌘L: メッセージの記録の開閉
+#   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
+func handle_shortcut(event: InputEventKey) -> bool:
+	if not (event.meta_pressed or event.ctrl_pressed):
+		return false
+	match event.keycode:
+		KEY_H:
+			help_panel.visible = not help_panel.visible
+		KEY_L:
+			log_panel.visible = not log_panel.visible
+			if log_panel.visible:
+				update_log_panel()
+		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:
+			camera.zoom_by(camera.KEY_ZOOM_STEP)
+		KEY_MINUS, KEY_KP_SUBTRACT:
+			camera.zoom_by(1.0 / camera.KEY_ZOOM_STEP)
+		KEY_0, KEY_KP_0:
+			camera.reset_zoom()
+		_:
+			return false
+	return true
 
 # カゴ追加モードでシャフトのマスをクリックしたとき、その階にカゴを1台追加する
 func add_elevator_car(cell: Vector2i):
