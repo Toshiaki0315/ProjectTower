@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2958,6 +2958,50 @@ func run_roach_scenario() -> bool:
 	incidents.update_roaches(5)
 	check(not incidents.has_roaches(), "衛生の悪化が0に戻ると、ゴキブリはいなくなる")
 	check(logged("ゴキブリはいなくなりました"), "いなくなったことがメッセージで出る")
+	return true
+
+# ---------------------------------------------------
+# シナリオ50: 埋蔵金の発見（地下を掘ると、ときどき見つかる）
+# ---------------------------------------------------
+func run_treasure_scenario() -> bool:
+	print("[シナリオ] 埋蔵金の発見")
+	main.funds = 100000000
+	var incidents = main.incident_system
+	check(incidents.treasure_total == 0, "最初は埋蔵金を見つけていない")
+	check(incidents.treasure_chance(1) < incidents.treasure_chance(10), "深いほど見つかりやすい")
+	check(is_equal_approx(incidents.treasure_chance(100), incidents.TREASURE_CHANCE_MAX), "確率には上限がある")
+	
+	# 地下を掘っていくと、いくつかのマスで見つかる
+	var found := 0
+	var dug := 0
+	for y in range(19, 41):
+		for x in range(-20, 20):
+			incidents.dig(Vector2i(x, y))
+			dug += 1
+			if incidents.treasure_total > 0 and found == 0:
+				found = incidents.treasure_total
+	print("    掘ったマス=", dug, " 合計=", incidents.treasure_total)
+	check(incidents.treasure_total > 0, "地下を掘ると埋蔵金が見つかる（合計 %s円）" % main.format_money(incidents.treasure_total))
+	check(logged("埋蔵金を発見！"), "発見がメッセージで知らされる")
+	check(main.funds > 100000000, "見つけた埋蔵金は資金に入る")
+	
+	# 同じマスからは二度は出ない
+	var total_before: int = incidents.treasure_total
+	for y in range(19, 41):
+		for x in range(-20, 20):
+			incidents.dig(Vector2i(x, y))
+	check(incidents.treasure_total == total_before, "一度掘ったマスからは、もう見つからない")
+	
+	# 実際に地下へ建てると、そのマスを掘ったことになる
+	focus_camera(Vector2i(0, 19))
+	await wait_frames(1)
+	var funds_before: int = main.funds
+	await choose_mode("office")
+	await click_cell(Vector2i(0, 19), MOUSE_BUTTON_LEFT) # ロビーの真下（B1階。x=0〜3）
+	check(main.get_building_type(Vector2i(0, 19)) == "office", "地下にオフィスを建てられる")
+	check(incidents.dug.has(Vector2i(0, 19)) and incidents.dug.has(Vector2i(3, 19)), "建てたマスは掘ったことになる")
+	check(main.funds == funds_before - 400000 + (incidents.treasure_total - total_before), "建設費と、見つかった埋蔵金が資金に反映される")
+	await capture("treasure_01")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

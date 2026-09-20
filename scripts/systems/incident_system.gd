@@ -1,7 +1,7 @@
 extends Node
 
 # ---------------------------------------------------
-# 事件（トラブル）：爆破予告（テロ）・火災・ゴキブリの大繁殖を受け持つ。
+# 事件（トラブル）：爆破予告（テロ）・火災・ゴキブリの大繁殖・埋蔵金の発見を受け持つ。
 #
 # ■ 警備員
 #   警備室1つにつき1人が常駐する（裏方なので、サービスエレベーターにも乗れる）。
@@ -23,6 +23,10 @@ extends Node
 #   毎日 ROACH_SPAWN 棟ずつテナントに広がる。
 #   ゴキブリがいるテナントは、評価にストレス ROACH_STRESS 相当が足される。
 #   ゴミの処理が追いついて悪化が0に戻ると、いなくなる。
+# ■ 埋蔵金の発見
+#   地下に建物を建てる（＝掘る）と、マスごとに TREASURE_CHANCE の確率で埋蔵金が見つかる。
+#   深いほど見つかりやすく、金額も大きい（TREASURE_PER_FLOOR × 深さ）。
+#   同じマスで見つかるのは一度だけ（掘ったマスは覚えておく）。
 # ---------------------------------------------------
 
 const GUARD_COLOR := Color(0.45, 0.55, 0.95) # 警備員の服の色（青）
@@ -43,6 +47,12 @@ const ROACH_SPAWN := 3       # 1日に広がるテナントの数
 const ROACH_STRESS := 15.0   # ゴキブリがいるテナントの評価に足されるストレス
 const ROACH_MINUTE := 6 * 60 # 1日の判定をする時刻
 
+const TREASURE_CHANCE := 0.03      # 地下1階のマスを掘ったときに埋蔵金が見つかる確率
+const TREASURE_CHANCE_PER_FLOOR := 0.002 # 1階深くなるごとに上がる確率
+const TREASURE_CHANCE_MAX := 0.12  # 確率の上限
+const TREASURE_PER_FLOOR := 10000  # 見つかる金額（深さ1階につき）
+const TREASURE_MAX := 1000000      # 1回に見つかる金額の上限
+
 # 爆弾が仕掛けられるテナント
 const TARGET_TYPES := ["office", "hotel", "hotel_twin", "hotel_suite", "housing", "restaurant", "shop", "cinema", "wedding", "event_hall"]
 
@@ -57,6 +67,8 @@ var fire_day := 0   # 最後に出火の判定をした日
 var roaches := {}   # ゴキブリがいるテナント（左端のマス） -> true
 var roach_days := 0 # 衛生の悪化が続いている日数
 var roach_day := 0  # 最後にゴキブリの判定をした日
+var dug := {}       # すでに掘った地下のマス -> true（同じマスで2度は見つからない）
+var treasure_total := 0 # これまでに見つけた埋蔵金の合計
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -295,6 +307,36 @@ func dispatch_guards() -> void:
 			guard.go_to(best)
 		else:
 			send_guards_home(guard)
+
+# ---------------------------------------------------
+# 埋蔵金の発見
+# ---------------------------------------------------
+
+# 建物を建てたときに呼ばれる（地下のマスを掘ると、埋蔵金が見つかることがある）
+func on_built(cells: Array) -> void:
+	for cell in cells:
+		if cell.y > world.ground_y:
+			dig(cell)
+
+# 地下のマスを1つ掘る（見つかったら資金に足して、メッセージで知らせる）
+func dig(cell: Vector2i) -> void:
+	if dug.has(cell):
+		return # このマスはもう掘った
+	dug[cell] = true
+	var depth: int = cell.y - world.ground_y
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([cell, "treasure"])
+	if rng.randf() >= treasure_chance(depth):
+		return
+	var amount := mini(int(TREASURE_PER_FLOOR * depth * rng.randf_range(1.0, 2.0)), TREASURE_MAX)
+	treasure_total += amount
+	world.funds += amount
+	world.update_funds_display()
+	world.show_message("埋蔵金を発見！ %s で %s円 を掘り当てました" % [world.get_floor_name(cell.y), world.format_money(amount)])
+
+# その深さで埋蔵金が見つかる確率
+func treasure_chance(depth: int) -> float:
+	return minf(TREASURE_CHANCE + TREASURE_CHANCE_PER_FLOOR * (depth - 1), TREASURE_CHANCE_MAX)
 
 # ---------------------------------------------------
 # ゴキブリの大繁殖
