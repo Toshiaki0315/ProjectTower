@@ -8,6 +8,7 @@ const ParkingSystem := preload("res://scripts/systems/parking_system.gd")
 const VisitorSystem := preload("res://scripts/systems/visitor_system.gd")
 const NoiseSystem := preload("res://scripts/systems/noise_system.gd")
 const VipSystem := preload("res://scripts/systems/vip_system.gd")
+const IncidentSystem := preload("res://scripts/systems/incident_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -99,6 +100,7 @@ var parking_system  # 地下駐車場とスロープ（車で来るお客さん�
 var visitor_system  # 外から来るお客さん（店の客・車で来た客）の動き
 var noise_system    # 騒音（うるさい建物のまわりのマスに広がる）
 var vip_system      # VIPの宿泊（★4への昇格イベント）
+var incident_system # 事件（爆破予告と警備員）
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -153,6 +155,9 @@ func _ready() -> void:
 	vip_system = VipSystem.new()
 	vip_system.setup(self)
 	add_child(vip_system)
+	incident_system = IncidentSystem.new()
+	incident_system.setup(self)
+	add_child(incident_system)
 	parking_system = ParkingSystem.new()
 	parking_system.setup(self)
 	add_child(parking_system)
@@ -209,6 +214,8 @@ func _process(_delta: float) -> void:
 			angry += 1
 	if angry > 0:
 		stats_label.text += " / 怒っている人 %d人" % angry
+	if incident_system.has_bomb():
+		stats_label.text += " / " + incident_system.get_bomb_text()
 	if vip_system.is_visiting():
 		stats_label.text += " / VIPが来館中（ストレス %d）" % int(vip_system.vip.stress)
 	var leaving: int = tenant_system.count_about_to_leave()
@@ -362,6 +369,7 @@ func create_ui():
 		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
 		"　処理が足りない日が続くとビルが汚れ（衛生の悪化）、レベル1につきストレス5ぶん全テナントの評価が下がる",
 		"メディカルセンター（横3マス）: ビル全体のストレスの回復が速くなる（1施設で1.5倍・最大2.5倍）",
+		"爆破予告: ★2以上のビルにときどき届く。警備員が現場で解体できないと、120分後にそのテナントが吹き飛ぶ",
 		"VIP: ★4の条件がそろうと16時にVIPが来館。ストレス30以下できれいな空きスイートに着けば合格（不合格なら翌日また来る）",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
@@ -1105,6 +1113,7 @@ func call_elevator(cell: Vector2i):
 # 建物が増減したときに、建物に対応する仕組み（エレベーター・社員・客室・住宅・会場）を更新する
 func rebuild_systems():
 	elevator_system.rebuild()
+	incident_system.rebuild()
 	noise_system.rebuild()
 	parking_system.rebuild()
 	commute_system.rebuild()
@@ -1134,6 +1143,15 @@ func build_at(map_pos: Vector2i):
 	show_message("%sを建設しました %s" % [data.name, map_pos])
 
 # 撤去（売却）処理（建物のどのマスをクリックしても、その建物全体を撤去する）
+# 建物を壊す（爆発など。払い戻しはなく、支えのルールも見ない）
+func destroy_unit(cell: Vector2i) -> void:
+	if is_cell_empty(cell):
+		return
+	for c in get_unit_cells(cell):
+		tile_map.erase_cell(c)
+		building_grid.erase(c)
+	rebuild_systems()
+
 func demolish_at(map_pos: Vector2i):
 	if is_cell_empty(map_pos):
 		return

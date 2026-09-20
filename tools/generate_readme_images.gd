@@ -19,6 +19,7 @@ const HotelSystem := preload("res://scripts/systems/hotel_system.gd")
 const HousingSystem := preload("res://scripts/systems/housing_system.gd")
 const EventSystem := preload("res://scripts/systems/event_system.gd")
 const ParkingSystem := preload("res://scripts/systems/parking_system.gd")
+const IncidentSystem := preload("res://scripts/systems/incident_system.gd")
 const VisitorSystem := preload("res://scripts/systems/visitor_system.gd")
 const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 
@@ -70,6 +71,7 @@ func save_people_images() -> void:
 		"worker": Color.WHITE,                               # 社員
 		"guest": HotelSystem.GUEST_COLOR,                    # 宿泊客
 		"housekeeper": HotelSystem.HOUSEKEEPER_COLOR,        # 清掃員
+		"guard": IncidentSystem.GUARD_COLOR,                 # 警備員
 		"housing": HousingSystem.RESIDENT_COLOR,             # 住宅の入居者
 		"wedding": EventSystem.EVENT_TYPES.wedding.color,    # 結婚式の来客
 		"event": EventSystem.EVENT_TYPES.event_hall.color,   # イベントの来客

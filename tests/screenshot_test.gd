@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2780,6 +2780,72 @@ func run_vip_scenario() -> bool:
 	check(rating.waiting_for_vip(), "★4にはまたVIPの宿泊が必要")
 	return true
 
+# ---------------------------------------------------
+# シナリオ47: 爆破予告（テロ）と警備員による解体
+#   2階（y=17）に警備室(x=9〜10)と飲食店(x=12〜14)を建て、飲食店に爆弾を仕掛ける。
+# ---------------------------------------------------
+func run_bomb_scenario() -> bool:
+	print("[シナリオ] 爆破予告")
+	main.funds = 10000000
+	var incidents = main.incident_system
+	focus_camera(Vector2i(11, 17))
+	await wait_frames(1)
+	# 足場: 1階にロビーを足し、(9,18)は2階へ上がる階段にする
+	build_support([Vector2i(8, 18)] + cells_row(18, 10, 15), "lobby")
+	build_support([Vector2i(9, 18)])
+	check(incidents.guard_count() == 0, "警備室がないうちは警備員もいない")
+	main.select_mode("security")
+	main.build_at(Vector2i(9, 17))
+	await wait_frames(2)
+	check(incidents.guard_count() == 1, "警備室1つにつき警備員が1人常駐する")
+	var guard = incidents.guards[Vector2i(9, 17)].resident
+	check(guard.base_color == incidents.GUARD_COLOR and guard.staff, "警備員は青い服の裏方（サービスエレベーターに乗れる）")
+	main.select_mode("restaurant")
+	main.build_at(Vector2i(11, 17)) # 警備室(x=9〜10)の隣（x=11〜13）
+	
+	# 爆破予告 → 警備員が現場へ向かい、解体する
+	main.clock.set_time(1, 10, 0)
+	main.clock.set_process(true)
+	incidents.start_bomb(Vector2i(11, 17))
+	check(incidents.has_bomb(), "爆破予告が出ている")
+	check(logged("爆破予告！") and logged("飲食店"), "予告がメッセージで知らされる")
+	check(incidents.bomb.guard == guard, "一番近い警備員が向かう")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("爆破予告！"), "上部バーに爆破予告と残り時間が出る")
+	await capture("bomb_01_alert")
+	Engine.time_scale = 16.0
+	await wait_until(func(): return not incidents.has_bomb(), 60.0)
+	Engine.time_scale = 1.0
+	check(main.get_building_type(Vector2i(11, 17)) == "restaurant", "解体が間に合い、飲食店は無事")
+	check(logged("爆弾を解体しました"), "解体の成功がメッセージで出る")
+	
+	# 警備員がいないと、時間切れでテナントが吹き飛ぶ
+	main.select_mode("security")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_RIGHT) # 警備室を撤去
+	await wait_frames(2)
+	check(incidents.guard_count() == 0, "警備室を撤去すると警備員もいなくなる")
+	incidents.start_bomb(Vector2i(11, 17))
+	check(logged("行ける警備員がいません"), "警備員がいないと、その旨がメッセージで出る")
+	Engine.time_scale = 16.0
+	await wait_until(func(): return not incidents.has_bomb(), 60.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(main.is_cell_empty(Vector2i(11, 17)), "時間切れで飲食店が吹き飛ぶ")
+	check(logged("爆発！"), "爆発がメッセージで知らされる")
+	await capture("bomb_02_exploded")
+	
+	# 予告は★2以上のビルにだけ届く
+	check(incidents.MIN_STARS == 2 and main.rating_system.stars == 1, "今は★1")
+	check(not incidents.roll_bomb(1) and not incidents.roll_bomb(2), "★1のうちは爆破予告が来ない")
+	main.rating_system.stars = 2
+	var days := 0
+	for day in range(1, 41):
+		if incidents.roll_bomb(day):
+			days += 1
+	print("    40日のうち爆破予告が来た日: ", days)
+	check(days > 0 and days < 20, "★2以上では、ときどき爆破予告が届く（40日のうち%d日）" % days)
+	return true
+
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
 func run_day(day: int) -> void:
 	main.clock.set_time(day, 7, 59)
@@ -2817,6 +2883,11 @@ func cells_row(y: int, x0: int, x1: int) -> Array:
 	for x in range(x0, x1 + 1):
 		cells.append(Vector2i(x, y))
 	return cells
+
+# ゲーム開始からのメッセージの記録に、その文字が出てきたか
+#（メッセージはほかの知らせで上書きされることがあるので、記録から探す）
+func logged(text: String) -> bool:
+	return main.message_log.any(func(line: String): return line.contains(text))
 
 # ⌘（Command）を押しながらキーを押す（⌘H・⌘Lなどのショートカット）
 func press_shortcut(keycode: Key) -> void:

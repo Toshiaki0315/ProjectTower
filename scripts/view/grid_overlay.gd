@@ -17,6 +17,7 @@ const PixelArt := preload("res://scripts/view/pixel_art.gd")
 const ENTRANCE_COLOR := Color(0.2, 0.42, 0.72)       # 1階の入口の庇（青）
 const SUBWAY_ENTRANCE_COLOR := Color(0.25, 0.65, 0.8) # 地下鉄駅の入口の庇（水色）
 const HOME_COLOR := Color(1.0, 0.85, 0.2) # エレベーターの待機階の印
+const BOMB_COLOR := Color(1.0, 0.25, 0.2) # 爆破予告のマスの印
 const SOIL_COLOR := Color(0.36, 0.26, 0.18)       # 地下（1階より下）の土
 const GROUND_LINE_COLOR := Color(0.55, 0.42, 0.28) # 地面の線
 
@@ -110,6 +111,12 @@ class HomeMarkers extends Node2D:
 		for entrance in world.get_entrances():
 			var entrance_color: Color = overlay.ENTRANCE_COLOR if entrance == world.get_entrance() else overlay.SUBWAY_ENTRANCE_COLOR
 			draw_entrance(Vector2(entrance) * tile_size - Vector2(tile_size.x / 2.0, 0), entrance_color)
+		# 爆破予告のマス（赤い枠が点滅する）
+		if world.incident_system.has_bomb() and world.tenant_system.blink_on():
+			var bomb_rect := Rect2(Vector2(world.incident_system.bomb.cell) * tile_size, tile_size)
+			draw_rect(bomb_rect.grow(-1), overlay.BOMB_COLOR, false, 1.5)
+			var center := bomb_rect.get_center()
+			draw_circle(center, 3.0, overlay.BOMB_COLOR)
 		for cell in world.elevator_system.get_home_cells():
 			var pos := Vector2(cell) * tile_size
 			# マスの左端の黄色い帯と、その中の下向きの三角（「ここに戻る」の印）
