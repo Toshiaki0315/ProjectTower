@@ -13,9 +13,10 @@ const BORDER_COLOR := Color(0, 0, 0, 0.2) # ドット絵に天井・床の線が
 const BORDER_WIDTH := 1.5 # 画面上のpx（ズームしても太さが変わらない）
 const HOVER_OK_COLOR := Color(0.3, 1.0, 0.4)
 const HOVER_NG_COLOR := Color(1.0, 0.3, 0.3)
-const ENTRANCE_COLOR := Color(0.3, 1.0, 0.4)
+const PixelArt := preload("res://scripts/view/pixel_art.gd")
+const ENTRANCE_COLOR := Color(0.2, 0.42, 0.72)       # 1階の入口の庇（青）
+const SUBWAY_ENTRANCE_COLOR := Color(0.25, 0.65, 0.8) # 地下鉄駅の入口の庇（水色）
 const HOME_COLOR := Color(1.0, 0.85, 0.2) # エレベーターの待機階の印
-const SUBWAY_ENTRANCE_COLOR := Color(0.4, 0.85, 1.0)
 const SOIL_COLOR := Color(0.36, 0.26, 0.18)       # 地下（1階より下）の土
 const GROUND_LINE_COLOR := Color(0.55, 0.42, 0.28) # 地面の線
 
@@ -72,21 +73,6 @@ func _draw() -> void:
 		if world.building_grid[cell].origin == cell:
 			draw_rect(cells_rect(world.get_unit_cells(cell), tile_size).grow(-width / 2.0), BORDER_COLOR, false, width)
 
-	# 入口（両開きの扉の絵と、中へ向かう矢印。1階の入口は緑、地下鉄駅は水色）
-	for entrance in world.get_entrances():
-		var color := ENTRANCE_COLOR if entrance == world.get_entrance() else SUBWAY_ENTRANCE_COLOR
-		var pos := cell_rect(entrance, tile_size).position
-		draw_rect(Rect2(pos + Vector2(1, 2), Vector2(10, 1)), color)         # 庇（ひさし）
-		var door := Rect2(pos + Vector2(2, 4), Vector2(8, tile_size.y - 5))
-		draw_rect(door, Color(color, 0.18))                                  # 扉のガラス
-		draw_rect(door, color, false, 0.7)                                   # 扉の枠
-		var seam := door.position.x + door.size.x / 2.0
-		draw_rect(Rect2(seam - 0.35, door.position.y, 0.7, door.size.y), color) # 両開きの合わせ目
-		draw_rect(Rect2(seam - 2, door.position.y + 4.5, 1, 1), color)       # ドアノブ（左右）
-		draw_rect(Rect2(seam + 1, door.position.y + 4.5, 1, 1), color)
-		var mid := pos + Vector2(12, tile_size.y / 2.0)                      # 中へ向かう矢印
-		draw_colored_polygon(PackedVector2Array([mid + Vector2(0, -3), mid + Vector2(3.5, 0), mid + Vector2(0, 3)]), color)
-	
 	# カーソル下のマス
 	# 建設モードなら、建てたときに使うマス全体を強調する
 	if hover_visible:
@@ -111,13 +97,19 @@ func get_visible_rect() -> Rect2:
 	return get_global_transform_with_canvas().affine_inverse() * get_viewport_rect()
 
 # 背景：地上は時刻で色が変わる空（夜は星が出る）、1階の床より下は土。タイルより奥に描く
-# エレベーターの待機階の印（呼び出しがないとカゴが戻る階）。カゴに隠れないよう手前に描く
+# 建物より手前に描く印
+#   入口:   ロビー（地下鉄駅）の左隣に、マスの半分の幅のアイコン
+#   待機階: エレベーターが、呼び出しのないときに戻る階
 class HomeMarkers extends Node2D:
 	var overlay # grid_overlay.gd
 
 	func _draw() -> void:
 		var world = overlay.world
 		var tile_size := Vector2(world.tile_map.tile_set.tile_size)
+		# 入口のアイコン（建物の左隣に、マスの半分の幅で描く）
+		for entrance in world.get_entrances():
+			var entrance_color: Color = overlay.ENTRANCE_COLOR if entrance == world.get_entrance() else overlay.SUBWAY_ENTRANCE_COLOR
+			draw_entrance(Vector2(entrance) * tile_size - Vector2(tile_size.x / 2.0, 0), entrance_color)
 		for cell in world.elevator_system.get_home_cells():
 			var pos := Vector2(cell) * tile_size
 			# マスの左端の黄色い帯と、その中の下向きの三角（「ここに戻る」の印）
@@ -125,6 +117,18 @@ class HomeMarkers extends Node2D:
 			var cx := pos.x + 4.0
 			var cy := pos.y + tile_size.y / 2.0
 			draw_colored_polygon([Vector2(cx - 1.5, cy - 2), Vector2(cx + 1.5, cy - 2), Vector2(cx, cy + 1)], overlay.HOME_COLOR)
+
+	# 入口のアイコンを、左上を pos として1ドットずつ描く（"C" は入口の色）
+	func draw_entrance(pos: Vector2, color: Color) -> void:
+		var rows: Array = PixelArt.ENTRANCE_SPRITE
+		for y in rows.size():
+			var row: String = rows[y]
+			for x in row.length():
+				var ch := row[x]
+				if ch == ".":
+					continue
+				var dot: Color = color if ch == "C" else PixelArt.ENTRANCE_COLORS[ch]
+				draw_rect(Rect2(pos + Vector2(x, y), Vector2.ONE), dot)
 
 class SoilBackground extends Node2D:
 	var overlay # grid_overlay.gd

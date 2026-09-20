@@ -76,6 +76,7 @@ func save_people_images() -> void:
 		"parking": ParkingSystem.VISITOR_COLOR,              # 車で来たお客さん
 		"restaurant_customer": VisitorSystem.SHOP_TYPES.restaurant.color, # 飲食店の外からの客
 		"shop_customer": VisitorSystem.SHOP_TYPES.shop.color,             # ショップのお客さん
+		"cinema_customer": VisitorSystem.CINEMA.color,                    # 映画のお客さん
 		"selected": Color(1.0, 0.85, 0.1),                   # 選択中（住人モード）
 	}
 	# ストレスは顔（肌）の色で表す（服は種類の色のまま）

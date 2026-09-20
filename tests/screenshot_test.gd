@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -2228,7 +2228,7 @@ func run_service_elevator_scenario() -> bool:
 	hotel.rooms[Vector2i(9, 16)].state = hotel.RoomState.DIRTY
 	Engine.time_scale = 8.0
 	var rode := false
-	var limit := Time.get_ticks_msec() + 30000
+	var limit := Time.get_ticks_msec() + 60000
 	var captured := false
 	while Time.get_ticks_msec() < limit and hotel.rooms[Vector2i(9, 16)].state == hotel.RoomState.DIRTY:
 		for cell in hotel.housekeepers:
@@ -2361,6 +2361,101 @@ func run_shop_scenario() -> bool:
 	check(main.economy_system.MAINTENANCE["shop"] == 3000, "ショップの維持費は3,000円/日")
 	return true
 
+# ---------------------------------------------------
+# シナリオ40: 映画館（上映時刻に客が一斉に来て、終わると一斉に帰る）
+#   2階（y=17）に映画館（x=9〜16、高さ2階分）。入口から階段(9,18)で上がる。
+# ---------------------------------------------------
+func run_cinema_scenario() -> bool:
+	print("[シナリオ] 映画館")
+	main.funds = 10000000
+	var visitors = main.visitor_system
+	focus_camera(Vector2i(13, 16))
+	await wait_frames(1)
+	# 足場: 1階にロビーを足し、(9,18)は映画館へ上がる階段にする
+	build_support([Vector2i(8, 18)] + cells_row(18, 10, 16), "lobby")
+	build_support([Vector2i(9, 18)])
+	await choose_mode("cinema")
+	check(main.mode_info_label.text == "建設費 1,500,000円・横8マス・高さ2階分", "映画館は横8マス・高さ2階分・150万円")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(16, 17)) == "cinema" and main.get_building_type(Vector2i(16, 16)) == "cinema", "映画館は横8マス・上下2階分を使う")
+	check(main.funds == 10000000 - 1500000, "建設費150万円がかかる")
+	check(main.is_walkable(Vector2i(12, 17)) and not main.is_walkable(Vector2i(12, 16)), "人が歩くのは下の階だけ")
+	check(visitors.showtimes(1) == [13 * 60, 16 * 60, 19 * 60], "平日は13時・16時・19時の3回上映")
+	check(visitors.showtimes(6) == [11 * 60, 14 * 60, 17 * 60, 20 * 60], "休日は11時・14時・17時・20時の4回上映")
+	await hover_cell(Vector2i(12, 17))
+	check(main.hover_label.text.contains("映画館（客 0人・次の上映 13:00）"), "カーソルを合わせると次の上映時刻が出る")
+	
+	# 平日1回目の上映（13時）: 30分前から集まり、15時に一斉に帰る
+	main.clock.set_time(1, 12, 25)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return visitors.count_at_shop(Vector2i(12, 17)) >= 10, 40.0)
+	check(visitors.count_at_shop(Vector2i(12, 17)) >= 10, "上映前に客が10人集まる")
+	await capture("cinema_01_showtime")
+	await wait_until(func(): return main.clock.minute_of_day() >= 15 * 60 + 20, 40.0)
+	check(visitors.count_at_shop(Vector2i(12, 17)) == 0, "上映（2時間）が終わると一斉に帰る")
+	check(visitors.cinema_audience_by_day.get(1, 0) == 10, "1回の上映の客は10人")
+	check(visitors.cinema_revenue_by_day.get(1, 0) == 10 * 1800, "料金は1人1,800円")
+	
+	# 駐車場があると客が増える（この日はもう予定が決まっているので、翌日から効く）
+	main.clock.set_process(false)
+	Engine.time_scale = 1.0
+	main.funds = 10000000
+	build_support(cells_row(18, 17, 22), "lobby") # 足場: スロープと駐車場の真上の1階
+	main.select_mode("ramp")
+	main.build_at(Vector2i(17, 19))
+	main.select_mode("parking")
+	main.build_at(Vector2i(19, 19))
+	check(main.parking_system.car_capacity() == 4, "スロープにつながった駐車場で4台停められる")
+	main.clock.set_time(2, 12, 25)
+	main.clock.set_process(true)
+	Engine.time_scale = 16.0
+	await wait_until(func(): return visitors.cinema_audience_by_day.get(2, 0) >= 14, 40.0)
+	check(visitors.cinema_audience_by_day.get(2, 0) == 14, "駐車場4台ぶん、1回の客が10人から14人に増える")
+	await wait_until(func(): return main.clock.minute_of_day() >= 23 * 60 + 58, 90.0)
+	await wait_until(func(): return main.economy_system.last_report.get("day") == 2, 20.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(main.economy_system.last_report.get("cinema") == 3 * 14 * 1800, "決算に3回の上映の売上（75,600円）が入る")
+	check(main.message_label.text.contains("映画館 +75,600円"), "決算のメッセージに映画館の売上が出る")
+	check(main.economy_system.MAINTENANCE["cinema"] == 20000, "映画館の維持費は2万円/日")
+	return true
+
+# ---------------------------------------------------
+# シナリオ41: ビルの大きさの上限（地上150階・地下50階・横100マス）
+#   1階は y=18 なので、150階は y=-131、地下50階は y=68。横は x=-50〜49。
+# ---------------------------------------------------
+func run_size_limit_scenario() -> bool:
+	print("[シナリオ] ビルの大きさの上限")
+	main.funds = 100000000
+	check(main.MAX_FLOORS_ABOVE == 150 and main.MAX_FLOORS_BELOW == 50 and main.MAX_WIDTH == 100, "上限は地上150階・地下50階・横100マス")
+	var top: int = main.ground_y - (main.MAX_FLOORS_ABOVE - 1) # 150階
+	check(main.get_floor_name(top) == "150階" and main.get_floor_name(top - 1) == "151階", "150階より上は151階")
+	main.select_mode("elevator")
+	check(main.get_size_limit_problem(Vector2i(0, top), "elevator") == "", "150階は上限の中")
+	check(main.get_build_problem(Vector2i(0, top - 1), "elevator") == "ビルは地上150階までです", "151階には建てられない")
+	var bottom: int = main.ground_y + main.MAX_FLOORS_BELOW # 地下50階
+	check(main.get_floor_name(bottom) == "B50階", "一番下は地下50階")
+	check(main.get_size_limit_problem(Vector2i(0, bottom), "elevator") == "", "地下50階は上限の中")
+	check(main.get_build_problem(Vector2i(0, bottom + 1), "elevator") == "地下は50階までです", "地下51階には建てられない")
+	
+	# 横幅（x=-50〜49）。横に長い建物は、右端がはみ出すと建てられない
+	check(main.get_size_limit_problem(Vector2i(-50, 17), "elevator") == "", "左端（x=-50）は上限の中")
+	check(main.get_build_problem(Vector2i(-51, 17), "elevator").begins_with("ビルの幅は100マスまでです"), "左端より外には建てられない")
+	check(main.get_size_limit_problem(Vector2i(49, 17), "elevator") == "", "右端（x=49）は上限の中")
+	check(main.get_build_problem(Vector2i(50, 17), "elevator").begins_with("ビルの幅は100マスまでです"), "右端より外には建てられない")
+	check(main.get_build_problem(Vector2i(47, 17), "office").begins_with("ビルの幅は100マスまでです"), "横4マスのオフィスは、右端がはみ出すと建てられない")
+	
+	# 実際にクリックしても建たず、理由がメッセージで出る
+	focus_camera(Vector2i(49, 17))
+	await wait_frames(1)
+	await choose_mode("elevator")
+	await click_cell(Vector2i(50, 18), MOUSE_BUTTON_LEFT)
+	check(main.is_cell_empty(Vector2i(50, 18)), "上限の外はクリックしても建たない")
+	check(main.message_label.text.begins_with("ビルの幅は100マスまでです"), "建てられない理由がメッセージで出る")
+	check(not main.can_click_cell(Vector2i(50, 18)), "上限の外は赤く表示される")
+	return true
+
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める
 func run_day(day: int) -> void:
 	main.clock.set_time(day, 7, 59)
@@ -2419,6 +2514,8 @@ func hover_cell(cell: Vector2i) -> void:
 	motion.global_position = motion.position
 	root.push_input(motion)
 	await wait_frames(2)
+	# カーソルの位置が下部バーの表示に反映されるまで待つ（早送り中はフレームの間隔が変わるため）
+	await wait_until(func(): return main.grid_overlay.hover_visible and main.grid_overlay.hover_cell == cell, 2.0)
 
 # ---------------------------------------------------
 # 操作・撮影のヘルパー

@@ -58,6 +58,35 @@ const PALETTE := {
 	"I": Color("#f7a8c0"), # 結婚式場の花・バージンロード
 }
 
+# 入口の印（ロビー・地下鉄駅の横に、マスの半分（8ドット）の幅で描く小さな絵）。
+# 東京駅のホテルの入口のような、庇（ひさし）付きの両開きの扉。
+# "C" は入口の色（1階の入口は青、地下鉄駅は水色）で、描くときに差し替える
+const ENTRANCE_SPRITE := [
+	"........",
+	"..CCCC..",
+	".CCCCCC.",
+	"CCCCCCCC",
+	"CPPPPPPC",
+	"KKKKKKKK",
+	"K.wwww.K",
+	"K.wwww.K",
+	"K.oooo.K",
+	"K.owwo.K",
+	"K.owwo.K",
+	"K.oLLo.K",
+	"K.oooo.K",
+	"K.oooo.K",
+	"K.oooo.K",
+	"KKKKKKKK",
+]
+const ENTRANCE_COLORS := {
+	"K": Color("#2b2f3a"), # 柱・枠
+	"P": Color("#f0f0f0"), # 看板
+	"o": Color("#8a5a34"), # 扉
+	"w": Color("#cfe8ff"), # ガラス
+	"L": Color("#ffd966"), # ドアノブ
+}
+
 const TILES := {
 	"office": [
 		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
@@ -484,6 +513,40 @@ const TILES := {
 		"JJJJJJJJJJJJJJnnJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ",
 		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
 		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+	],
+	"cinema": [
+		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjLLLLLLLLLLLLLLLLLjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjLLLLLLLLLLLLLLLLLjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPwPwPwPwPwPwPwPwPwPwPwPwPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjLLLLLLLLLLLLLLLLjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjLLLLLLLLLLLLLLLLLjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjLLLLLLLLLLLLLLLLLjjjjjjjj",
+		"jjjjjKPPwPwPwPwPwPwPwPwPwPwPwPwPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjLLLLLLLj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPwPwPwPwPwPwPwPwPwPwPwPwPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPwPwPwPwPwPwPwPwPwPwPwPwPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCjjjjCCjjCCjjCCjjCCj",
+		"jjjjjKPPPPPPPPPPPPPPPPPPPPPPPPPPPPKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCjjjyyyjyyyjyyyjyyyj",
+		"jjjjjKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCjjjjCCjjCCjjCCjjCCjjjyyyyyyyyyyyyyyyj",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCjjjyyyjyyyjyyyjyyyjjjeeeeeeeeeeeeeeej",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCjjjjCCjjCCjjCCjjCCjjjyyyyyyyyyyyyyyyyjjeeeeeeeeeeeeeeej",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCjjjyyyjyyyjyyyjyyyjjjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeej",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCjjjjCCjjCCjjCCjjCCjjjyyyyyyyyyyyyyyyyjjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeej",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCjjjyyyjyyyjyyyjyyyjjjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeej",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjCCjjCCjjCCjjCCjjjyyyyyyyyyyyyyyyyjjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeej",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjyyyjyyyjyyyjyyyjjjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeej",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjyyyyyyyyyyyyyyyyjjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeej",
+		"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeeejjeeeeeeeeeeeeeeej",
+		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 	],
 	"recycling": [
 		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",

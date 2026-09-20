@@ -41,6 +41,7 @@ const BUILDINGS := {
 	"housekeeping": {"name": "ハウスキーパー室", "cost": 200000, "source_id": 4, "width": 2},
 	"restaurant": {"name": "飲食店", "cost": 200000, "source_id": 5, "width": 3},
 	"shop": {"name": "ショップ", "cost": 250000, "source_id": 24, "width": 3},
+	"cinema": {"name": "映画館", "cost": 1500000, "source_id": 25, "width": 8, "height": 2},
 	"recycling": {"name": "ゴミ処理場", "cost": 150000, "source_id": 6, "width": 3},
 	"security": {"name": "警備室", "cost": 100000, "source_id": 7, "width": 2},
 	"medical": {"name": "メディカルセンター", "cost": 200000, "source_id": 8, "width": 3},
@@ -68,7 +69,7 @@ const MODE_SERVICE := "service"   # エレベーターの稼働時間帯を切�
 
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
-	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "shop", "housing", "wedding", "event_hall"]},
+	{"name": "テナント", "modes": ["office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "shop", "cinema", "housing", "wedding", "event_hall"]},
 	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "service_elevator", "add_car", "set_home", "service"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking"]},
 	{"name": "その他", "modes": ["resident"]},
@@ -115,6 +116,9 @@ var building_grid: Dictionary = {}
 
 # 1階の高さ（y）。それより下（yが大きい）は地下。ゲームは更地から始まり、ここに地面の線が引かれる
 const GROUND_FLOOR_Y := 18
+const MAX_FLOORS_ABOVE := 150 # 建てられる一番上の階（地上150階）
+const MAX_FLOORS_BELOW := 50  # 掘れる一番下の階（地下50階）
+const MAX_WIDTH := 100        # ビルの横幅（マス数）。0を中心に左右へ半分ずつ
 var ground_y := GROUND_FLOOR_Y
 
 func _ready() -> void:
@@ -503,6 +507,8 @@ func update_hover_label():
 		text += "（客 %d人）" % (commerce_system.count_eating_at(cell) + visitor_system.count_at_shop(cell))
 	elif type == "shop":
 		text += "（客 %d人）" % visitor_system.count_at_shop(cell)
+	elif type == "cinema":
+		text += "（%s）" % visitor_system.get_cinema_text(cell)
 	elif event_system.is_hall_type(type):
 		text += "（来客 %d人）" % event_system.count_at_hall(cell)
 	elif elevator_system.is_shaft_type(type):
@@ -661,6 +667,9 @@ func get_build_problem(origin: Vector2i, type: String) -> String:
 	for cell in get_footprint(origin, type):
 		if not is_cell_empty(cell):
 			return "ほかの建物と重なるため建てられません"
+	var limit := get_size_limit_problem(origin, type)
+	if limit != "":
+		return limit
 	var floors: String = BUILDINGS[type].get("floors", "")
 	if floors == "ground" and origin.y != ground_y:
 		return "%sは1階にしか建てられません" % BUILDINGS[type].name
@@ -703,6 +712,17 @@ func get_demolish_problem(cell: Vector2i) -> String:
 			if c.y > ground_y:
 				return "下の階の建物を支えているため撤去できません（下の階から撤去してください）"
 			return "上の階の建物を支えているため撤去できません（上の階から撤去してください）"
+	return ""
+
+# ビルの大きさの上限（地上150階・地下50階・横100マス）を超えていないか。よければ ""
+func get_size_limit_problem(origin: Vector2i, type: String) -> String:
+	for cell in get_footprint(origin, type):
+		if cell.y < ground_y - (MAX_FLOORS_ABOVE - 1):
+			return "ビルは地上%d階までです" % MAX_FLOORS_ABOVE
+		if cell.y > ground_y + MAX_FLOORS_BELOW:
+			return "地下は%d階までです" % MAX_FLOORS_BELOW
+		if cell.x < -MAX_WIDTH / 2 or cell.x >= MAX_WIDTH / 2:
+			return "ビルの幅は%dマスまでです（マスのx座標は %d〜%d）" % [MAX_WIDTH, -MAX_WIDTH / 2, MAX_WIDTH / 2 - 1]
 	return ""
 
 # 指定した種類の建物の左端のマス（= 建物1つにつき1マス）をすべて返す
