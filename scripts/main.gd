@@ -9,6 +9,7 @@ const VisitorSystem := preload("res://scripts/systems/visitor_system.gd")
 const NoiseSystem := preload("res://scripts/systems/noise_system.gd")
 const VipSystem := preload("res://scripts/systems/vip_system.gd")
 const IncidentSystem := preload("res://scripts/systems/incident_system.gd")
+const WeatherSystem := preload("res://scripts/systems/weather_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -101,7 +102,8 @@ var parking_system  # 地下駐車場とスロープ（車で来るお客さん�
 var visitor_system  # 外から来るお客さん（店の客・車で来た客）の動き
 var noise_system    # 騒音（うるさい建物のまわりのマスに広がる）
 var vip_system      # VIPの宿泊（★4への昇格イベント）
-var incident_system # 事件（爆破予告と警備員）
+var incident_system # 事件（爆破予告・火災・ゴキブリ・埋蔵金）
+var weather_system  # 天気（晴れ・くもり・雨）
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -159,6 +161,9 @@ func _ready() -> void:
 	incident_system = IncidentSystem.new()
 	incident_system.setup(self)
 	add_child(incident_system)
+	weather_system = WeatherSystem.new()
+	weather_system.setup(self)
+	add_child(weather_system)
 	parking_system = ParkingSystem.new()
 	parking_system.setup(self)
 	add_child(parking_system)
@@ -207,7 +212,7 @@ func _process(_delta: float) -> void:
 	update_scrollbar()
 	grid_overlay.update_hover()
 	update_hover_label()
-	clock_label.text = clock.get_time_text()
+	clock_label.text = "%s  %s" % [clock.get_time_text(), weather_system.get_weather_text()]
 	stats_label.text = rating_system.get_status_text()
 	var angry := 0
 	for r in residents:
@@ -363,6 +368,7 @@ func create_ui():
 		"入口: 1階の左端と地下鉄駅（地下にだけ建てられる）。人は近い方の入口から出入りする",
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
 		"ショートカット: ⌘H（この説明の開閉） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
+		"天気: 日ごとに晴れ・くもり・雨が決まる（6月は梅雨）。雨の日は入口から来る店の客が半分（車で来る客は減らない）",
 		"日付: 1日目は4月1日（月）。1年は365日で、12月24日・25日の夜にはサンタクロースのソリが空を横切る",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
 		"結婚式場（横6マス）: 休日の10〜11時に12人が来て13時まで（1人1万円）",
@@ -568,7 +574,7 @@ func update_hover_label():
 		return
 	var cell: Vector2i = grid_overlay.hover_cell
 	var type = get_building_type(cell)
-	var text = "%s マス %s: %s" % [get_floor_name(cell.y), cell, BUILDINGS[type].name if type != "" else "空き"]
+	var text = "%s: %s" % [get_floor_name(cell.y), BUILDINGS[type].name if type != "" else "空き"]
 	if incident_system.has_roach_at(cell):
 		text += "（ゴキブリ発生中）"
 	if type == "office" and tenant_system.get_rating_text(cell) != "":

@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -321,7 +321,7 @@ func run_ui_scenario() -> bool:
 	await hover_cell(empty_cell)
 	check(overlay.hover_visible and overlay.hover_cell == empty_cell, "カーソル下のマスを強調表示する")
 	check(main.can_click_cell(empty_cell), "空きマスは建設可能（緑）と判定される")
-	check(main.hover_label.text.contains(str(empty_cell)) and main.hover_label.text.contains("空き"), "下部バーにマスの座標と「空き」が出る")
+	check(main.hover_label.text == "5階: 空き", "空きマスの吹き出しには何階かと「空き」が出る（マスの座標は出さない）")
 	await capture("ui_01_hover_empty")
 	
 	check(not main.hover_tooltip.visible, "空きマスでは吹き出しを出さない")
@@ -1902,7 +1902,7 @@ func run_sky_lobby_scenario() -> bool:
 	check(main.is_walkable(Vector2i(2, 4)) and main.can_move(Vector2i(1, 4), Vector2i(2, 4)), "スカイロビーは歩いて移動できる")
 	check(main.get_entrances() == [Vector2i(-8, 18)], "スカイロビーは入口にはならない")
 	await hover_cell(Vector2i(2, 4))
-	check(main.hover_label.text.begins_with("15階 マス (2, 4): スカイロビー"), "カーソル下の情報の先頭に何階かが出る")
+	check(main.hover_label.text.begins_with("15階: スカイロビー"), "吹き出しの先頭に何階かが出る")
 	await capture("sky_lobby_01")
 	return true
 
@@ -3042,6 +3042,80 @@ func run_calendar_scenario() -> bool:
 	await wait_frames(3)
 	check(main.clock_label.text.begins_with("12月24日"), "上部バーに12月24日と出る")
 	await capture("calendar_01_santa")
+	clock.set_time(1, 7, 30)
+	return true
+
+# ---------------------------------------------------
+# シナリオ52: 天気（晴れ・くもり・雨）
+#   天気は日ごとに決まり、雨の日は店へ来る外からのお客さんが半分になる。
+# ---------------------------------------------------
+func run_weather_scenario() -> bool:
+	print("[シナリオ] 天気")
+	var weather = main.weather_system
+	var clock = main.clock
+	# 日ごとに天気が決まり、同じ日なら何度見ても同じ
+	check(weather.weather_for(1) == weather.weather_for(1), "同じ日の天気は何度見ても同じ")
+	var counts := {weather.Weather.SUNNY: 0, weather.Weather.CLOUDY: 0, weather.Weather.RAINY: 0}
+	for day in range(1, 101):
+		counts[weather.weather_for(day)] += 1
+	print("    100日の天気: 晴れ=", counts[weather.Weather.SUNNY], " くもり=", counts[weather.Weather.CLOUDY], " 雨=", counts[weather.Weather.RAINY])
+	check(counts[weather.Weather.SUNNY] > counts[weather.Weather.RAINY], "晴れの日が一番多い")
+	check(counts[weather.Weather.RAINY] > 0 and counts[weather.Weather.CLOUDY] > 0, "くもりや雨の日もある")
+	
+	# 梅雨（6月）は雨が多い
+	var june := 0
+	var april := 0
+	for day in range(1, 31):
+		if weather.weather_for(day) == weather.Weather.RAINY:
+			april += 1 # 4月
+	for day in range(62, 92):
+		if weather.weather_for(day) == weather.Weather.RAINY:
+			june += 1 # 6月
+	print("    4月の雨=", april, "日 / 6月の雨=", june, "日")
+	check(june > april, "6月（梅雨）は雨の日が多い")
+	
+	# 雨の日を探して、見た目と客足を確かめる
+	var rainy_day := 0
+	for day in range(1, 60):
+		if weather.weather_for(day) == weather.Weather.RAINY:
+			rainy_day = day
+			break
+	var sunny_day := 0
+	for day in range(1, 60):
+		if weather.weather_for(day) == weather.Weather.SUNNY:
+			sunny_day = day
+			break
+	clock.set_time(sunny_day, 12, 0)
+	check(not weather.is_rainy() and is_equal_approx(weather.visitor_rate(), 1.0), "晴れの日はお客さんが減らない")
+	check(weather.sky_tint() == Color.WHITE, "晴れの日は空の色をそのまま使う")
+	clock.set_time(rainy_day, 12, 0)
+	check(weather.is_rainy() and is_equal_approx(weather.visitor_rate(), weather.RAINY_VISITOR_RATE), "雨の日は店のお客さんが半分になる")
+	check(weather.sky_tint().get_luminance() < 1.0, "雨の日は空が暗くなる")
+	await wait_frames(2)
+	check(main.clock_label.text.contains("雨"), "上部バーに天気が出る")
+	focus_camera(Vector2i(0, 14))
+	await wait_frames(2)
+	await capture("weather_01_rain")
+	
+	# 実際に、雨の日は店に来る人数が減る
+	main.funds = 10000000
+	build_support([Vector2i(8, 18)] + cells_row(18, 10, 14), "lobby")
+	build_support([Vector2i(9, 18)])
+	main.select_mode("shop")
+	main.build_at(Vector2i(9, 17))
+	var visitors = main.visitor_system
+	visitors.plan_day = 0
+	clock.set_time(sunny_day, 11, 0)
+	main.clock.set_process(true)
+	await wait_frames(3)
+	var sunny_plan: int = visitors.visits.size()
+	visitors.plan_day = 0
+	visitors.visits.clear()
+	clock.set_time(rainy_day, 11, 0)
+	await wait_frames(3)
+	main.clock.set_process(false)
+	print("    晴れの日の予定=", sunny_plan, "人 / 雨の日=", visitors.visits.size(), "人")
+	check(sunny_plan > 0 and visitors.visits.size() < sunny_plan, "雨の日は、店に来る予定の人数が少ない")
 	clock.set_time(1, 7, 30)
 	return true
 

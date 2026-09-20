@@ -179,9 +179,11 @@ class SoilBackground extends Node2D:
 		if visible_rect.position.y < ground_bottom:
 			var sky_bottom := minf(ground_bottom, visible_rect.end.y)
 			draw_rect(Rect2(visible_rect.position.x, visible_rect.position.y,
-				visible_rect.size.x, sky_bottom - visible_rect.position.y), world.clock.sky_color())
+				visible_rect.size.x, sky_bottom - visible_rect.position.y), world.clock.sky_color() * world.weather_system.sky_tint())
 			draw_stars(visible_rect, sky_bottom, tile_size, world.clock.darkness())
 			draw_santa(visible_rect, sky_bottom) # 12月24日・25日の夜に空を横切る
+			if world.weather_system.is_rainy():
+				draw_rain(visible_rect, sky_bottom, tile_size)
 			draw_sun_and_moon(visible_rect, sky_bottom)
 			draw_street_lamps(visible_rect, world.clock.darkness())
 		
@@ -221,6 +223,22 @@ class SoilBackground extends Node2D:
 			draw_rect(Rect2(head.x - 0.5, head.y, 1, lighting.LAMP_HEIGHT), pole_color)  # 柱
 			draw_rect(Rect2(head.x - 2, head.y - 1, 4, 2), pole_color)                   # かさ
 			draw_rect(Rect2(head.x - 1, head.y + 1, 2, 1), head_color)                   # 灯り
+
+	# 雨（斜めの線をたくさん描く。マスごとに決まった乱数で、位置が時間とともに流れる）
+	func draw_rain(visible_rect: Rect2, sky_bottom: float, tile_size: Vector2) -> void:
+		var color := Color(0.75, 0.85, 1.0, 0.5)
+		var flow: float = fmod(Time.get_ticks_msec() / 1000.0 * 60.0, 32.0) # 雨の流れ
+		var first := Vector2i((visible_rect.position / tile_size).floor())
+		var last := Vector2i((Vector2(visible_rect.end.x, sky_bottom) / tile_size).ceil())
+		for y in range(first.y, last.y + 1):
+			for x in range(first.x, last.x + 1):
+				var h := hash(Vector2i(x, y))
+				if h % 3 != 0:
+					continue
+				var drop := Vector2(x, y) * tile_size + Vector2(h % 16, fmod((h / 16) % 16 + flow, 16.0))
+				if drop.y > sky_bottom:
+					continue
+				draw_line(drop, drop + Vector2(-1.5, 4), color, 0.6)
 
 	# サンタクロースのソリ（12月24日・25日の21時〜24時に、空を左から右へ横切る）
 	func draw_santa(visible_rect: Rect2, sky_bottom: float) -> void:

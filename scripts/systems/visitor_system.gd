@@ -7,6 +7,7 @@ extends Node
 #   席まで行けないお客さんは来ない。
 #
 # 店の客: 店（飲食店・ショップ）ごとに、平日と休日で決まった人数が入口から来る。
+#   雨の日は人数が減る（weather_system.visitor_rate）。
 #   平日は昼（社員の昼食に外からの客が加わる）、休日は昼から夕方まで。
 # 車で来た客: parking_system が駐車場のマスを出発にして add_visit() で足す。
 # 映画館の客: 上映時刻（CINEMA.shows）の少し前に一斉に来て、上映が終わると一斉に帰る。
@@ -86,7 +87,8 @@ func plan_shop_visits(day: int, start: int, end: int) -> void:
 		var info: Dictionary = SHOP_TYPES[type]
 		for unit in world.find_units_of_type(type):
 			var seats: Array[Vector2i] = world.get_unit_cells(unit)
-			var count: int = info.holiday if holiday else info.weekday
+			# 雨の日は、外を歩いて来るお客さんが減る
+			var count := int((info.holiday if holiday else info.weekday) * world.weather_system.visitor_rate())
 			for i in count:
 				var seat: Vector2i = seats[i % seats.size()]
 				var entrance = world.nearest_entrance(seat)
