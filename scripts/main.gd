@@ -147,97 +147,66 @@ var tenant_system   # テナント（オフィス）の評価
 
 var ground_y := GROUND_FLOOR_Y
 
+# ゲームの部品（仕組みと見た目）の一覧。ここに1行足すだけで組み込める。
+#   name:   main の変数名        script: その部品のスクリプト
+#   parent: "map" ならタイルマップの子にする（マスに重ねて描くもの）
+#   rebuild: true なら、作った直後に建物に合わせて中身を作る
+const PARTS := [
+	{"name": "buildings", "script": Buildings},       # 建物の表とルール（タイルの用意より先に必要）
+	{"name": "pathfinding", "script": Pathfinding},   # 移動ルールと経路探索
+	{"name": "clock", "script": GameClock},           # ゲーム内の時計
+	{"name": "elevator_system", "script": ElevatorSystem, "rebuild": true},
+	{"name": "commute_system", "script": CommuteSystem, "rebuild": true},
+	{"name": "hotel_system", "script": HotelSystem, "parent": "map", "rebuild": true},
+	{"name": "housing_system", "script": HousingSystem, "rebuild": true},
+	{"name": "event_system", "script": EventSystem, "rebuild": true},
+	{"name": "commerce_system", "script": CommerceSystem},
+	{"name": "visitor_system", "script": VisitorSystem},
+	{"name": "parking_system", "script": ParkingSystem},
+	{"name": "noise_system", "script": NoiseSystem},
+	{"name": "rating_system", "script": RatingSystem},
+	{"name": "economy_system", "script": EconomySystem},
+	{"name": "tenant_system", "script": TenantSystem, "parent": "map"},
+	{"name": "vip_system", "script": VipSystem},
+	{"name": "incident_system", "script": IncidentSystem},
+	{"name": "weather_system", "script": WeatherSystem},
+	{"name": "goal_system", "script": GoalSystem},
+	{"name": "tutorial_system", "script": TutorialSystem},
+	{"name": "save_system", "script": SaveSystem},
+	{"name": "audio_system", "script": AudioSystem},
+	{"name": "lighting", "script": Lighting, "parent": "map"},
+	{"name": "grid_overlay", "script": GridOverlay, "parent": "map"},
+	{"name": "effects", "script": Effects, "parent": "map"},
+	{"name": "ui", "script": Ui},
+]
+
 func _ready() -> void:
-	buildings = Buildings.new() # 建物の表とルール（タイルの用意より先に必要）
-	buildings.setup(self)
-	add_child(buildings)
-	pathfinding = Pathfinding.new()
-	pathfinding.setup(self)
-	add_child(pathfinding)
+	# 建物の表とルールを先に作ってから、ドット絵のタイルとグリッド情報を用意する
+	create_part(PARTS[0])
 	apply_pixel_art_tiles()
 	apply_tile_types()
 	load_grid_from_tilemap()
-	elevator_system = ElevatorSystem.new()
-	elevator_system.setup(self)
-	add_child(elevator_system)
-	elevator_system.rebuild()
-	visitor_system = VisitorSystem.new()
-	visitor_system.setup(self)
-	add_child(visitor_system)
-	noise_system = NoiseSystem.new()
-	noise_system.setup(self)
-	add_child(noise_system)
-	vip_system = VipSystem.new()
-	vip_system.setup(self)
-	add_child(vip_system)
-	incident_system = IncidentSystem.new()
-	incident_system.setup(self)
-	add_child(incident_system)
-	weather_system = WeatherSystem.new()
-	weather_system.setup(self)
-	add_child(weather_system)
-	save_system = SaveSystem.new()
-	save_system.setup(self)
-	add_child(save_system)
-	audio_system = AudioSystem.new()
-	add_child(audio_system)
-	audio_system.setup(self)
-	goal_system = GoalSystem.new()
-	goal_system.setup(self)
-	add_child(goal_system)
-	tutorial_system = TutorialSystem.new()
-	tutorial_system.setup(self)
-	add_child(tutorial_system)
-	parking_system = ParkingSystem.new()
-	parking_system.setup(self)
-	add_child(parking_system)
-	clock = GameClock.new()
-	add_child(clock)
-	clock.set_process(false) # タイトル画面の間は時間を止めておく（木に入れた後で止める）
-	commute_system = CommuteSystem.new()
-	commute_system.setup(self)
-	add_child(commute_system)
-	commute_system.rebuild()
-	hotel_system = HotelSystem.new()
-	hotel_system.setup(self)
-	tile_map.add_child(hotel_system)
-	hotel_system.rebuild()
-	commerce_system = CommerceSystem.new()
-	commerce_system.setup(self)
-	add_child(commerce_system)
-	housing_system = HousingSystem.new()
-	housing_system.setup(self)
-	add_child(housing_system)
-	housing_system.rebuild()
-	event_system = EventSystem.new()
-	event_system.setup(self)
-	add_child(event_system)
-	event_system.rebuild()
-	rating_system = RatingSystem.new()
-	rating_system.setup(self)
-	add_child(rating_system)
-	economy_system = EconomySystem.new()
-	economy_system.setup(self)
-	add_child(economy_system)
-	lighting = Lighting.new()
-	lighting.setup(self)
-	tile_map.add_child(lighting)
-	tenant_system = TenantSystem.new()
-	tenant_system.setup(self)
-	tile_map.add_child(tenant_system)
+	for part in PARTS.slice(1):
+		create_part(part)
 	tile_map.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST # 拡大してもタイルをぼかさない
+	clock.set_process(false) # タイトル画面の間は時間を止めておく
 	focus_camera_on_building()
-	grid_overlay = GridOverlay.new()
-	grid_overlay.setup(self)
-	tile_map.add_child(grid_overlay)
-	effects = Effects.new()
-	effects.setup(self)
-	tile_map.add_child(effects)
-	ui = Ui.new()
-	ui.setup(self)
-	add_child(ui)
 	ui.build()
 	update_funds_display()
+
+# 部品を1つ作って、main から使えるようにする
+func create_part(part: Dictionary) -> void:
+	var node = part.script.new()
+	set(part.name, node)
+	# 先に木に入れてから setup する（setup の中で子ノードを作る部品があるため）
+	if part.get("parent", "") == "map":
+		tile_map.add_child(node)
+	else:
+		add_child(node)
+	if node.has_method("setup"):
+		node.setup(self)
+	if part.get("rebuild", false):
+		node.rebuild()
 
 func _process(_delta: float) -> void:
 	grid_overlay.update_hover()
