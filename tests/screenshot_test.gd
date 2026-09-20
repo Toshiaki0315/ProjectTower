@@ -10,6 +10,8 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 #   godot --path . -s res://tests/screenshot_test.gd -- <保存先ディレクトリ>
 # 保存先を省略すると user://screenshots に保存する。
 # 一部のシナリオだけ流すときは、環境変数 TEST_ONLY にシナリオの関数名の一部を入れる（例: TEST_ONLY=express）。
+# いくつかの組に分けて並べて実行するときは、TEST_SHARD に「番号/個数」を入れる（例: TEST_SHARD=1/3）。
+# まとめて流すには tools/run_tests.sh を使う（既定は3組で、1回ぶんの3分の1ほどの時間で終わる）。
 # ※ テスト中のウィンドウは常に最前面に出る（マウスは受け付けないので操作の邪魔にはならない）。
 # ---------------------------------------------------
 
@@ -33,7 +35,15 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
+	# TEST_SHARD で受け持つシナリオを決める（並べて実行するため）
+	var shard := OS.get_environment("TEST_SHARD")
+	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
+	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
+	var scenario_index := -1
 	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario]:
+		scenario_index += 1
+		if scenario_index % shard_count != shard_index:
+			continue # ほかの組が受け持つシナリオ
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -41,7 +51,9 @@ func _init() -> void:
 		if scenario != run_tutorial_scenario:
 			main.tutorial_system.finished = true # 案内のバーがほかのシナリオの画面をずらさないようにする
 		# シナリオは最後まで進むとtrueを返す。途中でスクリプトエラーが起きるとnullになる
+		var started_at := Time.get_ticks_msec()
 		var finished = await scenario.call()
+		print("    かかった時間: %.1f秒" % ((Time.get_ticks_msec() - started_at) / 1000.0)) # どのシナリオが遅いかを見る
 		if finished != true:
 			failures.append("%s が途中で中断した（スクリプトエラーを確認）" % scenario.get_method())
 	Engine.time_scale = 1.0
@@ -538,12 +550,15 @@ func run_stress_scenario() -> bool:
 	
 	await wait_until(func(): return resident.stress >= resident.STRESS_PINK, 10.0)
 	check(resident.get_face_color() == resident.PINK_COLOR and resident.get_body_color() == Color.WHITE, "ストレス40以上で顔がピンクになる（服は白のまま）")
+	focus_camera(resident.cell)
+	await wait_frames(1)
 	await hover_cell(resident.cell)
 	check(main.hover_label.text.contains("住人のストレス"), "カーソルを合わせると下部バーにストレスが出る")
 	await capture("stress_01_pink")
 	
 	await wait_until(func(): return resident.stress >= resident.STRESS_RED, 10.0)
-	check(resident.get_face_color() == resident.RED_COLOR, "ストレス70以上で顔が赤くなる")
+	# 激怒（95以上）になると赤と明るい色で点滅するので、どちらでもよいことにする
+	check(resident.get_face_color() in [resident.RED_COLOR, resident.ANGRY_COLOR], "ストレス70以上で顔が赤くなる")
 	await wait_until(func(): return resident.stress >= resident.MAX_STRESS, 10.0)
 	check(resident.stress == resident.MAX_STRESS, "ストレスは100で止まる")
 	await capture("stress_02_red")
