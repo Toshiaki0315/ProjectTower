@@ -33,7 +33,7 @@ func _init() -> void:
 	Engine.max_fps = 60
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario]:
 		if OS.get_environment("TEST_ONLY") != "" and not scenario.get_method().contains(OS.get_environment("TEST_ONLY")):
 			continue
 		# 更地から始めるシナリオ以外は、共通のビル（build_standard_block）を建ててから始める
@@ -741,7 +741,7 @@ func run_hotel_scenario() -> bool:
 			guests_in_room += 1
 	check(guests_in_room == 3, "薄紫の宿泊客がそれぞれの部屋に着いている")
 	await hover_cell(room_cells[0] + Vector2i(1, 0))
-	check(main.hover_label.text.contains("シングル（宿泊中）"), "部屋のどのマスにカーソルを合わせても部屋の状態が出る")
+	check(main.hover_label.text.contains("シングル（宿泊中・"), "部屋のどのマスにカーソルを合わせても部屋の状態と騒音が出る")
 	check(main.stats_label.text.contains("客室: 宿泊 3"), "上部バーに客室の状況が出る")
 	var viewport_width: float = main.get_viewport_rect().size.x
 	var ui_right := 0.0
@@ -955,7 +955,7 @@ func run_housing_scenario() -> bool:
 	check(housing.homes.size() == 2 and housing.count_moved_in() == 0, "建てた直後はまだ入居者がいない")
 	check(housing.homes[homes[0]].members.size() == 3, "住宅1戸は3人家族（1人1マス）")
 	await hover_cell(homes[0] + Vector2i(2, 0))
-	check(main.hover_label.text.contains("住宅（入居者募集中）"), "住宅のどのマスにカーソルを合わせても「入居者募集中」と出る")
+	check(main.hover_label.text.contains("住宅（入居者募集中・"), "住宅のどのマスにカーソルを合わせても「入居者募集中」と出る")
 	
 	# 1日目の夕方: 家族が来て入居し、販売収入が入る
 	main.clock.set_time(1, 16, 59)
@@ -973,7 +973,7 @@ func run_housing_scenario() -> bool:
 	var others: int = main.commute_system.workers.size() - main.commute_system.count_unreachable() + main.hotel_system.total_capacity()
 	check(main.rating_system.population() == others + 6, "入居者6人の分だけ人口が増える")
 	await hover_cell(homes[0])
-	check(main.hover_label.text.contains("住宅（在宅 3/3人）"), "入居後は在宅の人数が出る")
+	check(main.hover_label.text.contains("住宅（在宅 3/3人・"), "入居後は在宅の人数が出る")
 	await capture("housing_01_moved_in")
 	
 	# 2日目の朝: 1日目の決算に販売収入が入り、入居者は出かける
@@ -1046,7 +1046,7 @@ func run_room_types_scenario() -> bool:
 	check(arrived == 4, "4人とも部屋に着いている")
 	check(spots.size() == 4, "同じ部屋の2人は別々のマスにいる（重ならない）")
 	await hover_cell(suite)
-	check(main.hover_label.text.contains("スイート（宿泊中）"), "カーソルを合わせると客室の種類と状態が出る")
+	check(main.hover_label.text.contains("スイート（宿泊中・"), "カーソルを合わせると客室の種類と状態が出る")
 	await capture("room_types_01_night")
 	
 	# 翌朝: チェックアウトで宿泊料 3.5万 + 8万、清掃時間は部屋の種類で違う
@@ -2487,6 +2487,68 @@ func run_size_limit_scenario() -> bool:
 	check(main.is_cell_empty(Vector2i(50, 18)), "上限の外はクリックしても建たない")
 	check(main.last_message.begins_with("ビルの幅は100マスまでです"), "建てられない理由がメッセージで出る")
 	check(not main.can_click_cell(Vector2i(50, 18)), "上限の外は赤く表示される")
+	return true
+
+# ---------------------------------------------------
+# シナリオ42: 騒音（ノイズ）と、住宅・ホテルの評価への影響
+#   2階（y=17）に 映画館(x=9〜16)・住宅(x=17〜19)・客室(x=20〜21) を建て、
+#   離れた静かな場所（x=28〜31）にも住宅と客室を建てて比べる。
+# ---------------------------------------------------
+func run_noise_scenario() -> bool:
+	print("[シナリオ] 騒音")
+	main.funds = 10000000
+	var noise = main.noise_system
+	focus_camera(Vector2i(14, 17))
+	await wait_frames(1)
+	# 足場: 1階にロビーを足し、(9,18)は2階へ上がる階段にする
+	build_support([Vector2i(8, 18)] + cells_row(18, 10, 32), "lobby")
+	build_support([Vector2i(9, 18)])
+	check(noise.get_noise(Vector2i(12, 17)) > 0, "ロビーの上の階にも、ロビーの騒音が少し届く")
+	var lobby_noise: int = noise.get_noise(Vector2i(12, 17))
+	
+	# うるさい建物（映画館）を建てると、まわりのマスの騒音が増える
+	main.select_mode("cinema")
+	main.build_at(Vector2i(9, 17))
+	check(noise.get_noise(Vector2i(12, 17)) > lobby_noise, "映画館のマスは騒音が大きい")
+	check(noise.get_noise(Vector2i(17, 17)) > lobby_noise, "隣のマスにも騒音が広がる")
+	check(noise.get_noise(Vector2i(28, 17)) == lobby_noise, "離れたマスには映画館の騒音は届かない")
+	check(noise.NOISE_SOURCES["cinema"] > noise.NOISE_SOURCES["restaurant"], "映画館は飲食店よりうるさい")
+	
+	# 住宅: うるさい場所と静かな場所を建て比べる
+	main.select_mode("housing")
+	main.build_at(Vector2i(17, 17)) # 映画館の隣（うるさい）
+	main.build_at(Vector2i(28, 17)) # 離れた場所（静か）
+	var noisy := Vector2i(17, 17)
+	var quiet := Vector2i(28, 17)
+	check(noise.get_unit_noise(noisy) > noise.get_unit_noise(quiet), "飲食店の隣の住宅の方が騒音が大きい")
+	check(noise.noise_stress(noisy) > noise.noise_stress(quiet), "騒音のぶん、評価に足されるストレスも大きい")
+	await hover_cell(noisy + Vector2i(1, 0))
+	check(main.hover_label.text.contains("騒音"), "カーソルを合わせると住宅の騒音が出る")
+	await hover_cell(quiet + Vector2i(1, 0))
+	check(main.hover_label.text.contains("静か"), "静かな住宅は「静か」と出る")
+	await capture("noise_01_housing")
+	
+	# 同じストレスでも、うるさい住宅の方が評価が悪くなる
+	var tenants = main.tenant_system
+	var housing = main.housing_system
+	for origin in [noisy, quiet]:
+		housing.homes[origin].moved_in = true
+		for m in housing.homes[origin].members:
+			tenants.day_peak_stress[m.room] = 25.0 # 「良い」の範囲（30未満）のストレス
+	tenants.evaluate_day(1)
+	print("    noisy=", tenants.homes[noisy].average, " quiet=", tenants.homes[quiet].average)
+	check(tenants.homes[quiet].rating == tenants.Rating.GOOD, "静かな住宅の評価は「良い」")
+	check(tenants.homes[noisy].rating != tenants.Rating.GOOD, "同じストレスでも、うるさい住宅は評価が下がる")
+	check(tenants.homes[noisy].average > tenants.homes[quiet].average, "評価に使う値に騒音のぶんが足されている")
+	
+	# ホテルの客室も、うるさいと評価が悪くなる
+	main.select_mode("hotel")
+	main.build_at(Vector2i(20, 17)) # 映画館から少し離れた部屋（まだうるさい）
+	main.build_at(Vector2i(31, 17)) # 静かな部屋
+	tenants.rate_hotel_stay(Vector2i(20, 17), 20.0)
+	tenants.rate_hotel_stay(Vector2i(31, 17), 20.0)
+	check(tenants.rooms[Vector2i(20, 17)].average > tenants.rooms[Vector2i(31, 17)].average, "うるさい客室は、同じストレスでも評価の値が悪くなる")
+	check(tenants.hotel_checkin_chance(Vector2i(31, 17)) >= tenants.hotel_checkin_chance(Vector2i(20, 17)), "静かな部屋の方が客が来やすい")
 	return true
 
 # 指定した日の朝から全員を出勤させ、その日の決算まで時計を進める

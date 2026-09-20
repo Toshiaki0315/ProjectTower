@@ -6,6 +6,7 @@ const GridOverlay := preload("res://scripts/view/grid_overlay.gd")
 const ElevatorSystem := preload("res://scripts/systems/elevator_system.gd")
 const ParkingSystem := preload("res://scripts/systems/parking_system.gd")
 const VisitorSystem := preload("res://scripts/systems/visitor_system.gd")
+const NoiseSystem := preload("res://scripts/systems/noise_system.gd")
 const GameClock := preload("res://scripts/systems/game_clock.gd")
 const CommuteSystem := preload("res://scripts/systems/commute_system.gd")
 const EconomySystem := preload("res://scripts/systems/economy_system.gd")
@@ -95,6 +96,7 @@ var grid_overlay # マス目の表示
 var elevator_system # エレベーターのシャフトとカゴの管理
 var parking_system  # 地下駐車場とスロープ（車で来るお客さん）
 var visitor_system  # 外から来るお客さん（店の客・車で来た客）の動き
+var noise_system    # 騒音（うるさい建物のまわりのマスに広がる）
 var clock # ゲーム内の時計
 var commute_system # オフィスの社員の出退勤
 var economy_system # 毎日の決算（賃料収入と維持費）
@@ -141,6 +143,9 @@ func _ready() -> void:
 	visitor_system = VisitorSystem.new()
 	visitor_system.setup(self)
 	add_child(visitor_system)
+	noise_system = NoiseSystem.new()
+	noise_system.setup(self)
+	add_child(noise_system)
 	parking_system = ParkingSystem.new()
 	parking_system.setup(self)
 	add_child(parking_system)
@@ -521,7 +526,8 @@ func update_hover_label():
 		text += "（%s）" % tenant_system.get_rating_text(cell)
 	if hotel_system.is_room_type(type):
 		var room_rating: String = tenant_system.get_room_rating_text(cell)
-		text += "（%s%s）" % [hotel_system.get_room_state_text(cell), "・" + room_rating if room_rating != "" else ""]
+		text += "（%s%s・%s）" % [hotel_system.get_room_state_text(cell), "・" + room_rating if room_rating != "" else "",
+			noise_system.get_noise_text(cell)]
 	elif type == "restaurant":
 		text += "（客 %d人）" % (commerce_system.count_eating_at(cell) + visitor_system.count_at_shop(cell))
 	elif type == "shop":
@@ -546,7 +552,8 @@ func update_hover_label():
 			text += "（カゴ%d台: %s人）" % [cars.size(), "・".join(loads)]
 	elif type == "housing":
 		var home_rating: String = tenant_system.get_home_rating_text(cell)
-		text += "（%s%s）" % [housing_system.get_home_state_text(cell), "・" + home_rating if home_rating != "" else ""]
+		text += "（%s%s・%s）" % [housing_system.get_home_state_text(cell), "・" + home_rating if home_rating != "" else "",
+			noise_system.get_noise_text(cell)]
 	elif type == "parking":
 		text += "（%s）" % parking_system.get_parking_text(cell)
 	elif type == "recycling":
@@ -1066,6 +1073,7 @@ func call_elevator(cell: Vector2i):
 # 建物が増減したときに、建物に対応する仕組み（エレベーター・社員・客室・住宅・会場）を更新する
 func rebuild_systems():
 	elevator_system.rebuild()
+	noise_system.rebuild()
 	parking_system.rebuild()
 	commute_system.rebuild()
 	hotel_system.rebuild()
