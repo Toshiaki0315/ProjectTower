@@ -348,13 +348,19 @@ func run_ui_scenario() -> bool:
 	check(not main.can_click_cell(office_cell), "建物のあるマスは建設不可（赤）と判定される")
 	check(main.hover_label.text.contains("オフィス"), "下部バーに建物の種類が出る")
 	
-	# 操作説明の開閉（⌘H）
+	# 操作説明の開閉（F1・H）。macOSの⌘H（隠す）とぶつからないよう、⌘は使わない
 	check(not main.help_panel.visible, "操作説明は最初は閉じている")
-	await press_shortcut(KEY_H)
-	check(main.help_panel.visible, "⌘Hで操作説明が開く")
+	await press_key(KEY_F1)
+	check(main.help_panel.visible, "F1で操作説明が開く")
 	await capture("ui_02_help_open")
+	await press_key(KEY_F1)
+	check(not main.help_panel.visible, "もう一度F1を押すと閉じる")
+	await press_key(KEY_H)
+	check(main.help_panel.visible, "Hキーでも操作説明が開く")
+	await press_key(KEY_ESCAPE)
+	check(not main.help_panel.visible, "Escで開いているパネルが閉じる")
 	await press_shortcut(KEY_H)
-	check(not main.help_panel.visible, "もう一度⌘Hを押すと閉じる")
+	check(not main.help_panel.visible, "⌘Hは受け付けない（macOSのウィンドウを隠す操作を邪魔しない）")
 	
 	# メッセージの記録（⌘L）
 	main.show_message("テストのメッセージ1")
@@ -3392,15 +3398,15 @@ func run_audio_scenario() -> bool:
 	audio.play("build")
 	check(is_equal_approx(audio.last_played["build"], first_time), "同じ音は少し間を空けてから鳴らす")
 	
-	# ⌘Mで音を消せる
-	await press_shortcut(KEY_M)
-	check(audio.muted and not audio.bgm_player.playing, "⌘Mで音が止まる")
+	# Mで音を消せる（macOSの⌘M（しまう）とぶつからないよう、⌘は使わない）
+	await press_key(KEY_M)
+	check(audio.muted and not audio.bgm_player.playing, "Mキーで音が止まる")
 	check(main.last_message.contains("音をオフにしました"), "音を消したことがメッセージで出る")
 	audio.last_played.clear()
 	audio.play("chime")
 	check(not audio.last_played.has("chime"), "音を消している間は効果音も鳴らない")
-	await press_shortcut(KEY_M)
-	check(not audio.muted and audio.bgm_player.playing, "もう一度⌘Mで音が戻る")
+	await press_key(KEY_M)
+	check(not audio.muted and audio.bgm_player.playing, "もう一度Mキーで音が戻る")
 	
 	# 夜になるとBGMが夜の和音に変わる
 	main.clock.set_time(1, 12, 0)
@@ -3737,12 +3743,16 @@ func drag_cells(from: Vector2i, to: Vector2i, button: MouseButton) -> void:
 	root.push_input(release)
 	await wait_frames(1)
 
-# ⌘（Command）を押しながらキーを押す（⌘H・⌘Lなどのショートカット）
+# ⌘（Command）を押しながらキーを押す（⌘L・⌘Gなどのショートカット）
 func press_shortcut(keycode: Key) -> void:
+	await press_key(keycode, true)
+
+# ⌘なしでキーを押す（F1・H・M・Esc）
+func press_key(keycode: Key, meta := false) -> void:
 	var press := InputEventKey.new()
 	press.keycode = keycode
 	press.pressed = true
-	press.meta_pressed = true
+	press.meta_pressed = meta
 	root.push_input(press)
 	await wait_frames(2)
 

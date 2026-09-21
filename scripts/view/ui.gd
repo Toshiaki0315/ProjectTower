@@ -9,6 +9,7 @@ const ChartView := preload("res://scripts/view/chart_view.gd")
 # ---------------------------------------------------
 
 const UI_SCALE := 2      # 画面表示（文字・ボタン・余白）の大きさの倍率
+const PANEL_WIDTH := 1400 # 操作説明・メッセージの記録のパネルの横幅（画面幅1600に収まる大きさ）
 const BASE_FONT_SIZE := 16 # 倍率をかける前の文字の大きさ
 const MESSAGE_LINES := 3 # 下部バーに出しておくメッセージの行数
 
@@ -24,7 +25,7 @@ var mode_info_label: Label # 選んだものの建設費と大きさ
 var message_label: Label   # 操作結果のメッセージ（下から数行ぶん流れる）
 var hover_label: Label     # カーソル下のマスの情報（吹き出しの中身）
 var hover_tooltip: Control # 吹き出し
-var help_panel: Control    # 操作説明（⌘H）
+var help_panel: Control    # 操作説明（F1・H）
 var log_panel: Control     # メッセージの記録（⌘L）
 var log_label: Label
 var log_scroll: ScrollContainer
@@ -105,7 +106,7 @@ func clear_message() -> void:
 #   上部バー    … 1段目: 資金 / 日付と時刻 / 速度
 #                  2段目: ビルの状況（★・人口・社員・客室）
 #                  3段目: 建設メニュー
-#   操作説明    … 上部バーの下に表示（⌘Hで開閉）。メッセージの記録は⌘Lで開閉
+#   操作説明    … 上部バーの下に表示（F1・Hで開閉）。メッセージの記録は⌘Lで開閉
 #   （マップ）  … クリックはそのままマップに届く
 #   下部バー    … 操作結果のメッセージ（新しいものが下に出て、古いものは流れる）
 #   吹き出し    … カーソル下のマスの情報（建物や人がいるマスで、マウスの横に出る）
@@ -168,7 +169,7 @@ func build_bars() -> void:
 	status_row.add_child(speed_button)
 	world.set_speed(1)
 	
-	# 操作説明（⌘H）とメッセージの記録（⌘L）は、ボタンではなくショートカットで開く
+	# 操作説明（F1・H）とメッセージの記録（⌘L）は、ボタンではなくショートカットで開く
 	
 	# 建設メニュー: リストから選んで、マップをクリックして建てる（見出しごとにまとめる）
 	var build_label = Label.new()
@@ -226,9 +227,9 @@ func build_bars() -> void:
 		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
 		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
-		"ショートカット: ⌘H（この説明の開閉） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
+		"ショートカット: F1・H（この説明の開閉） / Esc（開いているパネルを閉じる） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
 		"収支のグラフ: ⌘G で、最近60日ぶんの決算の合計を棒グラフで見られる",
-		"音: ⌘M で音のオン・オフ（効果音とBGMは、波形からゲームの中で作っている）",
+		"音: M キーで音のオン・オフ（効果音とBGMは、波形からゲームの中で作っている）",
 		"撤去: 建設メニューの「撤去」を選ぶと左クリックで撤去できる（右クリックはいつでも撤去）。ドラッグで続けて建設・撤去できる",
 		"セーブ: ⌘S で保存、⌘O で読み込み（ビル・資金・日付・評価・各設備の状態が戻る）",
 		"天気: 日ごとに晴れ・くもり・雨が決まる（6月は梅雨）。雨の日は入口から来る店の客が半分（車で来る客は減らない）",
@@ -265,8 +266,12 @@ func build_bars() -> void:
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 	])
 	help_label.add_theme_font_size_override("font_size", 13 * UI_SCALE) # 行数が多いので少し小さめ
+	# 長い行は折り返して、右がはみ出して読めなくならないようにする
+	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help_label.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
 	var help_scroll = ScrollContainer.new()
-	help_scroll.custom_minimum_size = Vector2(1000, 420) # 画面に収まる高さ。はみ出す分はスクロールする
+	help_scroll.custom_minimum_size = Vector2(PANEL_WIDTH, 420) # 画面に収まる高さ。はみ出す分は上下にスクロールする
+	help_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	help_scroll.add_child(help_label)
 	help_panel = make_bar(help_scroll)
 	help_panel.visible = false
@@ -279,8 +284,11 @@ func build_bars() -> void:
 	log_label = Label.new()
 	log_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
 	log_label.add_theme_font_size_override("font_size", 13 * UI_SCALE)
+	log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	log_label.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
 	log_scroll = ScrollContainer.new()
-	log_scroll.custom_minimum_size = Vector2(1000, 420)
+	log_scroll.custom_minimum_size = Vector2(PANEL_WIDTH, 420)
+	log_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	log_scroll.add_child(log_label)
 	log_panel = make_bar(log_scroll)
 	log_panel.visible = false
@@ -554,7 +562,7 @@ func build_title() -> void:
 		world.save_system.load_game())
 	box.add_child(continue_button)
 	var hint = Label.new()
-	hint.text = "遊び方は ⌘H（操作説明）。⌘S で保存、⌘O で読み込み、⌘M で音のオン・オフ"
+	hint.text = "遊び方は F1（操作説明）。⌘S で保存、⌘O で読み込み、M で音のオン・オフ"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
 	title_panel = back

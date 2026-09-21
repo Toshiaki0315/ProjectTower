@@ -4,7 +4,7 @@ extends Node
 # 音：効果音とBGMを、音の波形からコードで作る（音源ファイルは使わない）。
 #   効果音（SOUNDS）: 建設・撤去・エレベーターの到着・決算・警報・操作できないとき
 #   BGM: 和音をゆっくり鳴らすループ。昼と夜で和音を変える
-#   ⌘M で音を消したり出したりできる。
+#   M キーで音を消したり出したりできる。
 # 音を鳴らしすぎないよう、同じ効果音は COOLDOWN 秒に1回までにする。
 # ---------------------------------------------------
 
@@ -73,14 +73,14 @@ func play(name: String) -> void:
 	player.stream = sounds[name]
 	player.play()
 
-# 音を消す・戻す（⌘M）
+# 音を消す・戻す（Mキー）
 func toggle_mute() -> bool:
 	muted = not muted
 	if muted:
 		bgm_player.stop()
 	else:
 		bgm_player.play()
-	world.show_message("音を%sにしました（⌘Mで切り替え）" % ("オフ" if muted else "オン"))
+	world.show_message("音を%sにしました（Mキーで切り替え）" % ("オフ" if muted else "オン"))
 	return muted
 
 # BGMを昼／夜の和音で鳴らし直す

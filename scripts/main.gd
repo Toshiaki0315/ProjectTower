@@ -618,18 +618,26 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 	else:
 		build_at(map_pos)
 
-# ⌘（Ctrl）と組み合わせるショートカット。受け付けたら true
-#   ⌘H: 操作説明の開閉 / ⌘L: メッセージの記録の開閉
+# ショートカット。受け付けたら true
+#   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / Esc: 開いているパネルを閉じる
+#   ⌘L: メッセージの記録の開閉 / ⌘G: 収支のグラフの開閉
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
-#   ⌘S: セーブ / ⌘O: セーブデータの読み込み / ⌘G: 収支のグラフの開閉 / ⌘M: 音のオン・オフ
+#   ⌘S: セーブ / ⌘O: セーブデータの読み込み
+# ヘルプと音を⌘と組み合わせないのは、macOSの⌘H（隠す）・⌘M（しまう）とぶつかるため。
+# このゲームは文字を打つところがないので、単体のキーで受けてよい。
 func handle_shortcut(event: InputEventKey) -> bool:
 	if not (event.meta_pressed or event.ctrl_pressed):
-		return false
+		match event.keycode:
+			KEY_F1, KEY_H:
+				help_panel.visible = not help_panel.visible
+			KEY_M:
+				audio_system.toggle_mute()
+			KEY_ESCAPE:
+				return close_panels()
+			_:
+				return false
+		return true
 	match event.keycode:
-		KEY_H:
-			help_panel.visible = not help_panel.visible
-		KEY_M:
-			audio_system.toggle_mute()
 		KEY_G:
 			chart_panel.visible = not chart_panel.visible
 		KEY_S:
@@ -649,6 +657,15 @@ func handle_shortcut(event: InputEventKey) -> bool:
 		_:
 			return false
 	return true
+
+# Esc: 開いているパネルを閉じる。1つでも閉じたら true（何も開いていなければ false）
+func close_panels() -> bool:
+	var closed := false
+	for panel in [help_panel, log_panel, chart_panel]:
+		if panel.visible:
+			panel.visible = false
+			closed = true
+	return closed
 
 # ゲームの速度を変える（ボタンの表示も合わせる）
 func set_speed(speed: int) -> void:
