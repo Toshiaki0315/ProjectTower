@@ -3035,7 +3035,7 @@ func run_roach_scenario() -> bool:
 	check(not incidents.has_roaches(), "悪化1日目では、まだ出ない")
 	incidents.update_roaches(2)
 	check(incidents.has_roaches(), "悪化が2日続くとゴキブリが大繁殖する")
-	check(incidents.roaches.size() <= incidents.ROACH_SPAWN, "1日に広がるのは%d棟まで" % incidents.ROACH_SPAWN)
+	check(incidents.roaches.size() == incidents.ROACH_SPAWN, "1日にちょうど%d棟に広がる（同じ棟を2度選ばない）" % incidents.ROACH_SPAWN)
 	check(logged("ゴキブリが大繁殖しました"), "発生がメッセージで知らされる")
 	await wait_frames(2)
 	check(main.stats_label.text.contains("ゴキブリ"), "ビルの状況にゴキブリのいる棟数が出る")
@@ -3047,7 +3047,7 @@ func run_roach_scenario() -> bool:
 	# 日がたつと、さらに広がる
 	var before: int = incidents.roaches.size()
 	incidents.update_roaches(3)
-	check(incidents.roaches.size() > before, "悪化が続くと、さらに広がる")
+	check(incidents.roaches.size() == before + incidents.ROACH_SPAWN, "悪化が続くと、さらに%d棟に広がる" % incidents.ROACH_SPAWN)
 	
 	# ゴキブリがいるテナントは評価が下がる
 	check(is_equal_approx(incidents.roach_stress(infested), incidents.ROACH_STRESS), "ゴキブリのいるテナントはストレス15ぶんの上乗せ")
@@ -3250,6 +3250,10 @@ func run_save_scenario() -> bool:
 	main.hotel_system.rooms[Vector2i(9, 17)].state = main.hotel_system.RoomState.DIRTY
 	main.housing_system.homes[Vector2i(12, 17)].moved_in = true
 	main.tenant_system.offices[Vector2i(0, 17)] = {"rating": main.tenant_system.Rating.BAD, "average": 70.0, "bad_days": 2, "vacant": false, "vacant_days": 0}
+	# カゴを別々の階に動かしておく（読み込んだときに同じ階へ戻るか確かめる）
+	var cars_before: Array = main.elevator_system.get_cars_at(Vector2i(8, 16))
+	cars_before[0].place_at_floor(14)
+	cars_before[1].place_at_floor(16)
 	var funds_before: int = main.funds
 	var buildings_before: int = main.building_grid.size()
 	
@@ -3259,6 +3263,10 @@ func run_save_scenario() -> bool:
 	check(logged("セーブしました"), "セーブしたことがメッセージで出る")
 	
 	# ビルを壊してから読み込むと、元に戻る
+	# セーブした後に起きた火災・爆破予告は、読み込んだビルに持ち込まない
+	main.incident_system.fire[Vector2i(9, 17)] = {"burn_left": 30.0, "work_left": 0.0}
+	main.incident_system.bomb = {"cell": Vector2i(12, 17), "left": 60.0, "defuse_left": 0.0, "guard": null}
+	main.incident_system.fire_day = 7
 	main.clear_world()
 	main.funds = 0
 	main.clock.set_time(1, 7, 30)
@@ -3279,6 +3287,11 @@ func run_save_scenario() -> bool:
 	# エレベーターの設定も戻る
 	var elevators = main.elevator_system
 	check(elevators.get_cars_at(Vector2i(8, 16)).size() == 2, "カゴの台数が戻る")
+	var floors: Array = elevators.get_cars_at(Vector2i(8, 16)).map(func(car): return car.current_floor())
+	floors.sort()
+	check(floors == [14, 16], "カゴがそれぞれ元の階に戻る（最下階に集まらない）")
+	check(not main.incident_system.has_fire() and not main.incident_system.has_bomb(), "読み込んだ後に、前の火災・爆破予告は残らない")
+	check(main.incident_system.fire_day == 0, "その日の出火の判定は、読み込んだ日にやり直す")
 	check(elevators.get_home(Vector2i(8, 16)) == 16, "待機階が戻る")
 	check(elevators.get_service(Vector2i(8, 16)).name == "6時〜24時", "稼働時間帯が戻る")
 	await capture("save_01_loaded")

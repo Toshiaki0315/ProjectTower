@@ -80,6 +80,18 @@ func setup(p_world: Node2D) -> void:
 	world = p_world
 
 # 警備室の数に合わせて、警備員を増やしたり減らしたりする
+# 進行中の事件（爆破予告・火災・消防ヘリ）をなかったことにする。
+# セーブデータを読み込むときに呼ぶ（前の続きの火事が、読み込んだビルを燃やさないように）
+func reset_incidents() -> void:
+	bomb = null
+	fire.clear()
+	fire_spread_left = 0.0
+	heli = null
+	bomb_day = 0  # 読み込んだ日に、もう一度その日の判定をする
+	fire_day = 0
+	roach_day = 0
+	roach_days = 0
+
 func rebuild() -> void:
 	var rooms: Array[Vector2i] = world.find_units_of_type("security")
 	for origin in rooms:
@@ -440,7 +452,8 @@ func spread_roaches(day: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([day, "roach"])
 	for i in mini(ROACH_SPAWN, targets.size()):
-		roaches[targets[rng.randi_range(0, targets.size() - 1)]] = true
+		# 選んだ棟は候補から外す（同じ棟を2度選んで、増える数が減らないように）
+		roaches[targets.pop_at(rng.randi_range(0, targets.size() - 1))] = true
 
 func get_roach_text() -> String:
 	if not has_roaches():

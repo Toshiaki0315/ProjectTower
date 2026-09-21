@@ -140,6 +140,7 @@ func apply(data: Dictionary) -> void:
 	world.economy_system.pollution = int(data.pollution)
 	world.economy_system.last_day = int(data.last_day)
 	world.incident_system.treasure_total = int(data.treasure_total)
+	world.incident_system.reset_incidents() # 前の続きの火災・爆破予告を持ち込まない
 	world.rebuild_systems()
 	apply_elevators(data)
 	apply_tenants(data)
@@ -169,6 +170,13 @@ func apply_elevators(data: Dictionary) -> void:
 			var before: int = world.funds
 			elevators.add_car(cell)
 			world.funds = before # 読み込みではお金はかからない
+	# カゴを、保存されていた階に戻す（シャフトを建て直したカゴは最下階にいるため）
+	for key in wanted:
+		var floors: Array = wanted[key]
+		var cars: Array = elevators.cars.filter(func(car):
+			return is_instance_valid(car) and car.shaft_type == key[0] and car.column == key[1])
+		for i in mini(cars.size(), floors.size()):
+			cars[i].place_at_floor(floors[i])
 	elevators.apply_home_floors()
 
 func apply_tenants(data: Dictionary) -> void:

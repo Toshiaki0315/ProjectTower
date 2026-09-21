@@ -92,6 +92,16 @@ func set_shaft_type(type: String) -> void:
 		body_color = SERVICE_COLOR
 	queue_redraw()
 
+# 指定した階にカゴを置き直す（セーブデータの読み込み用）
+func place_at_floor(y: int) -> void:
+	if not has_floor(y):
+		return
+	floor_y = y
+	target_y = y
+	position = floor_position(y)
+	state = State.IDLE
+	direction = Direction.NONE
+
 # シャフトの範囲が変わったときに呼ぶ。範囲外になった呼び出しは取り消す
 func set_shaft(top: int, bottom: int) -> void:
 	top_y = top
