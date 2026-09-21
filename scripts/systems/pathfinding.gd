@@ -16,7 +16,7 @@ func setup(p_world: Node2D) -> void:
 const WALK_COST := 1.0           # 横に1マス歩く
 const STAIRS_COST := 2.0         # 階段で1階分上り下りする
 const ESCALATOR_COST := 1.0      # エスカレーターで1階分上り下りする（待ち時間がなく、階段より楽）
-const ELEVATOR_WAIT_COST := 4.0  # エレベーターに乗る（待ち時間の見込み）
+const ELEVATOR_WAIT_COST := 4.0  # エレベーターに乗る（待ち時間の見込み。定員が大きいカゴほど短くなる）
 const ELEVATOR_FLOOR_COST := 0.5 # エレベーターで1階分移動する
 
 # 指定マスから1回で移動できる先とそのコストの一覧（住人の移動ルールはすべてここで決まる）
@@ -46,10 +46,12 @@ func get_moves(cell: Vector2i, staff := false) -> Array:
 	if world.elevator_system.is_shaft_type(world.get_building_type(cell)) and (staff or world.get_building_type(cell) != "service_elevator"):
 		var car = world.elevator_system.get_car_at(cell)
 		if car and car.in_service and car.is_stop_floor(cell.y):
+			# 速いカゴほど1階ぶんが安く、定員の大きいカゴほど待ち時間の見込みが短い
 			var floor_cost: float = ELEVATOR_FLOOR_COST * car.SPEED / car.speed
+			var wait_cost: float = ELEVATOR_WAIT_COST * car.CAPACITY / car.capacity
 			for y in range(car.top_y, car.bottom_y + 1):
 				if y != cell.y and car.is_stop_floor(y):
-					var cost := ELEVATOR_WAIT_COST + floor_cost * absi(y - cell.y)
+					var cost := wait_cost + floor_cost * absi(y - cell.y)
 					result.append({"to": Vector2i(cell.x, y), "cost": cost})
 	return result
 

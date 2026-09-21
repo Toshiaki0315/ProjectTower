@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -4043,4 +4043,55 @@ func run_frame_scenario() -> bool:
 	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_RIGHT) # 上のオフィスを撤去
 	await click_cell(shop, MOUSE_BUTTON_RIGHT)            # 住宅を撤去（もう支えていないので更地に戻る）
 	check(main.is_cell_empty(shop), "上に何もなくなったら、撤去で更地に戻る（跡地は残らない）")
+	return true
+
+# シナリオ65: 大型エレベーター（横2マス・定員16人・速さ1.5倍）
+# 横2マスで1本のシャフトになること、定員と速さ、経路探索で選ばれやすいことを確かめる。
+# ---------------------------------------------------
+func run_large_elevator_scenario() -> bool:
+	print("[シナリオ] 大型エレベーター")
+	main.clear_world()
+	main.funds = 10000000
+	var elevators = main.elevator_system
+	build_support(cells_row(18, 4, 7) + cells_row(18, 11, 20), "lobby") # シャフトの場所（x=8〜10）は空けておく
+	# x=8〜9 に大型エレベーター（1階〜5階）
+	await choose_mode("large_elevator")
+	check(main.mode_info_label.text.contains("定員16人"), "建設メニューに定員と速さが出る")
+	for y in range(18, 13, -1):
+		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 18)) == "large_elevator", "大型エレベーターは横2マス")
+	check(main.funds == 10000000 - 5 * 240000, "1階ぶん24万円（横2マス）かかる")
+
+	var large = elevators.get_car_at(Vector2i(8, 18))
+	check(large != null and large.capacity == 16, "大型のカゴは定員16人")
+	check(is_equal_approx(large.speed, large.SPEED * 1.5), "大型のカゴは標準の1.5倍の速さ")
+	check(elevators.cars.size() == 1, "横2マスでもシャフトは1本（カゴは1台）")
+	check(elevators.get_car_at(Vector2i(9, 16)) == large, "右のマスからも同じカゴを使える")
+	check(large.is_stop_floor(16), "大型は途中の階にも停まる（急行とちがう）")
+
+	# 右隣に標準のエレベーターを建てて、経路探索がどちらを選ぶか確かめる
+	await choose_mode("elevator")
+	for y in range(18, 13, -1):
+		await click_cell(Vector2i(10, y), MOUSE_BUTTON_LEFT)
+	var standard = elevators.get_car_at(Vector2i(10, 18))
+	check(standard != null and standard.capacity == 8, "標準のカゴは定員8人のまま")
+	var moves: Array = main.pathfinding.get_moves(Vector2i(8, 18))
+	var large_cost := 0.0
+	for m in moves:
+		if m.to == Vector2i(8, 14):
+			large_cost = m.cost
+	var standard_moves: Array = main.pathfinding.get_moves(Vector2i(10, 18))
+	var standard_cost := 0.0
+	for m in standard_moves:
+		if m.to == Vector2i(10, 14):
+			standard_cost = m.cost
+	check(large_cost < standard_cost, "大型は待ち時間が短く速いので、経路の費用が標準より小さい")
+
+	# 標準のシャフトの目の前にいる人でも、5階へ行くなら大型まで歩いて乗る
+	var path: Array[Vector2i] = main.find_path(Vector2i(10, 18), Vector2i(8, 14))
+	check(count_rides(path) == 1, "エレベーターに1回乗る経路になる")
+	check(not path.has(Vector2i(10, 14)), "標準ではなく大型エレベーターを選ぶ")
+	focus_camera(Vector2i(9, 16))
+	await wait_frames(2)
+	await capture("large_elevator_01")
 	return true

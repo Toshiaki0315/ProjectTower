@@ -26,6 +26,7 @@ const NOISE_SOURCES := {
 	"ramp": 2,             # スロープ
 	"elevator": 2,         # エレベーター
 	"express_elevator": 3, # 急行エレベーター
+	"large_elevator": 3,   # 大型エレベーター
 	"service_elevator": 2, # サービスエレベーター
 	"escalator": 2,        # エスカレーター
 	"lobby": 2, "lobby2": 2, "lobby3": 2, "sky_lobby": 2, # ロビー（人の出入りが多い）

@@ -27,9 +27,12 @@ const DOOR_TIME := 1.0 # 停車して扉を開けている時間（秒）
 const CAPACITY := 8    # 定員（標準エレベーター）
 const EXPRESS_SPEED := 144.0 # 急行エレベーターの速さ（標準の3倍）
 const EXPRESS_CAPACITY := 20 # 急行エレベーターの定員
+const LARGE_SPEED := 72.0    # 大型エレベーターの速さ（標準の1.5倍）
+const LARGE_CAPACITY := 16   # 大型エレベーターの定員（標準の2倍）
 const STANDARD_COLOR := Color(0.75, 0.78, 0.85) # 標準のカゴの扉（銀）
 const EXPRESS_COLOR := Color(0.95, 0.78, 0.3)   # 急行のカゴの扉（金）
 const SERVICE_COLOR := Color(0.45, 0.75, 0.65)  # サービスのカゴの扉（緑）
+const LARGE_COLOR := Color(0.6, 0.72, 0.95)     # 大型のカゴの扉（青）
 
 # 群管理で乗り場呼びを割り当てるときの手間（コスト）の見積もり。単位は「階数」
 const STOP_COST := 1.5     # 停まる予定1つあたり（扉の開け閉めの時間）
@@ -38,10 +41,11 @@ const FULL_COST := 100.0   # 満員のカゴ（停まっても乗れない）
 
 var world: Node2D  # main.gd
 var column: int    # シャフトのx座標
-var shaft_type := "elevator" # シャフトの種類（"elevator" = 標準 / "express_elevator" = 急行 / "service_elevator" = サービス）
-var speed := SPEED       # 昇降の速さ（急行は速い）
-var capacity := CAPACITY # 定員（急行は大きい）
-var body_color := STANDARD_COLOR # 扉の色（標準は銀、急行は金）
+var shaft_type := "elevator" # シャフトの種類（"elevator" = 標準 / "express_elevator" = 急行 / "large_elevator" = 大型 / "service_elevator" = サービス）
+var speed := SPEED       # 昇降の速さ（急行・大型は速い）
+var capacity := CAPACITY # 定員（急行・大型は大きい）
+var width_cells := 1     # カゴの横幅（マス数。大型は2）
+var body_color := STANDARD_COLOR # 扉の色（標準は銀、急行は金、大型は青、サービスは緑）
 var top_y: int     # シャフトの最上階
 var bottom_y: int  # シャフトの最下階
 var floor_y: int   # 最後に通過・停車した階
@@ -68,15 +72,22 @@ func setup(p_world: Node2D, x: int, top: int, bottom: int, start_y: int) -> void
 	position = floor_position(floor_y)
 	z_index = 8 # マス目の表示より手前、住人より奥
 
-# シャフトの種類を決める（急行は速く、定員が多く、金色）
+# シャフトの種類を決める（急行は速く・金色、大型は横2マスで定員が大きい）
 func set_shaft_type(type: String) -> void:
 	shaft_type = type
-	var express := type == "express_elevator"
-	speed = EXPRESS_SPEED if express else SPEED
-	capacity = EXPRESS_CAPACITY if express else CAPACITY
+	speed = SPEED
+	capacity = CAPACITY
+	width_cells = 1
 	body_color = STANDARD_COLOR
-	if express:
+	if type == "express_elevator":
+		speed = EXPRESS_SPEED
+		capacity = EXPRESS_CAPACITY
 		body_color = EXPRESS_COLOR
+	elif type == "large_elevator":
+		speed = LARGE_SPEED
+		capacity = LARGE_CAPACITY
+		width_cells = 2
+		body_color = LARGE_COLOR
 	elif type == "service_elevator":
 		body_color = SERVICE_COLOR
 	queue_redraw()
@@ -106,7 +117,8 @@ func current_floor() -> int:
 	return world.tile_map.local_to_map(position).y
 
 func floor_position(y: int) -> Vector2:
-	return world.tile_map.map_to_local(Vector2i(column, y))
+	# 横2マスの大型は、2マスの真ん中に来るように半マスずらす
+	return world.tile_map.map_to_local(Vector2i(column, y)) + Vector2((width_cells - 1) * 8.0, 0)
 
 # ---------------------------------------------------
 # 呼び出しの受け付け
@@ -336,13 +348,14 @@ func alight(resident) -> void:
 # ---------------------------------------------------
 
 func _draw() -> void:
-	var body := Rect2(-6, -7, 12, 14)
+	var half := 6.0 + (width_cells - 1) * 8.0 # 大型は横2マスぶんの幅で描く
+	var body := Rect2(-half, -7, half * 2.0, 14)
 	draw_rect(body.grow(1), Color.BLACK)
 	if state == State.DOORS_OPEN:
 		# 扉が開いている：明るい室内と、左右に寄せた扉
 		draw_rect(body, Color(1.0, 0.95, 0.7))
-		draw_rect(Rect2(-6, -7, 2, 14), body_color)
-		draw_rect(Rect2(4, -7, 2, 14), body_color)
+		draw_rect(Rect2(-half, -7, 2, 14), body_color)
+		draw_rect(Rect2(half - 2, -7, 2, 14), body_color)
 	else:
 		# 扉が閉まっている：銀色（急行は金色）の扉と中央の合わせ目
 		draw_rect(body, body_color)
@@ -351,7 +364,7 @@ func _draw() -> void:
 	var load_ratio := float(passengers.size()) / capacity
 	if load_ratio > 0.0:
 		var gauge_color := Color(1.0, 0.3, 0.3) if passengers.size() >= capacity else Color(0.3, 1.0, 0.4)
-		draw_rect(Rect2(-6, 5, 12.0 * minf(load_ratio, 1.0), 2), gauge_color)
+		draw_rect(Rect2(-half, 5, half * 2.0 * minf(load_ratio, 1.0), 2), gauge_color)
 	# 進行方向の表示（▲ 上へ / ▼ 下へ）
 	var arrow_color := Color(0.3, 1.0, 0.4)
 	if direction == Direction.UP:

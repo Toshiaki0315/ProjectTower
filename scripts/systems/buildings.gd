@@ -37,6 +37,7 @@ const TABLE := {
 	"lobby3": {"name": "吹き抜けロビー（3階分）", "cost": 45000, "source_id": 17, "floors": "ground", "height": 3, "lobby": true},
 	"sky_lobby": {"name": "スカイロビー", "cost": 50000, "source_id": 18, "floors": "sky_lobby"},
 	"express_elevator": {"name": "急行エレベーター", "cost": 120000, "source_id": 19, "floors": "any"},
+	"large_elevator": {"name": "大型エレベーター", "cost": 240000, "source_id": 32, "width": 2, "floors": "any"},
 	"escalator": {"name": "エスカレーター", "cost": 100000, "source_id": 20, "width": 2, "floors": "any"},
 	"service_elevator": {"name": "サービスエレベーター", "cost": 80000, "source_id": 21, "floors": "any"},
 }

@@ -2,6 +2,7 @@ extends Node
 
 const ChartView := preload("res://scripts/view/chart_view.gd")
 const Buildings := preload("res://scripts/systems/buildings.gd")
+const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 
 # ---------------------------------------------------
 # 画面（UI）の組み立てと更新。main.gd から使う。
@@ -222,6 +223,7 @@ func build_bars() -> void:
 		"吹き抜けロビー: 2階分・3階分の高さのロビー。上の階には床がないので、人は1階だけを歩く",
 		"スカイロビー: 15階・30階・45階…にだけ建てられる乗り換え専用のフロア（何階かはカーソル下の情報に出る）",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
+		"大型エレベーター（横2マス）: 全部の階に停まり、定員16人・速さ1.5倍。人の多いビルの渋滞をさばく",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
 		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
@@ -401,6 +403,8 @@ func get_mode_info(mode: String) -> String:
 		info += "・高さ%d階分" % world.get_height(mode)
 	if mode == "express_elevator":
 		info += "（1階とスカイロビーの階だけに停まる）"
+	elif mode == "large_elevator":
+		info += "（全部の階に停まる。定員%d人・速さ1.5倍）" % ElevatorCar.LARGE_CAPACITY
 	return info
 
 # 建設メニューの選択と説明を、今のモードに合わせる

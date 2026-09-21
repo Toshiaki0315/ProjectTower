@@ -5,6 +5,7 @@ extends Node
 # シャフト = 同じ列で縦につながった、同じ種類のエレベーターのマスのまとまり。
 # 種類（SHAFT_TYPES）: "elevator" = 標準（全部の階に停まる） /
 #                      "express_elevator" = 急行（1階とスカイロビーの階だけに停まる。速くて定員が多い）
+#                      "large_elevator" = 大型（横2マス。全部の階に停まり、定員が大きくて少し速い）
 #                      "service_elevator" = サービス（裏方＝清掃員だけが乗れる）
 # 建設・撤去のたびに rebuild() を呼んで、シャフトとカゴを作り直す。
 #
@@ -14,7 +15,7 @@ extends Node
 # ---------------------------------------------------
 
 const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
-const SHAFT_TYPES := ["elevator", "express_elevator", "service_elevator"]
+const SHAFT_TYPES := ["elevator", "express_elevator", "large_elevator", "service_elevator"]
 const MAX_CARS := 4        # 1本のシャフトに置けるカゴの数
 const CAR_COST := 50000    # カゴを1台追加する費用
 const CAR_MAINTENANCE := 3000 # 追加したカゴ1台の1日の維持費
@@ -62,9 +63,13 @@ func rebuild() -> void:
 # 待機階（ホーム）: 呼び出しがなくなったカゴが戻る階。シャフトごとに1つ設定できる
 # ---------------------------------------------------
 
+# シャフトの列（横2マスの大型エレベーターは、左端のマスの列で表す）
+func shaft_column(cell: Vector2i) -> int:
+	return world.building_grid[cell].origin.x if world.building_grid.has(cell) else cell.x
+
 # シャフトを見分けるキー（同じ列に標準と急行が並ぶこともあるので、種類も見る）
 func shaft_key(cell: Vector2i) -> Array:
-	return [world.get_building_type(cell), cell.x]
+	return [world.get_building_type(cell), shaft_column(cell)]
 
 # 指定マスのシャフトの待機階（設定していなければnull）
 func get_home(cell: Vector2i):
@@ -155,7 +160,7 @@ func is_shaft_type(type: String) -> bool:
 func find_shafts() -> Array:
 	var result: Array = []
 	for type in SHAFT_TYPES:
-		for cell: Vector2i in world.find_cells_of_type(type):
+		for cell: Vector2i in world.find_units_of_type(type): # 大型は左端のマスだけ見る
 			# シャフトの最下段のマスからだけ数え始める
 			if world.get_building_type(cell + Vector2i.DOWN) == type:
 				continue
@@ -170,7 +175,7 @@ func get_cars_at(cell: Vector2i) -> Array:
 	var result: Array = []
 	var type: String = world.get_building_type(cell)
 	for car in cars:
-		if is_instance_valid(car) and car.shaft_type == type and car.column == cell.x and car.has_floor(cell.y):
+		if is_instance_valid(car) and car.shaft_type == type and car.column == shaft_column(cell) and car.has_floor(cell.y):
 			result.append(car)
 	return result
 
@@ -203,7 +208,7 @@ func add_car(cell: Vector2i) -> bool:
 	if get_add_car_problem(cell) != "":
 		return false
 	var first = get_car_at(cell)
-	cars.append(create_car(first.shaft_type, cell.x, first.top_y, first.bottom_y, cell.y))
+	cars.append(create_car(first.shaft_type, shaft_column(cell), first.top_y, first.bottom_y, cell.y))
 	world.funds -= CAR_COST
 	return true
 
