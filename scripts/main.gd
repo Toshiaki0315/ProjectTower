@@ -68,6 +68,8 @@ var stats_label: Label:
 	get: return ui.stats_label
 var speed_button: Button:
 	get: return ui.speed_button
+var route_button: Button:
+	get: return ui.route_button
 var mode_select: OptionButton:
 	get: return ui.mode_select
 var mode_info_label: Label:
@@ -115,6 +117,7 @@ var selected_resident = null       # 行き先の指示を待っている住人
 var started := false               # ゲームが始まっているか（タイトル画面の間は false）
 var drag_button := 0               # 押したままなぞっているマウスのボタン（0なら押していない）
 var drag_last_cell := Vector2i.ZERO # なぞっている間に、最後に処理したマス
+var show_routes := false           # 動線（人の通り道）を線で表示するか
 var message_log: Array[String] = [] # ゲーム開始からのメッセージ（時刻つき）
 var last_message := ""             # 一番新しいメッセージ（時刻なし）
 
@@ -621,7 +624,7 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 		build_at(map_pos)
 
 # ショートカット。受け付けたら true
-#   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / Esc: 開いているパネルを閉じる
+#   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / R: 動線の表示 / Esc: 開いているパネルを閉じる
 #   ⌘L: メッセージの記録の開閉 / ⌘G: 収支のグラフの開閉
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
 #   ⌘S: セーブ / ⌘O: セーブデータの読み込み
@@ -634,6 +637,8 @@ func handle_shortcut(event: InputEventKey) -> bool:
 				help_panel.visible = not help_panel.visible
 			KEY_M:
 				audio_system.toggle_mute()
+			KEY_R:
+				toggle_routes()
 			KEY_ESCAPE:
 				return close_panels()
 			_:
@@ -668,6 +673,12 @@ func close_panels() -> bool:
 			panel.visible = false
 			closed = true
 	return closed
+
+# 動線（人の通り道）の表示を切り替える。見た目だけの機能で、経路探索や移動には触らない
+func toggle_routes() -> void:
+	show_routes = not show_routes
+	ui.update_route_button()
+	show_message("動線の表示を%sにしました（Rキーで切り替え）" % ("オン" if show_routes else "オフ"))
 
 # ゲームの速度を変える（ボタンの表示も合わせる）
 func set_speed(speed: int) -> void:

@@ -11,7 +11,7 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 # 保存先を省略すると user://screenshots に保存する。
 # 一部のシナリオだけ流すときは、環境変数 TEST_ONLY にシナリオの関数名の一部を入れる（例: TEST_ONLY=express）。
 # いくつかの組に分けて並べて実行するときは、TEST_SHARD に「番号/個数」を入れる（例: TEST_SHARD=1/3）。
-# まとめて流すには tools/run_tests.sh を使う（既定は4組に分けて並べて実行し、3分ほどで終わる）。
+# まとめて流すには tools/run_tests.sh を使う（既定は3組に分けて並べて実行し、2分半ほどで終わる）。
 # ※ テスト中のウィンドウは常に最前面に出る（マウスは受け付けないので操作の邪魔にはならない）。
 # ---------------------------------------------------
 
@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -3884,9 +3884,11 @@ func wait_until(condition: Callable, timeout: float) -> void:
 # 1秒ぶんを1フレームで飛び越えてしまい、乗れない人が出る（実際の遊びと違う動きになる）。
 # そこで set_speed() では、今出ている fps の3分の1を超えない範囲で倍率を上げる
 #（画面の更新の上限は外してあるので、速い機械ほど速く終わる）。
-const SPEED_UP := 3.0
+const SPEED_UP := 2.0
 
-# シナリオの早送り。scale はふだんの倍率で、機械（そのときのfps）が速ければ最大 SPEED_UP 倍まで上げる
+# シナリオの早送り。scale はふだんの倍率で、機械（そのときのfps）が速ければ最大 SPEED_UP 倍まで上げる。
+# 待ち時間の上限（wait_until のタイムアウト）は実時間なので、倍率を下げすぎると逆に間に合わなくなる。
+# そのため倍率は始めに1回だけ決め、待っている間は変えない
 func set_speed(scale: float) -> void:
 	Engine.time_scale = clampf(Engine.get_frames_per_second() / 3.0, scale, scale * SPEED_UP)
 
@@ -4094,4 +4096,39 @@ func run_large_elevator_scenario() -> bool:
 	focus_camera(Vector2i(9, 16))
 	await wait_frames(2)
 	await capture("large_elevator_01")
+	return true
+
+# シナリオ66: 動線表示（人の通り道を線で出す）
+# 上部バーのボタンとRキーで切り替えられ、既定はオフ。描くだけで移動には影響しない。
+# ---------------------------------------------------
+func run_routes_scenario() -> bool:
+	print("[シナリオ] 動線表示")
+	main.funds = 10000000
+	check(not main.show_routes, "動線の表示は最初はオフ")
+	check(main.route_button.text == "動線 オフ", "上部バーのボタンに今の状態が出る")
+
+	# 住人を1人置いて、遠くへ歩かせる
+	main.select_mode(main.MODE_RESIDENT)
+	await click_cell(Vector2i(-8, 17), MOUSE_BUTTON_LEFT)
+	var resident = main.selected_resident
+	check(resident != null, "住人モードで住人を置ける")
+	await click_cell(Vector2i(4, 17), MOUSE_BUTTON_LEFT)
+	check(not resident.path.is_empty(), "行き先を指示すると通り道ができる")
+	var steps: int = resident.path.size()
+
+	# Rキーでオンにすると線が出る
+	await press_key(KEY_R)
+	check(main.show_routes, "Rキーで動線の表示がオンになる")
+	check(main.route_button.text == "動線 オン", "ボタンの表示も切り替わる")
+	check(logged("動線の表示をオンにしました"), "切り替えたことがメッセージで出る")
+	check(resident.path.size() == steps, "動線を表示しても、通り道は変わらない（見た目だけ）")
+	focus_camera(Vector2i(-2, 17))
+	await wait_frames(2)
+	await capture("routes_01_on")
+
+	# ボタンでもオフに戻せる
+	main.route_button.pressed.emit()
+	check(not main.show_routes, "ボタンでオフに戻せる")
+	check(main.route_button.text == "動線 オフ", "ボタンの表示ももとに戻る")
+	await capture("routes_02_off")
 	return true

@@ -5,6 +5,7 @@ extends Node2D
 # - 画面に映っている範囲の背景グリッド線
 # - 建物1マスごとの枠線（隣り合う建物の境目がわかるように）
 # - カーソル下のマスの強調（緑: 操作できる / 赤: 操作できない）
+# - 動線（人の通り道。上部バーのボタン／Rキーで切り替え。既定はオフ）
 # TileMapLayerの子として追加するので、座標はタイルマップ座標系。
 # ---------------------------------------------------
 
@@ -16,6 +17,10 @@ const HOVER_NG_COLOR := Color(1.0, 0.3, 0.3)
 const PixelArt := preload("res://scripts/view/pixel_art.gd")
 const ENTRANCE_COLOR := Color(0.2, 0.42, 0.72)       # 1階の入口の庇（青）
 const SUBWAY_ENTRANCE_COLOR := Color(0.25, 0.65, 0.8) # 地下鉄駅の入口の庇（水色）
+const ROUTE_WIDTH := 1.5           # 動線の太さ（画面上のpx）
+const ROUTE_EDGE_COLOR := Color(0.05, 0.05, 0.1, 0.8) # 動線の縁取り（明るい建物の上でも見えるように）
+const ROUTE_ALPHA := 0.7           # 動線の濃さ
+const ROUTE_SELECTED_WIDTH := 3.0  # 選んでいる住人の動線は太く描く
 const HOME_COLOR := Color(1.0, 0.85, 0.2) # エレベーターの待機階の印
 const BOMB_COLOR := Color(1.0, 0.25, 0.2) # 爆破予告のマスの印
 const FIRE_COLORS := [Color(1.0, 0.5, 0.1), Color(1.0, 0.8, 0.2)] # 燃えているマス（交互に点滅）
@@ -57,6 +62,21 @@ func update_hover() -> void:
 	if hover_visible:
 		hover_cell = world.tile_map.local_to_map(make_canvas_position_local(hover_screen_pos))
 
+# 住人の動線を、今いるところから行き先まで線で描く
+func draw_route(resident, tile_size: Vector2, px: float) -> void:
+	var points := PackedVector2Array([resident.position])
+	for cell: Vector2i in resident.path:
+		points.append(world.tile_map.map_to_local(cell))
+	var color: Color = resident.get_body_color()
+	color.a = ROUTE_ALPHA
+	var width: float = ROUTE_SELECTED_WIDTH if resident.selected else ROUTE_WIDTH
+	# 明るい建物の上でも見えるように、先に濃い色で縁取りしてから線を描く
+	draw_polyline(points, ROUTE_EDGE_COLOR, (width + 1.5) * px)
+	draw_polyline(points, color, width * px)
+	var goal := Rect2(points[-1] - tile_size / 4.0, tile_size / 2.0) # 行き先の印
+	draw_rect(goal, ROUTE_EDGE_COLOR, false, (width + 1.5) * px)
+	draw_rect(goal, color, false, width * px)
+
 func _draw() -> void:
 	var tile_size := Vector2(world.tile_map.tile_set.tile_size)
 	var px := 1.0 / get_global_transform_with_canvas().get_scale().x # 画面上の1pxの長さ
@@ -75,6 +95,12 @@ func _draw() -> void:
 	for cell in world.building_grid:
 		if world.building_grid[cell].origin == cell:
 			draw_rect(cells_rect(world.get_unit_cells(cell), tile_size).grow(-width / 2.0), BORDER_COLOR, false, width)
+
+	# 動線（人がこれから通る道すじ）。見た目だけの機能で、経路探索や移動には触らない
+	if world.show_routes:
+		for resident in world.residents:
+			if is_instance_valid(resident) and not resident.path.is_empty():
+				draw_route(resident, tile_size, px)
 
 	# カーソル下のマス
 	# 建設モードなら、建てたときに使うマス全体を強調する

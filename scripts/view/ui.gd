@@ -22,6 +22,7 @@ var funds_label: Label     # 資金
 var clock_label: Label     # 日付・時刻・天気
 var stats_label: Label     # ビルの状況（★・人口・社員・客室）
 var speed_button: Button   # ゲームの速度（押すたびに切り替わる）
+var route_button: Button   # 動線（人の通り道）の表示の切り替え
 var mode_select: OptionButton # 建設メニュー
 var mode_info_label: Label # 選んだものの建設費と大きさ
 var message_label: Label   # 操作結果のメッセージ（下から数行ぶん流れる）
@@ -194,6 +195,14 @@ func build_bars() -> void:
 	mode_info_label.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
 	build_row.add_child(mode_info_label)
 	
+	# 動線（人の通り道）の表示。人が増えると線だらけになるので、既定はオフ
+	build_row.add_child(make_spacer())
+	route_button = Button.new()
+	route_button.custom_minimum_size.x = 100 * UI_SCALE
+	route_button.pressed.connect(func(): world.toggle_routes())
+	build_row.add_child(route_button)
+	update_route_button()
+	
 	# --- はじめての案内（上部バーの下。画面の横幅いっぱいに出す） ---
 	var tutorial_box = HBoxContainer.new()
 	tutorial_box.add_theme_constant_override("separation", 12 * UI_SCALE)
@@ -233,6 +242,7 @@ func build_bars() -> void:
 		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
 		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
+		"動線: 上部バーの「動線」ボタン（Rキー）で、人が通る道すじを線で表示する（人が多いと線だらけになるので既定はオフ）",
 		"ショートカット: F1・H（この説明の開閉） / Esc（開いているパネルを閉じる） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
 		"収支のグラフ: ⌘G で、最近60日ぶんの決算の合計を棒グラフで見られる",
 		"音: M キーで音のオン・オフ（効果音とBGMは、波形からゲームの中で作っている）",
@@ -406,6 +416,11 @@ func get_mode_info(mode: String) -> String:
 	elif mode == "large_elevator":
 		info += "（全部の階に停まる。定員%d人・速さ1.5倍）" % ElevatorCar.LARGE_CAPACITY
 	return info
+
+# 動線の表示ボタンの見た目を、今の設定に合わせる
+func update_route_button() -> void:
+	if route_button:
+		route_button.text = "動線 オン" if world.show_routes else "動線 オフ"
 
 # 建設メニューの選択と説明を、今のモードに合わせる
 func update_mode_select():
