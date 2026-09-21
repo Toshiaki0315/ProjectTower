@@ -763,10 +763,14 @@ func clear_world() -> void:
 func destroy_unit(cell: Vector2i) -> void:
 	if is_cell_empty(cell):
 		return
+	# 上（地下なら下）の階に建物が残っているなら、骨組み（空きフロア）だけが残る
+	var leave_frame: bool = get_building_type(cell) != Buildings.FRAME_TYPE and buildings.has_building_beyond(cell)
 	effects.play_demolish(get_unit_cells(cell))
 	for c in get_unit_cells(cell):
 		tile_map.erase_cell(c)
 		building_grid.erase(c)
+		if leave_frame:
+			place_unit(c, Buildings.FRAME_TYPE)
 	rebuild_systems()
 
 # 撤去（売却）処理（建物のどのマスをクリックしても、その建物全体を撤去する）
@@ -775,14 +779,15 @@ func demolish_at(map_pos: Vector2i):
 		return
 	
 	var type = get_building_type(map_pos)
-	# 上（地下なら下）の階を支えているマスは、建物の代わりに「空きフロア」を残して撤去する。
-	# 跡地そのものを撤去しようとしたときだけは、支えが要るので断る
+	# 上（地下なら下）の階にまだ建物が残っているマスは、建物の代わりに「空きフロア」を残して
+	# 撤去する（そうしないと、上の部屋が空中に浮いてしまう）。
+	# 跡地そのものを撤去しようとしたときだけは、真上を支えているなら断る
 	var problem := get_demolish_problem(map_pos)
-	var leave_frame := problem != ""
-	if leave_frame and type == Buildings.FRAME_TYPE:
+	if problem != "" and type == Buildings.FRAME_TYPE:
 		show_message(problem)
 		audio_system.play("error")
 		return
+	var leave_frame: bool = type != Buildings.FRAME_TYPE and buildings.has_building_beyond(map_pos)
 	var origin: Vector2i = building_grid[map_pos].origin
 	var refund = int(BUILDINGS[type].cost * REFUND_RATE)
 	
@@ -796,5 +801,5 @@ func demolish_at(map_pos: Vector2i):
 	rebuild_systems()
 	update_funds_display()
 	audio_system.play("demolish")
-	var note := "（上の階を支えるため、空きフロアが残ります）" if leave_frame else ""
+	var note := "（上の階が残っているので、空きフロアになります）" if leave_frame else ""
 	show_message("%sを撤去しました %s 払い戻し: %d円%s" % [BUILDINGS[type].name, origin, refund, note])

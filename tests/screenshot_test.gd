@@ -479,7 +479,7 @@ func run_elevator_scenario() -> bool:
 	# 途中のマスは上のマスを支えているので、撤去すると空きフロアが残ってシャフトが分かれる
 	await click_cell(Vector2i(x, 17), MOUSE_BUTTON_RIGHT)
 	check(main.get_building_type(Vector2i(x, 17)) == "frame", "シャフトの途中を撤去すると、空きフロアが残る")
-	check(main.last_message.contains("空きフロアが残ります"), "空きフロアが残ることがメッセージで出る")
+	check(main.last_message.contains("空きフロアになります"), "空きフロアが残ることがメッセージで出る")
 	check(main.get_building_type(Vector2i(x, 18)) == "elevator", "下のマスは残る（シャフトが上下に分かれる）")
 	await choose_mode("elevator")
 	await click_cell(Vector2i(x, 17), MOUSE_BUTTON_LEFT)
@@ -2107,7 +2107,7 @@ func run_support_scenario() -> bool:
 	await click_cell(Vector2i(2, 15), MOUSE_BUTTON_RIGHT)
 	check(main.get_building_type(Vector2i(2, 15)) == "frame", "上の階を支えているオフィスを撤去すると、空きフロアが残る")
 	check(main.get_building_type(Vector2i(0, 14)) == "office", "上の階のオフィスはそのまま残る")
-	check(main.last_message.contains("空きフロアが残ります"), "空きフロアが残ることがメッセージで出る")
+	check(main.last_message.contains("空きフロアになります"), "空きフロアが残ることがメッセージで出る")
 	check(main.funds == funds_before + 200000, "跡地が残るときも払い戻しは入る")
 	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_RIGHT)
 	check(main.get_building_type(Vector2i(0, 18)) == "frame", "上に建物が乗っているロビーも、空きフロアになる")
@@ -4036,7 +4036,7 @@ func run_frame_scenario() -> bool:
 	check(main.get_building_type(Vector2i(11, 17)) == "frame", "建物の幅のぶんだけ空きフロアになる")
 	check(main.get_building_type(Vector2i(9, 16)) == "office", "上の階のオフィスはそのまま残る")
 	check(main.funds == 10000000 + 100000, "撤去の払い戻し（建設費の半額）は入る")
-	check(logged("空きフロアが残ります"), "空きフロアが残ることがメッセージで出る")
+	check(logged("空きフロアになります"), "空きフロアが残ることがメッセージで出る")
 	await hover_cell(shop)
 	check(main.hover_label.text.contains("空きフロア"), "カーソルを合わせると空きフロアと出る")
 	await capture("frame_01_left")
@@ -4073,6 +4073,16 @@ func run_frame_scenario() -> bool:
 	await click_cell(Vector2i(13, 16), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(13, 16)) == "office", "空きフロアで支えれば、その上に建てられる")
 	await capture("frame_03_filled")
+
+	# 間が空いていても、上の階に建物が残っていれば空きフロアになる（上の部屋が浮かないように）
+	await choose_mode("office")
+	await click_cell(Vector2i(13, 15), MOUSE_BUTTON_LEFT) # 4階（3階のオフィスの上）
+	await click_cell(Vector2i(13, 16), MOUSE_BUTTON_RIGHT) # 間の3階を撤去
+	check(main.get_building_type(Vector2i(13, 16)) == "frame", "間の階を撤去しても、上に建物が残っていれば空きフロアになる")
+	check(main.get_building_type(Vector2i(13, 15)) == "office", "上の階のオフィスは浮かずに残る")
+	check(logged("空きフロアになります"), "空きフロアになることがメッセージで出る")
+	await click_cell(Vector2i(13, 15), MOUSE_BUTTON_RIGHT) # 一番上を撤去（上には何もない）
+	check(main.is_cell_empty(Vector2i(13, 15)), "一番上の階は、跡地を残さず更地に戻る")
 
 	# 支えるものがなくなった空きフロアは、ふつうに撤去できる
 	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_RIGHT) # 上のオフィスを撤去

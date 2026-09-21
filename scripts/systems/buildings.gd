@@ -133,6 +133,19 @@ func get_support_problem(origin: Vector2i, type: String) -> String:
 			return "地下は、上の階に建物がある場所にしか建てられません"
 	return ""
 
+# そのマスより上（地下なら下）の階に、まだ建物が残っているか。
+# 残っているなら、撤去しても「空きフロア」を置いて、上の建物が空中に浮かないようにする
+func has_building_beyond(cell: Vector2i) -> bool:
+	var unit: Array[Vector2i] = world.get_unit_cells(cell)
+	var step := Vector2i.DOWN if cell.y > world.ground_y else Vector2i.UP
+	for c in unit:
+		var above := c + step
+		while above.y >= world.ground_y - MAX_FLOORS_ABOVE and above.y <= world.ground_y + MAX_FLOORS_BELOW:
+			if not world.is_cell_empty(above) and not unit.has(above):
+				return true
+			above += step
+	return false
+
 # 撤去すると支えを失う建物があるか。地上の建物は真上、地下の建物は真下に、別の建物があると撤去できない
 #（撤去できるなら "" を返す）
 func get_demolish_problem(cell: Vector2i) -> String:
