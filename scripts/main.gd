@@ -50,7 +50,7 @@ const MODE_DEMOLISH := "demolish" # 左クリックで撤去するモード（�
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["small_office", "office", "large_office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "fastfood", "shop", "cinema", "housing", "wedding", "event_hall"]},
-	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "stairs", "escalator", "elevator", "express_elevator", "large_elevator", "service_elevator", "add_car", "set_home", "service"]},
+	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "frame", "stairs", "escalator", "elevator", "express_elevator", "large_elevator", "service_elevator", "add_car", "set_home", "service"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking", "helipad", "garden"]},
 	{"name": "その他", "modes": ["demolish", "resident"]},
 ]
@@ -66,6 +66,10 @@ var clock_label: Label:
 	get: return ui.clock_label
 var stats_label: Label:
 	get: return ui.stats_label
+var stats_button: Button:
+	get: return ui.stats_button
+var stats_panel: Control:
+	get: return ui.stats_panel
 var speed_button: Button:
 	get: return ui.speed_button
 var route_button: Button:
@@ -74,8 +78,6 @@ var menu_bar: MenuBar:
 	get: return ui.menu_bar
 var mode_select: OptionButton:
 	get: return ui.mode_select
-var mode_info_label: Label:
-	get: return ui.mode_info_label
 var message_label: Label:
 	get: return ui.message_label
 var hover_label: Label:
@@ -670,7 +672,7 @@ func handle_shortcut(event: InputEventKey) -> bool:
 # Esc: 開いているパネルを閉じる。1つでも閉じたら true（何も開いていなければ false）
 func close_panels() -> bool:
 	var closed := false
-	for panel in [help_panel, log_panel, chart_panel]:
+	for panel in [help_panel, log_panel, chart_panel, stats_panel]:
 		if panel.visible:
 			panel.visible = false
 			closed = true

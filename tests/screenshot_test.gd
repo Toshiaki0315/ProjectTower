@@ -107,7 +107,7 @@ func run_empty_start_scenario() -> bool:
 	check(main.funds == 2000000, "最初の資金は200万円")
 	check(main.ground_y == main.GROUND_FLOOR_Y, "1階の高さは決まっている（y=%d）" % main.GROUND_FLOOR_Y)
 	check(main.get_entrance() == null, "ロビーがないうちは入口もない")
-	check(main.current_mode == "lobby" and main.mode_select.text == "ロビー", "最初は建設メニューでロビーが選ばれている")
+	check(main.current_mode == "lobby" and main.mode_select.text == "ロビー（15,000円）", "最初は建設メニューでロビーが選ばれている")
 	check(main.camera.position.is_equal_approx(Vector2(0, 272)), "カメラは地面の線が見える位置にある")
 	await capture("empty_01_start")
 	
@@ -159,8 +159,8 @@ func run_build_scenario() -> bool:
 	# 1. 階段ボタンをクリック → 階段が[選択中]になる
 	await choose_mode("stairs")
 	check(main.current_mode == "stairs", "建設メニューで階段を選ぶとモードがstairsになる")
-	check(main.mode_select.text == "階段", "建設メニューに「階段」が選ばれて表示される")
-	check(main.mode_info_label.text == "建設費 50,000円・横1マス", "選んだものの建設費と大きさが表示される")
+	check(main.mode_select.text == "階段（50,000円）", "建設メニューに「階段」が選ばれて表示される")
+	check(main.mode_select.text == "階段（50,000円）", "建設メニューに選んだものの名前と建設費が出る")
 	await capture("build_02_stairs_selected")
 
 	# 2. 空マスを左クリック → 階段を建設（-5万円）
@@ -348,6 +348,17 @@ func run_ui_scenario() -> bool:
 	check(not main.can_click_cell(office_cell), "建物のあるマスは建設不可（赤）と判定される")
 	check(main.hover_label.text.contains("オフィス"), "下部バーに建物の種類が出る")
 	
+	# ★を押すと、くわしい状況が開く（2段目は★と速さだけにして短くしている）
+	check(not main.stats_panel.visible, "ビルの状況は最初は閉じている")
+	check(not main.stats_button.text.contains("人口"), "★のボタンには★の数だけを出す")
+	main.stats_button.pressed.emit()
+	check(main.stats_panel.visible, "★を押すとビルの状況が開く")
+	check(main.stats_label.text.contains("人口") and main.stats_label.text.contains("目標:"), "中に人口と目標が出る")
+	await capture("ui_04_stats")
+	main.stats_button.pressed.emit()
+	check(not main.stats_panel.visible, "もう一度押すと閉じる")
+	check(main.speed_button.get_global_rect().position.y == main.stats_button.get_global_rect().position.y, "速さのボタンは★と同じ行にある")
+
 	# 操作説明の開閉（F1・H）。macOSの⌘H（隠す）とぶつからないよう、⌘は使わない
 	check(not main.help_panel.visible, "操作説明は最初は閉じている")
 	await press_key(KEY_F1)
@@ -395,8 +406,8 @@ func run_ui_scenario() -> bool:
 	check(main.speed_button.text == "1x" and is_equal_approx(Engine.time_scale, 1.0), "次に押すと1xに戻る")
 	
 	# ビルの状況（★の行）は上部バーにある
-	check(main.stats_label.text.begins_with("★"), "ビルの状況（★）は上部バーに出る")
-	check(main.stats_label.get_global_rect().position.y < main.mode_select.get_global_rect().position.y, "★の行は、建設メニューの行より上にある")
+	check(main.stats_button.text.begins_with("★"), "上部バーの2段目には★だけを出す")
+	check(main.stats_button.get_global_rect().position.y == main.mode_select.get_global_rect().position.y, "★・速さ・建設メニュー・動線は同じ行に並ぶ（上部バーは2行）")
 	return true
 
 # ---------------------------------------------------
@@ -672,7 +683,7 @@ func run_commute_scenario() -> bool:
 	print("    at_office=", commute.count_at_office(), " in_building=", commute.count_in_building(), " unreachable=", commute.count_unreachable())
 	check(commute.count_at_office() == 52, "10時45分には通勤できる52人全員が自分のオフィスに着いている")
 	check(commute.count_unreachable() == 4, "孤立したオフィスの4人は通勤できない")
-	check(main.stats_label.text.contains("通勤できない 4人"), "上部バーに通勤できない人数が出る")
+	check(main.stats_label.text.contains("通勤できない社員 4人"), "ビルの状況に通勤できない人数が出る")
 	check(elevator_stops[0] > 0, "上の階の社員はエレベーターで出勤する")
 	check(max_stress > 0.0, "エレベーター待ちで社員にストレスがたまる")
 	await capture("commute_02_at_office")
@@ -782,13 +793,13 @@ func run_hotel_scenario() -> bool:
 	check(guests_in_room == 3, "薄紫の宿泊客がそれぞれの部屋に着いている")
 	await hover_cell(room_cells[0] + Vector2i(1, 0))
 	check(main.hover_label.text.contains("シングル（宿泊中・"), "部屋のどのマスにカーソルを合わせても部屋の状態と騒音が出る")
-	check(main.stats_label.text.contains("客室: 宿泊 3"), "上部バーに客室の状況が出る")
+	check(main.stats_label.text.contains("客室: 宿泊 3"), "ビルの状況に客室の様子が出る")
 	var viewport_width: float = main.get_viewport_rect().size.x
 	var ui_right := 0.0
 	for node in main.find_children("*", "Button", true, false):
 		ui_right = maxf(ui_right, node.get_global_rect().end.x)
 	check(ui_right <= viewport_width, "文字が増えてもUIのボタンが画面からはみ出さない")
-	check(main.stats_label.get_global_rect().end.x <= viewport_width, "上部バーのビルの状況も画面からはみ出さない")
+	check(main.stats_button.get_global_rect().end.x <= viewport_width, "上部バーの★のボタンも画面からはみ出さない")
 	await capture("hotel_01_night")
 	
 	# 翌朝 → チェックアウトして帰り、部屋は清掃待ち → 清掃員が掃除する
@@ -942,7 +953,7 @@ func run_rating_scenario() -> bool:
 	check(rating.stars == 1 and rating.population() == 52, "最初は★1、人口52（社員52人）")
 	check(rating.missing_for_next() == ["警備室"], "★2に足りないのは警備室だけ")
 	await wait_frames(2)
-	check(main.stats_label.text.begins_with("★1 人口52（★2まで: 警備室）"), "上部バーに評価と次の★に足りないものが出る")
+	check(main.stats_label.text.begins_with("★1 人口52（★2まで: 警備室）"), "ビルの状況に評価と次の★に足りないものが出る")
 	
 	build_support(cells_row(18, 9, 13), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	await choose_mode("security")
@@ -1509,7 +1520,7 @@ func run_scroll_sky_scenario() -> bool:
 	check(select.get_popup().visible, "建設メニューをクリックするとリストが開く")
 	select.get_popup().hide()
 	await choose_mode("hotel_suite")
-	check(select.text == "スイート（横4マス）" and main.mode_info_label.text == "建設費 500,000円・横4マス", "選んだ建物の名前・建設費・大きさが出る")
+	check(select.text == "スイート（500,000円）", "選んだ建物の名前と建設費が出る")
 	
 	# マウスホイール: 上下スクロール（ズームはしない）
 	var screen_pos := Vector2(600, 400)
@@ -1721,7 +1732,7 @@ func run_tenant_rating_scenario() -> bool:
 	check(upper_bad > 0, "カゴ1台でエレベーター待ちが長いので、評価が悪いオフィスがある（%d棟）" % upper_bad)
 	await hover_cell(Vector2i(6, 13))
 	check(main.hover_label.text.contains("オフィス（評価: "), "カーソルを合わせるとオフィスの評価と平均ストレスが出る")
-	check(main.stats_label.text.contains("オフィス: 良い"), "下部バーに評価ごとのオフィスの数が出る")
+	check(main.stats_label.text.contains("オフィス: 良い"), "ビルの状況に評価ごとのオフィスの数が出る")
 	await capture("tenant_rating_01")
 	
 	# 休日は出勤がないので評価は変わらない
@@ -1773,7 +1784,7 @@ func run_vacancy_scenario() -> bool:
 	check(main.rating_system.population() == 52 - 4 * vacant.size(), "空室のオフィスの社員は人口に数えない")
 	await hover_cell(vacant[0])
 	check(main.hover_label.text.contains("空室・2日後に新しいテナントが入居"), "空室にカーソルを合わせると入居までの日数が出る")
-	check(main.stats_label.text.contains("空室%d" % vacant.size()), "下部バーに空室の数が出る")
+	check(main.stats_label.text.contains("空室%d" % vacant.size()), "ビルの状況に空室の数が出る")
 	await capture("vacancy_01_vacant")
 	
 	# 4日目: 空室の社員は出勤せず、賃料も入らない
@@ -1916,7 +1927,7 @@ func run_atrium_scenario() -> bool:
 	main.funds = 10000000
 	focus_camera(Vector2i(8, 16))
 	await choose_mode("lobby2")
-	check(main.mode_info_label.text == "建設費 30,000円・横1マス・高さ2階分", "建設メニューに高さが出る")
+	check(main.mode_select.tooltip_text == "建設費 30,000円・横1マス・高さ2階分", "カーソルを合わせると高さが出る")
 	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(8, 17)), "吹き抜けロビーも1階からしか建てられない")
 	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_LEFT)
@@ -1984,7 +1995,7 @@ func run_express_elevator_scenario() -> bool:
 			main.build_at(Vector2i(x, y))
 	main.funds = 10000000
 	await choose_mode("express_elevator")
-	check(main.mode_info_label.text == "建設費 120,000円・横1マス（1階とスカイロビーの階だけに停まる）", "建設メニューに停まる階の説明が出る")
+	check(main.mode_select.tooltip_text == "建設費 120,000円・横1マス（1階とスカイロビーの階だけに停まる）", "カーソルを合わせると停まる階の説明が出る")
 	for y in range(18, 3, -1):
 		main.build_at(Vector2i(8, y))
 	check(main.funds == 10000000 - 15 * 120000, "急行エレベーターは1マス12万円")
@@ -2131,7 +2142,7 @@ func run_escalator_scenario() -> bool:
 	for x in range(10, 14):
 		main.build_at(Vector2i(x, 18))
 	await choose_mode("escalator")
-	check(main.mode_info_label.text == "建設費 100,000円・横2マス", "エスカレーターは横2マス・10万円")
+	check(main.mode_select.text == "エスカレーター（100,000円）", "エスカレーターは10万円")
 	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_LEFT)
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_unit_cells(Vector2i(9, 18)) == [Vector2i(8, 18), Vector2i(9, 18)], "1階にエスカレーター（横2マス）を建てられる")
@@ -2197,7 +2208,7 @@ func run_home_floor_scenario() -> bool:
 	check(car.floor_y == 18 and not car.has_home_floor, "最初は待機階がなく、カゴは建てた階で止まったまま")
 	
 	await choose_mode("set_home")
-	check(main.mode_select.text == "待機階を設定" and main.mode_info_label.text.begins_with("無料"), "建設メニューに「待機階を設定」がある")
+	check(main.mode_select.text == "待機階を設定" and main.mode_select.tooltip_text.begins_with("無料"), "建設メニューに「待機階を設定」がある")
 	await click_cell(Vector2i(0, 17), MOUSE_BUTTON_LEFT)
 	check(main.last_message == "待機階はエレベーターのシャフトに設定します", "シャフト以外をクリックすると理由がメッセージで出る")
 	check(not main.can_click_cell(Vector2i(0, 17)) and main.can_click_cell(Vector2i(8, 16)), "シャフトのマスだけ操作できる（緑）")
@@ -2307,7 +2318,7 @@ func run_service_elevator_scenario() -> bool:
 	await wait_frames(1)
 	build_support(cells_row(18, 9, 10), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	await choose_mode("service_elevator")
-	check(main.mode_info_label.text == "建設費 80,000円・横1マス", "サービスエレベーターは1マス8万円")
+	check(main.mode_select.text == "サービスエレベーター（80,000円）", "サービスエレベーターは1マス8万円")
 	for y in range(18, 15, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 3 * 80000, "1階から3階までのシャフトで24万円")
@@ -2372,7 +2383,7 @@ func run_parking_scenario() -> bool:
 	
 	# スロープは地下にだけ建てられる
 	await choose_mode("ramp")
-	check(main.mode_info_label.text == "建設費 200,000円・横2マス", "スロープは横2マス・20万円")
+	check(main.mode_select.text == "スロープ（200,000円）", "スロープは20万円")
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(9, 17)) == "restaurant", "スロープは地上には建てられない")
 	await click_cell(Vector2i(9, 19), MOUSE_BUTTON_LEFT)
@@ -2447,7 +2458,7 @@ func run_shop_scenario() -> bool:
 	build_support([Vector2i(8, 18)] + cells_row(18, 10, 14), "lobby")
 	build_support([Vector2i(9, 18)])
 	await choose_mode("shop")
-	check(main.mode_info_label.text == "建設費 250,000円・横3マス", "ショップは横3マス・25万円")
+	check(main.mode_select.text == "ショップ（250,000円）", "ショップは25万円")
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(11, 17)) == "shop", "2階にショップを建てられる")
 	main.select_mode("restaurant")
@@ -2501,7 +2512,7 @@ func run_cinema_scenario() -> bool:
 	build_support([Vector2i(8, 18)] + cells_row(18, 10, 16), "lobby")
 	build_support([Vector2i(9, 18)])
 	await choose_mode("cinema")
-	check(main.mode_info_label.text == "建設費 1,500,000円・横8マス・高さ2階分", "映画館は横8マス・高さ2階分・150万円")
+	check(main.mode_select.text == "映画館（1,500,000円）", "映画館は150万円")
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(16, 17)) == "cinema" and main.get_building_type(Vector2i(16, 16)) == "cinema", "映画館は横8マス・上下2階分を使う")
 	check(main.funds == 10000000 - 1500000, "建設費150万円がかかる")
@@ -2712,7 +2723,7 @@ func run_pollution_scenario() -> bool:
 	check(economy.pollution == economy.POLLUTION_MAX, "ゴミが多いと、悪化はすぐ上限（レベル5）になる")
 	check(main.last_message.contains("衛生の悪化 レベル5"), "決算のメッセージに衛生の悪化が出る")
 	await wait_frames(2) # 上部バーの表示は次のフレームで更新される
-	check(main.stats_label.text.contains("衛生の悪化 レベル5"), "上部バーにも衛生の悪化が出る")
+	check(main.stats_label.text.contains("衛生の悪化 レベル5"), "ビルの状況にも衛生の悪化が出る")
 	check(is_equal_approx(economy.pollution_stress(), 5 * economy.POLLUTION_STRESS), "悪化のレベル1につきストレス5ぶん、評価が悪くなる")
 	await capture("pollution_01")
 	
@@ -2767,7 +2778,7 @@ func run_angry_scenario() -> bool:
 		await wait_frames(1)
 	check(seen.has(resident.RED_COLOR) and seen.has(resident.ANGRY_COLOR), "激怒した人の顔は赤と明るい色で点滅する")
 	await wait_frames(2)
-	check(main.stats_label.text.contains("怒っている人 1人"), "上部バーに怒っている人の数が出る")
+	check(main.stats_label.text.contains("怒っている人 1人"), "ビルの状況に怒っている人の数が出る")
 	await capture("angry_01_resident")
 	
 	# 退去が近いテナントは、評価のマークが点滅する
@@ -2779,7 +2790,7 @@ func run_angry_scenario() -> bool:
 	check(tenants.is_about_to_leave(origin), "あと1日で退去のテナントは点滅して知らせる")
 	check(tenants.count_about_to_leave() == 1, "退去しそうなテナントの数を数えられる")
 	await wait_frames(2)
-	check(main.stats_label.text.contains("退去しそうなテナント 1件"), "上部バーに退去しそうなテナントの数が出る")
+	check(main.stats_label.text.contains("退去しそうなテナント 1件"), "ビルの状況に退去しそうなテナントの数が出る")
 	
 	# 点滅は、表示する周期と消す周期が交互に来る
 	var blinks := {}
@@ -2840,7 +2851,7 @@ func run_vip_scenario() -> bool:
 	check(main.last_message.contains("VIPが来館しました"), "来館がメッセージで知らされる")
 	check(vips.vip.base_color == vips.VIP_COLOR, "VIPは金色の服")
 	await wait_frames(2)
-	check(main.stats_label.text.contains("VIPが来館中"), "上部バーにVIPの来館が出る")
+	check(main.stats_label.text.contains("VIPが来館中"), "ビルの状況にVIPの来館が出る")
 	await capture("vip_01_arrived")
 	
 	# スイートに着けば合格。VIPはその部屋に泊まる
@@ -2905,7 +2916,7 @@ func run_bomb_scenario() -> bool:
 	check(logged("爆破予告！") and logged("飲食店"), "予告がメッセージで知らされる")
 	check(incidents.bomb.guard == guard, "一番近い警備員が向かう")
 	await wait_frames(2)
-	check(main.stats_label.text.contains("爆破予告！"), "上部バーに爆破予告と残り時間が出る")
+	check(main.stats_label.text.contains("爆破予告！"), "ビルの状況に爆破予告と残り時間が出る")
 	await capture("bomb_01_alert")
 	set_speed(16.0)
 	await wait_until(func(): return not incidents.has_bomb(), 60.0)
@@ -2969,7 +2980,7 @@ func run_fire_scenario() -> bool:
 	check(incidents.has_fire() and incidents.fire.has(Vector2i(12, 17)), "そのマスが燃えはじめる")
 	check(logged("火事だ！"), "出火がメッセージで知らされる")
 	await wait_frames(2)
-	check(main.stats_label.text.contains("火災！"), "上部バーに火災と燃えているマスの数が出る")
+	check(main.stats_label.text.contains("火災！"), "ビルの状況に火災と燃えているマスの数が出る")
 	await capture("fire_01_burning")
 	set_speed(16.0)
 	await wait_until(func(): return not incidents.has_fire(), 60.0)
@@ -3027,7 +3038,7 @@ func run_roach_scenario() -> bool:
 	check(incidents.roaches.size() <= incidents.ROACH_SPAWN, "1日に広がるのは%d棟まで" % incidents.ROACH_SPAWN)
 	check(logged("ゴキブリが大繁殖しました"), "発生がメッセージで知らされる")
 	await wait_frames(2)
-	check(main.stats_label.text.contains("ゴキブリ"), "上部バーにゴキブリのいる棟数が出る")
+	check(main.stats_label.text.contains("ゴキブリ"), "ビルの状況にゴキブリのいる棟数が出る")
 	var infested: Vector2i = incidents.roaches.keys()[0]
 	await hover_cell(infested)
 	check(main.hover_label.text.contains("ゴキブリ発生中"), "カーソルを合わせるとゴキブリがいると出る")
@@ -3292,7 +3303,7 @@ func run_helipad_scenario() -> bool:
 	
 	# ヘリポートは屋上（上に建物がないところ）にだけ建てられる
 	await choose_mode("helipad")
-	check(main.mode_info_label.text == "建設費 800,000円・横4マス", "ヘリポートは横4マス・80万円")
+	check(main.mode_select.text == "ヘリポート（800,000円）", "ヘリポートは80万円")
 	# 上に建物があるところには建てられない（テストのために、上の階へ直接建物を置いて確かめる）
 	main.place_unit(Vector2i(9, 16), "shop")
 	check(main.get_build_problem(Vector2i(9, 17), "helipad").contains("屋上（上に建物がないところ）にしか建てられません"), "上に建物があるところには建てられない")
@@ -3476,7 +3487,7 @@ func run_goal_scenario() -> bool:
 	await wait_frames(2)
 	check(goals.index == 0 and not goals.cleared, "はじめは1つ目の目標に挑戦している")
 	check(goals.current().stars == 2, "1つ目の目標は★2")
-	check(main.stats_label.text.contains("目標:"), "上部バーに今の目標が出る")
+	check(main.stats_label.text.contains("目標:"), "ビルの状況に今の目標が出る")
 	check(not main.goal_panel.visible, "達成の画面は出ていない")
 	
 	# 達成すると、画面で知らせて次の目標に進む
@@ -3511,7 +3522,7 @@ func run_goal_scenario() -> bool:
 	check(goals.cleared and goals.current() == null, "すべての目標を達成した")
 	check(main.goal_title.text.contains("すべての目標を達成") and main.goal_panel.visible, "クリアの画面が出る")
 	await wait_frames(2) # 上部バーの表示は次のフレームで更新される
-	check(main.stats_label.text.contains("すべて達成"), "上部バーもクリアの表示になる")
+	check(main.stats_label.text.contains("すべて達成"), "ビルの状況もクリアの表示になる")
 	await capture("goal_02_cleared")
 	
 	# 目標の進み具合はセーブに入る
@@ -3651,7 +3662,7 @@ func run_garden_scenario() -> bool:
 	
 	# 屋上庭園は屋上にだけ建てられる
 	await choose_mode("garden")
-	check(main.mode_info_label.text == "建設費 400,000円・横4マス", "屋上庭園は横4マス・40万円")
+	check(main.mode_select.text == "屋上庭園（400,000円）", "屋上庭園は40万円")
 	check(main.get_build_problem(Vector2i(20, 18), "garden").contains("屋上"), "1階（地上）には建てられない")
 	await click_cell(Vector2i(8, 15), MOUSE_BUTTON_LEFT) # 映画館（y=17〜16）の上が屋上
 	check(main.get_building_type(Vector2i(11, 15)) == "garden", "映画館の屋上に庭園を建てられる")
@@ -4008,7 +4019,7 @@ func run_frame_scenario() -> bool:
 	print("[シナリオ] 空きフロア（撤去の跡地）")
 	main.clear_world()
 	main.funds = 10000000
-	build_support(cells_row(18, 8, 15), "lobby")
+	build_support(cells_row(18, 8, 16), "lobby")
 	# 2階に飲食店（x=9〜11）、その上の3階にオフィス（x=9〜12）を建てる
 	var shop := Vector2i(9, 17)
 	await choose_mode("restaurant")
@@ -4041,6 +4052,28 @@ func run_frame_scenario() -> bool:
 	check(main.get_building_type(Vector2i(11, 17)) == "housing", "建物の幅のぶんの空きフロアが置き換わる")
 	await capture("frame_02_rebuilt")
 
+	# 建設メニューからも空きフロアを建てられる（すき間を埋めて、上の階を建てられるようにする）
+	main.funds = 10000000
+	await choose_mode("frame")
+	check(main.mode_select.tooltip_text.contains("骨組みだけのフロア"), "カーソルを合わせると空きフロアの説明が出る")
+	await click_cell(Vector2i(13, 17), MOUSE_BUTTON_LEFT) # 2階のすき間
+	check(main.get_building_type(Vector2i(13, 17)) == "frame", "メニューから空きフロアを建てられる")
+	check(main.funds == 10000000 - 10000, "空きフロアの建設費1万円がかかる")
+	await click_cell(Vector2i(13, 17), MOUSE_BUTTON_LEFT)
+	check(main.last_message == "ここはもう空きフロアです", "空きフロアの上に空きフロアは建てない")
+	await choose_mode("office")
+	await click_cell(Vector2i(13, 16), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(13, 16)) == "", "1マスだけでは、その上に横4マスのオフィスは建てられない")
+	await choose_mode("frame")
+	focus_camera(Vector2i(13, 17)) # 右のほうのマスが画面の外に出ないようにする
+	await wait_frames(1)
+	for x in [14, 15, 16]:
+		await click_cell(Vector2i(x, 17), MOUSE_BUTTON_LEFT)
+	await choose_mode("office")
+	await click_cell(Vector2i(13, 16), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(13, 16)) == "office", "空きフロアで支えれば、その上に建てられる")
+	await capture("frame_03_filled")
+
 	# 支えるものがなくなった空きフロアは、ふつうに撤去できる
 	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_RIGHT) # 上のオフィスを撤去
 	await click_cell(shop, MOUSE_BUTTON_RIGHT)            # 住宅を撤去（もう支えていないので更地に戻る）
@@ -4058,7 +4091,7 @@ func run_large_elevator_scenario() -> bool:
 	build_support(cells_row(18, 4, 7) + cells_row(18, 11, 20), "lobby") # シャフトの場所（x=8〜10）は空けておく
 	# x=8〜9 に大型エレベーター（1階〜5階）
 	await choose_mode("large_elevator")
-	check(main.mode_info_label.text.contains("定員16人"), "建設メニューに定員と速さが出る")
+	check(main.mode_select.tooltip_text.contains("定員16人"), "カーソルを合わせると定員と速さが出る")
 	for y in range(18, 13, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(9, 18)) == "large_elevator", "大型エレベーターは横2マス")
@@ -4182,10 +4215,15 @@ func run_menu_scenario() -> bool:
 
 	# 開いたときに、今の状態がチェックマークで出る
 	var view_menu: PopupMenu = main.menu_bar.get_children()[1]
+	var items: Array = ui.MENUS[1].items
+	var routes_index := 0
+	for i in items.size():
+		if items[i].action == "routes":
+			routes_index = i
 	main.show_routes = true
-	ui.update_menu_checks(view_menu, ui.MENUS[1].items)
-	check(view_menu.is_item_checked(0), "動線がオンのときはチェックが付く")
+	ui.update_menu_checks(view_menu, items)
+	check(view_menu.is_item_checked(routes_index), "動線がオンのときはチェックが付く")
 	main.show_routes = false
-	ui.update_menu_checks(view_menu, ui.MENUS[1].items)
-	check(not view_menu.is_item_checked(0), "オフのときはチェックが外れる")
+	ui.update_menu_checks(view_menu, items)
+	check(not view_menu.is_item_checked(routes_index), "オフのときはチェックが外れる")
 	return true

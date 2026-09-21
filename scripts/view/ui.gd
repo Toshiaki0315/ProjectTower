@@ -20,12 +20,13 @@ var world: Node2D # main.gd
 # 画面の部品
 var funds_label: Label     # 資金
 var clock_label: Label     # 日付・時刻・天気
-var stats_label: Label     # ビルの状況（★・人口・社員・客室）
+var stats_button: Button   # ★の表示（押すとくわしい状況が開く）
+var stats_panel: Control   # ビルの状況（人口・社員・目標・オフィス・客室）
+var stats_label: Label     # その中身
 var speed_button: Button   # ゲームの速度（押すたびに切り替わる）
 var route_button: Button   # 動線（人の通り道）の表示の切り替え
 var menu_bar: MenuBar      # 画面上部のメニュー（macOSでは画面最上部のメニューバーに出る）
 var mode_select: OptionButton # 建設メニュー
-var mode_info_label: Label # 選んだものの建設費と大きさ
 var message_label: Label   # 操作結果のメッセージ（下から数行ぶん流れる）
 var hover_label: Label     # カーソル下のマスの情報（吹き出しの中身）
 var hover_tooltip: Control # 吹き出し
@@ -52,43 +53,11 @@ func update() -> void:
 	update_scrollbar()
 	update_hover_label()
 	clock_label.text = "%s  %s" % [world.clock.get_time_text(), world.weather_system.get_weather_text()]
-	stats_label.text = world.rating_system.get_status_text()
-	stats_label.text += " / 社員: 在館 %d / 全 %d人" % [world.commute_system.count_in_building(), world.commute_system.workers.size()]
-	var unreachable: int = world.commute_system.count_unreachable()
-	if unreachable > 0:
-		stats_label.text += "（通勤できない %d人）" % unreachable
-	stats_label.text += " / " + world.goal_system.get_goal_text()
-	var angry := 0
-	for r in world.residents:
-		if is_instance_valid(r) and r.is_angry():
-			angry += 1
-	if angry > 0:
-		stats_label.text += " / 怒っている人 %d人" % angry
-	var leaving: int = world.tenant_system.count_about_to_leave()
-	if leaving > 0:
-		stats_label.text += " / 退去しそうなテナント %d件" % leaving
-	if world.economy_system.pollution > 0:
-		stats_label.text += " / 衛生の悪化 レベル%d" % world.economy_system.pollution
-	if world.incident_system.has_roaches():
-		stats_label.text += " / " + world.incident_system.get_roach_text()
-	if world.incident_system.has_fire():
-		stats_label.text += " / " + world.incident_system.get_fire_text()
-	if world.incident_system.has_bomb():
-		stats_label.text += " / " + world.incident_system.get_bomb_text()
-	if world.vip_system.is_visiting():
-		stats_label.text += " / VIPが来館中（ストレス %d）" % int(world.vip_system.vip.stress)
-	if world.tenant_system.count_rating(world.tenant_system.Rating.GOOD) + world.tenant_system.count_rating(world.tenant_system.Rating.NORMAL) \
-			+ world.tenant_system.count_rating(world.tenant_system.Rating.BAD) + world.tenant_system.count_vacant() > 0:
-		stats_label.text += " / オフィス: 良い%d・普通%d・悪い%d・空室%d" % [
-			world.tenant_system.count_rating(world.tenant_system.Rating.GOOD),
-			world.tenant_system.count_rating(world.tenant_system.Rating.NORMAL),
-			world.tenant_system.count_rating(world.tenant_system.Rating.BAD),
-			world.tenant_system.count_vacant()]
-	if world.hotel_system.rooms.size() > 0:
-		stats_label.text += " / 客室: 宿泊 %d・清掃待ち %d・空室 %d" % [
-			world.hotel_system.count_rooms(world.hotel_system.RoomState.OCCUPIED),
-			world.hotel_system.count_rooms(world.hotel_system.RoomState.DIRTY),
-			world.hotel_system.count_rooms(world.hotel_system.RoomState.CLEAN)]
+	var warning_list := warnings()
+	stats_button.text = "★%d" % world.rating_system.stars
+	if not warning_list.is_empty():
+		stats_button.text += " ⚠%d" % warning_list.size() # 気をつけることがあるときは★の横に出す
+	update_stats_panel(warning_list)
 	tutorial_label.text = world.tutorial_system.current_text()
 	tutorial_panel.visible = tutorial_label.text != ""
 
@@ -141,22 +110,28 @@ func build_bars() -> void:
 	layout.add_child(menu_bar)
 	
 	# --- 上部バー（2段） ---
-	#   1段目: 資金 / 日付と時刻 / 速度
-	#   2段目: モード切り替えボタン
+	#   1段目: 資金 / 日付と時刻
+	#   2段目: ★（押すとくわしい状況）/ 速度 / 建設メニュー / 動線
 	var top_rows = VBoxContainer.new()
 	top_rows.add_theme_constant_override("separation", 4 * UI_SCALE)
 	layout.add_child(make_bar(top_rows))
 	var status_row = HBoxContainer.new()
 	status_row.add_theme_constant_override("separation", 8 * UI_SCALE)
 	top_rows.add_child(status_row)
-	# ビルの状況（★・人口・社員・客室）は上部バーの2段目
-	stats_label = Label.new()
-	stats_label.clip_text = true
-	stats_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	top_rows.add_child(stats_label)
-	var build_row = HBoxContainer.new()
-	build_row.add_theme_constant_override("separation", 8 * UI_SCALE)
-	top_rows.add_child(build_row)
+	# 上部バーの2段目は★だけにして、くわしい状況は★を押したときに出す
+	var stats_row = HBoxContainer.new()
+	stats_row.add_theme_constant_override("separation", 8 * UI_SCALE)
+	top_rows.add_child(stats_row)
+	stats_button = Button.new()
+	stats_button.custom_minimum_size.x = 120 * UI_SCALE
+	stats_button.pressed.connect(func(): toggle_stats_panel())
+	stats_row.add_child(stats_button)
+	# ゲームの速度（押すたびに 1x → 4x → 16x → 1x と切り替わり、今の速度だけを表示する）
+	speed_button = Button.new()
+	speed_button.custom_minimum_size.x = 60 * UI_SCALE
+	speed_button.pressed.connect(func(): world.set_speed(world.SPEEDS[(world.SPEEDS.find(int(Engine.time_scale)) + 1) % world.SPEEDS.size()]))
+	stats_row.add_child(speed_button)
+	world.set_speed(1)
 	
 	funds_label = Label.new()
 	funds_label.add_theme_font_size_override("font_size", 20 * UI_SCALE)
@@ -169,20 +144,12 @@ func build_bars() -> void:
 	
 	status_row.add_child(make_spacer())
 	
-	# ゲームの速度（Engine.time_scaleで、時計・住人・エレベーターをまとめて早送りする）。
-	# ボタンは1つで、押すたびに 1x → 4x → 16x → 1x と切り替わり、今の速度だけを表示する
-	speed_button = Button.new()
-	speed_button.custom_minimum_size.x = 60 * UI_SCALE
-	speed_button.pressed.connect(func(): world.set_speed(world.SPEEDS[(world.SPEEDS.find(int(Engine.time_scale)) + 1) % world.SPEEDS.size()]))
-	status_row.add_child(speed_button)
-	world.set_speed(1)
-	
 	# 操作説明（F1・H）とメッセージの記録（⌘L）は、ボタンではなくショートカットで開く
 	
 	# 建設メニュー: リストから選んで、マップをクリックして建てる（見出しごとにまとめる）
 	var build_label = Label.new()
 	build_label.text = "建設:"
-	build_row.add_child(build_label)
+	stats_row.add_child(build_label)
 	mode_select = OptionButton.new()
 	mode_select.custom_minimum_size.x = 260 * UI_SCALE
 	for group in world.MODE_GROUPS:
@@ -192,21 +159,16 @@ func build_bars() -> void:
 			mode_select.set_item_metadata(mode_select.item_count - 1, mode)
 	mode_select.item_selected.connect(func(index): world.select_mode(mode_select.get_item_metadata(index)))
 	for type in world.BUILDINGS:
-		if type == Buildings.FRAME_TYPE:
-			continue # 空きフロアは撤去の跡地なので、メニューからは建てない
 		assert(world.MODE_GROUPS.any(func(group): return group.modes.has(type)), "%s が建設メニュー（world.MODE_GROUPS）にありません" % type)
-	build_row.add_child(mode_select)
-	mode_info_label = Label.new()
-	mode_info_label.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
-	build_row.add_child(mode_info_label)
+	stats_row.add_child(mode_select)
 	
 	# 動線（人の通り道）の表示。人が増えると線だらけになるので、既定はオフ
-	build_row.add_child(make_spacer())
 	route_button = Button.new()
 	route_button.custom_minimum_size.x = 100 * UI_SCALE
 	route_button.pressed.connect(func(): world.toggle_routes())
-	build_row.add_child(route_button)
+	stats_row.add_child(route_button)
 	update_route_button()
+	stats_row.add_child(make_spacer())
 	
 	# --- はじめての案内（上部バーの下。画面の横幅いっぱいに出す） ---
 	var tutorial_box = HBoxContainer.new()
@@ -232,7 +194,7 @@ func build_bars() -> void:
 	help_row.add_child(make_spacer())
 	var help_label = Label.new()
 	help_label.text = "\n".join([
-		"建設: 上の「建設」メニューで選び、マップを左クリック / 右クリック: 撤去（建設費の半額を返金）",
+		"建設: 上の「建設」メニューで選び、マップを左クリック（建てる大きさはカーソルの枠でわかる。くわしい説明はメニューにカーソルを合わせると出る） / 右クリック: 撤去（建設費の半額を返金）",
 		"更地から始まる。1階はロビー専用（ロビー・階段・エレベーターだけ）。人はロビーの左端（入口）から出入りする",
 		"吹き抜けロビー: 2階分・3階分の高さのロビー。上の階には床がないので、人は1階だけを歩く",
 		"スカイロビー: 15階・30階・45階…にだけ建てられる乗り換え専用のフロア（何階かはカーソル下の情報に出る）",
@@ -242,12 +204,13 @@ func build_bars() -> void:
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
 		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
 		"オフィスの大きさ: 小さいオフィス（横2マス・2人・賃料1.1万円/マス）と大きいオフィス（横6マス・6人・0.9万円/マス）もある",
-		"空きフロア: 上の階を支えているマスを撤去すると、骨組みだけの跡地が残る。通り抜けでき、その上から建て直せる",
+		"空きフロア: 骨組みだけのフロア（1万円）。メニューから建ててすき間を埋められるほか、上の階を支えているマスを撤去したときにも残る。通り抜けでき、その上から建て直せる",
 		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
 		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
 		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
 		"動線: 上部バーの「動線」ボタン（Rキー）で、人が通る道すじを線で表示する（人が多いと線だらけになるので既定はオフ）",
+		"ビルの状況: 上部バーの★を押すと、人口・目標・社員・オフィス・客室のくわしい様子が出る（気をつけることがあるときは★の横に⚠と件数）",
 		"ショートカット: F1・H（この説明の開閉） / Esc（開いているパネルを閉じる） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
 		"収支のグラフ: ⌘G で、最近60日ぶんの決算の合計を棒グラフで見られる",
 		"音: M キーで音のオン・オフ（効果音とBGMは、波形からゲームの中で作っている）",
@@ -297,6 +260,18 @@ func build_bars() -> void:
 	help_panel = make_bar(help_scroll)
 	help_panel.visible = false
 	help_row.add_child(help_panel)
+	
+	# --- ビルの状況（2段目の★を押すと開閉する） ---
+	var stats_panel_row = HBoxContainer.new()
+	stats_panel_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(stats_panel_row)
+	stats_label = Label.new()
+	stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stats_label.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
+	stats_panel = make_bar(stats_label)
+	stats_panel.visible = false
+	stats_panel_row.add_child(stats_panel)
+	stats_panel_row.add_child(make_spacer())
 	
 	# --- メッセージの記録（⌘Lで開閉。ゲーム開始からのメッセージを全部見られる） ---
 	var log_row = HBoxContainer.new()
@@ -398,10 +373,9 @@ func get_mode_label(mode: String) -> String:
 		return "稼働時間帯"
 	if mode == world.MODE_DEMOLISH:
 		return "撤去"
-	var width: int = world.get_width(mode)
-	return world.BUILDINGS[mode].name + ("（横%dマス）" % width if width > 1 else "")
+	return "%s（%s円）" % [world.BUILDINGS[mode].name, world.format_money(world.BUILDINGS[mode].cost)]
 
-# 選んだものの費用・大きさの説明
+# 選んだもののくわしい説明（建設メニューにカーソルを合わせると出る）
 func get_mode_info(mode: String) -> String:
 	if mode == world.MODE_RESIDENT:
 		return "建物をクリックで住人を置き、行き先をクリック"
@@ -418,6 +392,8 @@ func get_mode_info(mode: String) -> String:
 		info += "・高さ%d階分" % world.get_height(mode)
 	if mode == "express_elevator":
 		info += "（1階とスカイロビーの階だけに停まる）"
+	elif mode == Buildings.FRAME_TYPE:
+		info += "（骨組みだけのフロア。上の階を支え、人は通り抜けられる）"
 	elif mode == "large_elevator":
 		info += "（全部の階に停まる。定員%d人・速さ1.5倍）" % ElevatorCar.LARGE_CAPACITY
 	return info
@@ -430,6 +406,7 @@ const MENUS := [
 		{"text": "セーブデータの読み込み（⌘O）", "action": "load"},
 	]},
 	{"name": "表示", "items": [
+		{"text": "ビルの状況（★を押しても開く）", "action": "stats", "check": true},
 		{"text": "動線（人の通り道）（R）", "action": "routes", "check": true},
 		{"text": "メッセージの記録（⌘L）", "action": "log", "check": true},
 		{"text": "収支のグラフ（⌘G）", "action": "chart", "check": true},
@@ -470,6 +447,7 @@ func update_menu_checks(popup: PopupMenu, items: Array) -> void:
 # その項目が今オンか（チェックマークを付けるか）
 func is_menu_on(action: String) -> bool:
 	match action:
+		"stats": return stats_panel.visible
 		"routes": return world.show_routes
 		"log": return log_panel.visible
 		"chart": return chart_panel.visible
@@ -482,6 +460,7 @@ func do_menu_action(action: String) -> void:
 	match action:
 		"save": world.save_system.save_game()
 		"load": world.save_system.load_game()
+		"stats": toggle_stats_panel()
 		"routes": world.toggle_routes()
 		"log":
 			log_panel.visible = not log_panel.visible
@@ -495,6 +474,55 @@ func do_menu_action(action: String) -> void:
 		"mute": world.audio_system.toggle_mute()
 		"help": help_panel.visible = not help_panel.visible
 
+# ビルの状況（★を押すと開くパネル）の中身
+func update_stats_panel(warning_list: Array[String]) -> void:
+	var lines: Array[String] = [world.rating_system.get_status_text(), world.goal_system.get_goal_text()]
+	lines.append("社員: 在館 %d / 全 %d人" % [world.commute_system.count_in_building(), world.commute_system.workers.size()])
+	var tenants = world.tenant_system
+	if tenants.count_rating(tenants.Rating.GOOD) + tenants.count_rating(tenants.Rating.NORMAL) \
+			+ tenants.count_rating(tenants.Rating.BAD) + tenants.count_vacant() > 0:
+		lines.append("オフィス: 良い%d・普通%d・悪い%d・空室%d" % [
+			tenants.count_rating(tenants.Rating.GOOD), tenants.count_rating(tenants.Rating.NORMAL),
+			tenants.count_rating(tenants.Rating.BAD), tenants.count_vacant()])
+	var hotel = world.hotel_system
+	if hotel.rooms.size() > 0:
+		lines.append("客室: 宿泊 %d・清掃待ち %d・空室 %d" % [
+			hotel.count_rooms(hotel.RoomState.OCCUPIED), hotel.count_rooms(hotel.RoomState.DIRTY),
+			hotel.count_rooms(hotel.RoomState.CLEAN)])
+	if world.vip_system.is_visiting():
+		lines.append("VIPが来館中（ストレス %d）" % int(world.vip_system.vip.stress))
+	for w in warning_list:
+		lines.append("⚠ " + w)
+	stats_label.text = "\n".join(lines)
+
+# ★を押したときに、くわしい状況を開け閉めする
+func toggle_stats_panel() -> void:
+	stats_panel.visible = not stats_panel.visible
+
+# 今、気をつけることの一覧（★の横に件数を出して知らせる）
+func warnings() -> Array[String]:
+	var list: Array[String] = []
+	var angry := 0
+	for r in world.residents:
+		if is_instance_valid(r) and r.is_angry():
+			angry += 1
+	if angry > 0:
+		list.append("怒っている人 %d人" % angry)
+	var leaving: int = world.tenant_system.count_about_to_leave()
+	if leaving > 0:
+		list.append("退去しそうなテナント %d件" % leaving)
+	if world.commute_system.count_unreachable() > 0:
+		list.append("通勤できない社員 %d人" % world.commute_system.count_unreachable())
+	if world.economy_system.pollution > 0:
+		list.append("衛生の悪化 レベル%d" % world.economy_system.pollution)
+	if world.incident_system.has_roaches():
+		list.append(world.incident_system.get_roach_text())
+	if world.incident_system.has_fire():
+		list.append(world.incident_system.get_fire_text())
+	if world.incident_system.has_bomb():
+		list.append(world.incident_system.get_bomb_text())
+	return list
+
 # 動線の表示ボタンの見た目を、今の設定に合わせる
 func update_route_button() -> void:
 	if route_button:
@@ -505,7 +533,7 @@ func update_mode_select():
 	for i in mode_select.item_count:
 		if mode_select.get_item_metadata(i) == world.current_mode:
 			mode_select.select(i)
-	mode_info_label.text = get_mode_info(world.current_mode)
+	mode_select.tooltip_text = get_mode_info(world.current_mode) # くわしい説明はカーソルを合わせたときに出す
 
 # 資金の表示を更新する関数
 func update_funds_display():
