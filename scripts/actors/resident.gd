@@ -256,14 +256,9 @@ func leave(message: String) -> void:
 	queue_free()
 
 func _draw() -> void:
-	# 残りの経路を線で表示する
-	if not path.is_empty():
-		var points := PackedVector2Array([Vector2.ZERO])
-		for c in path:
-			points.append(world.tile_map.map_to_local(c) - position)
-		draw_polyline(points, Color(1.0, 1.0, 0.4, 0.8), 1.5)
-
 	# 体（ドット絵）。服は種類ごとの色（選択中は黄色）、顔はストレスに応じた色
+	# 経路線は grid_overlay.gd が world.show_routes を見てまとめて描く。
+	# ここで描くと、導線表示がオフでも黄色い線だけが残ってしまう。
 	var clothes := get_body_color()
 	var face := get_face_color()
 	var sprite := body_sprite()
