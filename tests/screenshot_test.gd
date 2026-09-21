@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -4131,4 +4131,61 @@ func run_routes_scenario() -> bool:
 	check(not main.show_routes, "ボタンでオフに戻せる")
 	check(main.route_button.text == "動線 オフ", "ボタンの表示ももとに戻る")
 	await capture("routes_02_off")
+	return true
+
+# シナリオ67: メニューバー（マウスでも各機能に届くようにする）
+# ショートカットと同じことが、画面上部のメニューからもできる。
+# macOSでは画面最上部のシステムのメニューバーに出る。
+# ---------------------------------------------------
+func run_menu_scenario() -> bool:
+	print("[シナリオ] メニューバー")
+	var ui = main.ui
+	var names: Array = []
+	for popup in main.menu_bar.get_children():
+		names.append(String(popup.name))
+	check(names == ["ファイル", "表示", "ゲーム", "ヘルプ"], "メニューは ファイル・表示・ゲーム・ヘルプ の4つ")
+	check(main.menu_bar.prefer_global_menu, "macOSでは画面最上部のメニューバーに出す設定になっている")
+
+	# 「ヘルプ > 操作説明」で、F1と同じように開け閉めできる
+	check(not main.help_panel.visible, "操作説明は最初は閉じている")
+	ui.do_menu_action("help")
+	check(main.help_panel.visible, "メニューから操作説明を開ける")
+	await capture("menu_01_help")
+	ui.do_menu_action("help")
+	check(not main.help_panel.visible, "もう一度選ぶと閉じる")
+
+	# 「表示 > 動線」はショートカットと同じ切り替え
+	check(not main.show_routes, "動線の表示は最初はオフ")
+	ui.do_menu_action("routes")
+	check(main.show_routes and main.route_button.text == "動線 オン", "メニューから動線を出せる（ボタンの表示も合う）")
+	ui.do_menu_action("routes")
+	check(not main.show_routes, "もう一度選ぶとオフに戻る")
+
+	# 「ゲーム > 速さ」「ゲーム > 音」
+	check(is_equal_approx(Engine.time_scale, 1.0), "速さは最初は1x")
+	ui.do_menu_action("speed")
+	check(is_equal_approx(Engine.time_scale, 4.0) and main.speed_button.text == "4x", "メニューから速さを切り替えられる")
+	ui.do_menu_action("speed")
+	ui.do_menu_action("speed")
+	check(is_equal_approx(Engine.time_scale, 1.0), "3回選ぶと1xに戻る")
+	ui.do_menu_action("mute")
+	check(main.audio_system.muted, "メニューから音を消せる")
+	ui.do_menu_action("mute")
+	check(not main.audio_system.muted, "もう一度選ぶと音が戻る")
+
+	# 「表示 > 拡大・縮小・もとの大きさ」
+	var zoom: float = main.camera.zoom.x
+	ui.do_menu_action("zoom_in")
+	check(main.camera.zoom.x > zoom, "メニューから拡大できる")
+	ui.do_menu_action("zoom_reset")
+	check(is_equal_approx(main.camera.zoom.x, zoom), "もとの大きさに戻せる")
+
+	# 開いたときに、今の状態がチェックマークで出る
+	var view_menu: PopupMenu = main.menu_bar.get_children()[1]
+	main.show_routes = true
+	ui.update_menu_checks(view_menu, ui.MENUS[1].items)
+	check(view_menu.is_item_checked(0), "動線がオンのときはチェックが付く")
+	main.show_routes = false
+	ui.update_menu_checks(view_menu, ui.MENUS[1].items)
+	check(not view_menu.is_item_checked(0), "オフのときはチェックが外れる")
 	return true

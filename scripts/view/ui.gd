@@ -23,6 +23,7 @@ var clock_label: Label     # 日付・時刻・天気
 var stats_label: Label     # ビルの状況（★・人口・社員・客室）
 var speed_button: Button   # ゲームの速度（押すたびに切り替わる）
 var route_button: Button   # 動線（人の通り道）の表示の切り替え
+var menu_bar: MenuBar      # 画面上部のメニュー（macOSでは画面最上部のメニューバーに出る）
 var mode_select: OptionButton # 建設メニュー
 var mode_info_label: Label # 選んだものの建設費と大きさ
 var message_label: Label   # 操作結果のメッセージ（下から数行ぶん流れる）
@@ -134,6 +135,10 @@ func build_bars() -> void:
 	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layout.add_theme_constant_override("separation", 0)
 	canvas.add_child(layout)
+	
+	# --- メニューバー（macOSでは画面最上部のシステムのメニューバーに出る） ---
+	menu_bar = build_menu_bar()
+	layout.add_child(menu_bar)
 	
 	# --- 上部バー（2段） ---
 	#   1段目: 資金 / 日付と時刻 / 速度
@@ -416,6 +421,79 @@ func get_mode_info(mode: String) -> String:
 	elif mode == "large_elevator":
 		info += "（全部の階に停まる。定員%d人・速さ1.5倍）" % ElevatorCar.LARGE_CAPACITY
 	return info
+
+# メニューバーの中身。action は選んだときに do_menu_action() で実行する処理の名前。
+# check を付けた項目は、開くたびに今の状態にチェックを合わせる
+const MENUS := [
+	{"name": "ファイル", "items": [
+		{"text": "セーブ（⌘S）", "action": "save"},
+		{"text": "セーブデータの読み込み（⌘O）", "action": "load"},
+	]},
+	{"name": "表示", "items": [
+		{"text": "動線（人の通り道）（R）", "action": "routes", "check": true},
+		{"text": "メッセージの記録（⌘L）", "action": "log", "check": true},
+		{"text": "収支のグラフ（⌘G）", "action": "chart", "check": true},
+		{"text": "拡大（⌘+）", "action": "zoom_in"},
+		{"text": "縮小（⌘-）", "action": "zoom_out"},
+		{"text": "もとの大きさ（⌘0）", "action": "zoom_reset"},
+	]},
+	{"name": "ゲーム", "items": [
+		{"text": "速さを切り替える", "action": "speed"},
+		{"text": "音を出す（M）", "action": "mute", "check": true},
+	]},
+	{"name": "ヘルプ", "items": [
+		{"text": "操作説明（F1）", "action": "help", "check": true},
+	]},
+]
+
+# メニューバーを組み立てる
+func build_menu_bar() -> MenuBar:
+	var bar := MenuBar.new()
+	bar.prefer_global_menu = true # macOSでは画面最上部のメニューバーに出す
+	for menu in MENUS:
+		var popup := PopupMenu.new()
+		popup.name = menu.name
+		for item in menu.items:
+			popup.add_item(item.text)
+		popup.id_pressed.connect(func(index): do_menu_action(menu.items[index].action))
+		popup.about_to_popup.connect(func(): update_menu_checks(popup, menu.items))
+		bar.add_child(popup)
+	return bar
+
+# メニューを開いたときに、今の状態をチェックマークで示す
+func update_menu_checks(popup: PopupMenu, items: Array) -> void:
+	for i in items.size():
+		if items[i].get("check", false):
+			popup.set_item_as_checkable(i, true)
+			popup.set_item_checked(i, is_menu_on(items[i].action))
+
+# その項目が今オンか（チェックマークを付けるか）
+func is_menu_on(action: String) -> bool:
+	match action:
+		"routes": return world.show_routes
+		"log": return log_panel.visible
+		"chart": return chart_panel.visible
+		"help": return help_panel.visible
+		"mute": return not world.audio_system.muted
+	return false
+
+# メニューを選んだときの処理。ショートカットと同じことをする
+func do_menu_action(action: String) -> void:
+	match action:
+		"save": world.save_system.save_game()
+		"load": world.save_system.load_game()
+		"routes": world.toggle_routes()
+		"log":
+			log_panel.visible = not log_panel.visible
+			if log_panel.visible:
+				update_log_panel()
+		"chart": chart_panel.visible = not chart_panel.visible
+		"zoom_in": world.camera.zoom_by(world.camera.KEY_ZOOM_STEP)
+		"zoom_out": world.camera.zoom_by(1.0 / world.camera.KEY_ZOOM_STEP)
+		"zoom_reset": world.camera.reset_zoom()
+		"speed": world.set_speed(world.SPEEDS[(world.SPEEDS.find(int(Engine.time_scale)) + 1) % world.SPEEDS.size()])
+		"mute": world.audio_system.toggle_mute()
+		"help": help_panel.visible = not help_panel.visible
 
 # 動線の表示ボタンの見た目を、今の設定に合わせる
 func update_route_button() -> void:

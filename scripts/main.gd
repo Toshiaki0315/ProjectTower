@@ -70,6 +70,8 @@ var speed_button: Button:
 	get: return ui.speed_button
 var route_button: Button:
 	get: return ui.route_button
+var menu_bar: MenuBar:
+	get: return ui.menu_bar
 var mode_select: OptionButton:
 	get: return ui.mode_select
 var mode_info_label: Label:
