@@ -11,7 +11,8 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 # ---------------------------------------------------
 
 const UI_SCALE := 2      # 画面表示（文字・ボタン・余白）の大きさの倍率
-const PANEL_WIDTH := 1400 # 操作説明・メッセージの記録のパネルの横幅（画面幅1600に収まる大きさ）
+const PANEL_WIDTH := 1400 # メッセージの記録などのパネルの横幅（画面幅1600に収まる大きさ）
+const HELP_PANEL_WIDTH := 880 # 操作説明パネルの横幅（文字フォントに合わせて読みやすい幅にする）
 const BASE_FONT_SIZE := 16 # 倍率をかける前の文字の大きさ
 const MESSAGE_LINES := 3 # 下部バーに出しておくメッセージの行数
 
@@ -99,6 +100,17 @@ func build_bars() -> void:
 	# 余白や幅の指定にも同じ倍率をかける）
 	var theme := Theme.new()
 	theme.default_font_size = BASE_FONT_SIZE * UI_SCALE
+	var tooltip_style := StyleBoxFlat.new()
+	tooltip_style.bg_color = Color(0.1, 0.1, 0.13, 0.92)
+	tooltip_style.set_content_margin_all(4 * UI_SCALE)
+	tooltip_style.content_margin_left = 8 * UI_SCALE
+	tooltip_style.content_margin_right = 8 * UI_SCALE
+	tooltip_style.corner_radius_top_left = 4 * UI_SCALE
+	tooltip_style.corner_radius_top_right = 4 * UI_SCALE
+	tooltip_style.corner_radius_bottom_left = 4 * UI_SCALE
+	tooltip_style.corner_radius_bottom_right = 4 * UI_SCALE
+	theme.set_stylebox("panel", "TooltipPanel", tooltip_style)
+	theme.set_font_size("font_size", "TooltipLabel", 12 * UI_SCALE)
 	layout.theme = theme
 	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -170,22 +182,25 @@ func build_bars() -> void:
 	update_route_button()
 	stats_row.add_child(make_spacer())
 	
-	# --- はじめての案内（上部バーの下。画面の横幅いっぱいに出す） ---
+	# --- はじめての案内（上部バーの下。文字フォントに合わせたコンパクトなパネル） ---
+	var tutorial_row = HBoxContainer.new()
+	tutorial_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(tutorial_row)
 	var tutorial_box = HBoxContainer.new()
 	tutorial_box.add_theme_constant_override("separation", 12 * UI_SCALE)
 	tutorial_label = Label.new()
 	tutorial_label.add_theme_color_override("font_color", Color(0.65, 0.95, 1.0))
-	tutorial_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tutorial_label.clip_text = true
-	tutorial_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	tutorial_label.add_theme_font_size_override("font_size", 13 * UI_SCALE)
 	tutorial_box.add_child(tutorial_label)
 	var skip_button = Button.new()
 	skip_button.text = "案内を閉じる"
+	skip_button.add_theme_font_size_override("font_size", 12 * UI_SCALE)
 	skip_button.pressed.connect(func(): world.tutorial_system.skip())
 	tutorial_box.add_child(skip_button)
 	tutorial_panel = make_bar(tutorial_box)
 	tutorial_panel.visible = false
-	layout.add_child(tutorial_panel)
+	tutorial_row.add_child(tutorial_panel)
+	tutorial_row.add_child(make_spacer())
 	
 	# --- 操作説明（上部バーの下、右寄せ） ---
 	var help_row = HBoxContainer.new()
@@ -252,9 +267,9 @@ func build_bars() -> void:
 	help_label.add_theme_font_size_override("font_size", 13 * UI_SCALE) # 行数が多いので少し小さめ
 	# 長い行は折り返して、右がはみ出して読めなくならないようにする
 	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	help_label.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
+	help_label.custom_minimum_size = Vector2(HELP_PANEL_WIDTH, 0)
 	var help_scroll = ScrollContainer.new()
-	help_scroll.custom_minimum_size = Vector2(PANEL_WIDTH, 420) # 画面に収まる高さ。はみ出す分は上下にスクロールする
+	help_scroll.custom_minimum_size = Vector2(HELP_PANEL_WIDTH, 480) # 画面に収まる高さ。はみ出す分は上下にスクロールする
 	help_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	help_scroll.add_child(help_label)
 	help_panel = make_bar(help_scroll)
@@ -334,14 +349,30 @@ func build_bars() -> void:
 	
 	# カーソル下のマスの情報は、マウスの横に吹き出し（ツールチップ）で出す
 	hover_label = Label.new()
-	hover_tooltip = make_bar(hover_label)
-	hover_tooltip.theme = theme
+	hover_label.add_theme_font_size_override("font_size", 13 * UI_SCALE)
+	hover_tooltip = make_tooltip_bar(hover_label)
 	hover_tooltip.visible = false
 	hover_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hover_tooltip.top_level = true # 画面の好きな位置に出せるようにする
 	canvas.add_child(hover_tooltip)
 	
 	update_mode_select()
+
+# 吹き出し（Tips）用の文字フォントに合わせた背景矩形を作る
+func make_tooltip_bar(content: Control) -> PanelContainer:
+	var panel = PanelContainer.new()
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.13, 0.92)
+	style.set_content_margin_all(4 * UI_SCALE)
+	style.content_margin_left = 8 * UI_SCALE
+	style.content_margin_right = 8 * UI_SCALE
+	style.corner_radius_top_left = 4 * UI_SCALE
+	style.corner_radius_top_right = 4 * UI_SCALE
+	style.corner_radius_bottom_left = 4 * UI_SCALE
+	style.corner_radius_bottom_right = 4 * UI_SCALE
+	panel.add_theme_stylebox_override("panel", style)
+	panel.add_child(content)
+	return panel
 
 # 半透明の背景を持つバーを作る（中身をcontentとして入れる）
 func make_bar(content: Control) -> PanelContainer:
@@ -629,6 +660,7 @@ func show_tooltip(cell: Vector2i) -> void:
 	hover_tooltip.visible = not world.is_cell_empty(cell) or world.get_resident_at(cell) != null
 	if not hover_tooltip.visible:
 		return
+	hover_tooltip.reset_size()
 	var offset := Vector2(12, 12) * UI_SCALE
 	var size := hover_tooltip.get_combined_minimum_size()
 	var screen: Vector2 = world.get_viewport_rect().size
