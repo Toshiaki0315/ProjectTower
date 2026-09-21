@@ -2949,6 +2949,8 @@ func run_bomb_scenario() -> bool:
 			days += 1
 	print("    40日のうち爆破予告が来た日: ", days)
 	check(days > 0 and days < 20, "★2以上では、ときどき爆破予告が届く（40日のうち%d日）" % days)
+	incidents.last_incident_day = 10
+	check(incidents.is_incident_on_cooldown(11) and incidents.is_incident_on_cooldown(13) and not incidents.is_incident_on_cooldown(14), "事故の後は3日間、新しい事故が起きない")
 	return true
 
 # ---------------------------------------------------

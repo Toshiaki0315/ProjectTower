@@ -33,11 +33,11 @@ extends Node
 
 const GUARD_COLOR := Color(0.45, 0.55, 0.95) # 警備員の服の色（青）
 const MIN_STARS := 2        # この評価以上のビルが狙われる
-const BOMB_CHANCE := 0.15   # 1日に爆破予告が届く確率
+const BOMB_CHANCE := 0.03   # 1日に爆破予告が届く確率
 const BOMB_MINUTE := 10 * 60 # 予告が届く時刻
 const BOMB_LIMIT := 120.0   # 予告から爆発までの時間（分）
 const DEFUSE_MINUTES := 10.0 # 爆弾の解体にかかる時間（分）
-const FIRE_CHANCE := 0.1       # 1日に出火する確率
+const FIRE_CHANCE := 0.02      # 1日に出火する確率
 const FIRE_MINUTE := 20 * 60   # 出火する時刻
 const SPREAD_MINUTES := 20.0   # 隣のマスへ燃え広がるまでの時間（分）
 const BURN_MINUTES := 60.0     # 1マスが燃え尽きる（建物が焼け落ちる）までの時間（分）
@@ -45,6 +45,7 @@ const EXTINGUISH_MINUTES := 10.0 # 警備員が1マスを消し止めるのに�
 const HELI_MINUTES := 5.0      # 消防ヘリが1マスを消すのにかかる時間（分）
 const HELI_SPEED := 90.0       # 消防ヘリの飛ぶ速さ（px/秒）
 const HELI_ARRIVE := 6.0       # このくらいまで近づいたら、消火を始める（px）
+const INCIDENT_COOLDOWN_DAYS := 3 # 事故の後、新しい事故を起こさない日数
 
 const ROACH_POLLUTION := 4   # 衛生の悪化がこのレベル以上の日が続くと、ゴキブリが出る
 const ROACH_DAYS := 2        # 続く日数
@@ -70,6 +71,7 @@ var fire := {}      # 燃えているマス -> {"burn_left": 焼け落ちるま�
 var fire_spread_left := 0.0 # 次に燃え広がるまでの分
 var heli = null     # 消防ヘリ {"pos": 今の位置, "target": 消しに行くマス, "work_left": 残りの分}
 var fire_day := 0   # 最後に出火の判定をした日
+var last_incident_day := 0 # 最後に爆破予告か火災が始まった日（連続発生を防ぐ）
 var roaches := {}   # ゴキブリがいるテナント（左端のマス） -> true
 var roach_days := 0 # 衛生の悪化が続いている日数
 var roach_day := 0  # 最後にゴキブリの判定をした日
@@ -91,6 +93,7 @@ func reset_incidents() -> void:
 	fire_day = 0
 	roach_day = 0
 	roach_days = 0
+	last_incident_day = 0
 
 func rebuild() -> void:
 	var rooms: Array[Vector2i] = world.find_units_of_type("security")
@@ -121,13 +124,13 @@ func _process(_delta: float) -> void:
 	var day: int = world.clock.day
 	var now: int = world.clock.minute_of_day()
 	var minutes: float = world.clock.last_advance # このフレームで進んだゲーム内の分数
-	if bomb_day != day and now >= BOMB_MINUTE:
+	if not is_incident_on_cooldown(day) and bomb_day != day and now >= BOMB_MINUTE:
 		bomb_day = day
 		if not has_bomb() and roll_bomb(day):
 			start_bomb(pick_target(day))
 	if has_bomb():
 		process_bomb(minutes)
-	if fire_day != day and now >= FIRE_MINUTE:
+	if not is_incident_on_cooldown(day) and fire_day != day and now >= FIRE_MINUTE:
 		fire_day = day
 		if not has_fire() and roll_fire(day):
 			start_fire(pick_target(day))
@@ -137,6 +140,11 @@ func _process(_delta: float) -> void:
 	if roach_day != day and now >= ROACH_MINUTE:
 		roach_day = day
 		update_roaches(day)
+
+# 事故が起きた日を含めず、その後 INCIDENT_COOLDOWN_DAYS 日間は新しい事故を起こさない。
+# 例: 10日目に事故が起きた場合、11〜13日目は休み、14日目から再び抽選する。
+func is_incident_on_cooldown(day: int) -> bool:
+	return last_incident_day > 0 and day <= last_incident_day + INCIDENT_COOLDOWN_DAYS
 
 # その日に爆破予告が届くか（日ごとに決まった乱数）
 func roll_bomb(day: int) -> bool:
@@ -170,6 +178,7 @@ func pick_target(day: int):
 func start_bomb(cell) -> void:
 	if cell == null or world.is_cell_empty(cell):
 		return
+	last_incident_day = world.clock.day
 	bomb = {"cell": cell, "left": BOMB_LIMIT, "defuse_left": DEFUSE_MINUTES, "guard": null}
 	world.audio_system.play("alert")
 	world.show_message("爆破予告！ %s の%sに爆弾が仕掛けられました（残り%d分）。警備員が向かいます"
@@ -246,6 +255,7 @@ func send_guards_home(guard) -> void:
 func start_fire(cell) -> void:
 	if cell == null or world.is_cell_empty(cell):
 		return
+	last_incident_day = world.clock.day
 	fire.clear()
 	burn(cell)
 	world.audio_system.play("alert")
