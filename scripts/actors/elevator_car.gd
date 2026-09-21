@@ -201,8 +201,17 @@ func _process(delta: float) -> void:
 		State.IDLE:
 			decide_next_action()
 		State.MOVING:
-			position = position.move_toward(floor_position(target_y), speed * delta)
-			if position == floor_position(target_y):
+			# 1フレームで階をまたいでも、余った時間ぶんは続けて進む
+			#（そうしないと早送り中やfpsが低いときに1フレーム1階までしか動けず、遅くなってしまう）
+			var time_left := delta
+			while time_left > 0.0 and state == State.MOVING:
+				var target_pos := floor_position(target_y)
+				var distance := position.distance_to(target_pos)
+				if speed * time_left < distance:
+					position = position.move_toward(target_pos, speed * time_left)
+					break
+				position = target_pos
+				time_left -= distance / speed
 				floor_y = target_y
 				if should_stop_at(floor_y):
 					stop_here()

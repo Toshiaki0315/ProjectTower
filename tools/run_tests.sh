@@ -1,12 +1,13 @@
 #!/bin/bash
 # 画面確認用テストを、いくつかに分けて並べて実行する（速く終わらせるため）。
 #
-#   tools/run_tests.sh [分ける数]   （省略すると3つ）
+#   tools/run_tests.sh [分ける数]   （省略すると4つ）
 #
 # 各組は別のGodotのウィンドウで動く。結果は最後にまとめて表示する。
+# 分けすぎると1つあたりのfpsが落ちて、かえって早送りの倍率が下がる（このMacでは4つが一番速い）。
 set -u
 cd "$(dirname "$0")/.."
-count=${1:-3}
+count=${1:-4}
 out=$(mktemp -d)
 echo "テストを${count}組に分けて実行します..."
 for i in $(seq 1 "$count"); do

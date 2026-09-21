@@ -119,43 +119,52 @@ func _process(delta: float) -> void:
 			process_riding()
 	queue_redraw()
 
+# 歩く処理。1フレームでマスをまたいでも余った時間ぶんは続けて進む
+#（そうしないと、早送り中やfpsが低いときに1フレーム1マスまでしか進めず、歩く速さが落ちてしまう）
 func process_walking(delta: float) -> void:
-	# 立っているマスが撤去されたら退場する
-	if world.is_cell_empty(cell):
-		leave("住人の足元が撤去されたため、住人が退場しました")
-		return
-	if path.is_empty():
-		return
+	var time_left := delta
+	while time_left > 0.0:
+		# 立っているマスが撤去されたら退場する
+		if world.is_cell_empty(cell):
+			leave("住人の足元が撤去されたため、住人が退場しました")
+			return
+		if path.is_empty():
+			return
 
-	var next: Vector2i = path[0]
-	var at_cell_center: bool = position == world.tile_map.map_to_local(cell)
+		var next: Vector2i = path[0]
+		var at_cell_center: bool = position == world.tile_map.map_to_local(cell)
 
-	# マスの中心から次の一歩を踏み出す前に、まだ通れるか確認する
-	if at_cell_center and not world.can_move(cell, next, staff):
-		if not go_to(goal):
-			path.clear()
-			world.show_message("経路が途切れたため、住人が立ち止まりました")
-		return
+		# マスの中心から次の一歩を踏み出す前に、まだ通れるか確認する
+		if at_cell_center and not world.can_move(cell, next, staff):
+			if not go_to(goal):
+				path.clear()
+				world.show_message("経路が途切れたため、住人が立ち止まりました")
+			return
 
-	# 次の一歩がエレベーターなら、乗り場のボタンを押して待つ
-	if at_cell_center and world.is_elevator_ride(cell, next):
-		ride_dir = ElevatorCar.Direction.UP if next.y < cell.y else ElevatorCar.Direction.DOWN
-		world.elevator_system.request_hall(cell, ride_dir)
-		state = State.WAITING
-		return
+		# 次の一歩がエレベーターなら、乗り場のボタンを押して待つ
+		if at_cell_center and world.is_elevator_ride(cell, next):
+			ride_dir = ElevatorCar.Direction.UP if next.y < cell.y else ElevatorCar.Direction.DOWN
+			world.elevator_system.request_hall(cell, ride_dir)
+			state = State.WAITING
+			return
 
-	var target_pos: Vector2 = world.tile_map.map_to_local(next)
-	var speed := WALK_SPEED
-	if world.is_escalator_ride(cell, next):
-		speed = ESCALATOR_SPEED
-	elif next.y != cell.y:
-		speed = STAIRS_SPEED
-	var before := position
-	position = position.move_toward(target_pos, speed * delta)
-	walked += before.distance_to(position)
-	if position == target_pos:
-		cell = next
-		path.pop_front()
+		var target_pos: Vector2 = world.tile_map.map_to_local(next)
+		var speed := WALK_SPEED
+		if world.is_escalator_ride(cell, next):
+			speed = ESCALATOR_SPEED
+		elif next.y != cell.y:
+			speed = STAIRS_SPEED
+		var before := position
+		var distance := position.distance_to(target_pos)
+		if speed * time_left >= distance:
+			position = target_pos # 次のマスに着いた。余った時間でさらに進む
+			time_left -= distance / speed
+			cell = next
+			path.pop_front()
+		else:
+			position = position.move_toward(target_pos, speed * time_left)
+			time_left = 0.0
+		walked += before.distance_to(position)
 
 func process_waiting() -> void:
 	if world.is_cell_empty(cell):

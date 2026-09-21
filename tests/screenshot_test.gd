@@ -11,7 +11,7 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 # 保存先を省略すると user://screenshots に保存する。
 # 一部のシナリオだけ流すときは、環境変数 TEST_ONLY にシナリオの関数名の一部を入れる（例: TEST_ONLY=express）。
 # いくつかの組に分けて並べて実行するときは、TEST_SHARD に「番号/個数」を入れる（例: TEST_SHARD=1/3）。
-# まとめて流すには tools/run_tests.sh を使う（既定は3組で、1回ぶんの3分の1ほどの時間で終わる）。
+# まとめて流すには tools/run_tests.sh を使う（既定は4組に分けて並べて実行し、3分ほどで終わる）。
 # ※ テスト中のウィンドウは常に最前面に出る（マウスは受け付けないので操作の邪魔にはならない）。
 # ---------------------------------------------------
 
@@ -32,7 +32,7 @@ func _init() -> void:
 	# ウィンドウが他のウィンドウの裏に隠れると、macOSは画面の更新を止めることがある。
 	# 垂直同期を待つとそこでフレームが止まってしまうので、テスト中は切って60fpsに制限する
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
-	Engine.max_fps = 60
+	Engine.max_fps = 0
 
 	# シナリオごとにゲームを起動し直して、前のシナリオの影響を受けないようにする
 	# TEST_SHARD で受け持つシナリオを決める（並べて実行するため）
@@ -239,7 +239,7 @@ func run_stairs_scenario() -> bool:
 	check(resident.path.has(Vector2i(8, 15)) and resident.path.has(Vector2i(8, 14)), "経路が階段を通っている")
 	check(not resident.selected, "移動指示のあと住人の選択が外れる")
 	
-	Engine.time_scale = 4.0 # 歩く様子を早送りする
+	set_speed(4.0) # 歩く様子を早送りする
 	await wait_until(func(): return resident.cell == Vector2i(8, 15), 10.0)
 	await capture("stairs_01_walking")
 	await wait_until(func(): return not resident.is_moving(), 10.0)
@@ -413,7 +413,7 @@ func run_elevator_scenario() -> bool:
 	# 階を指定して呼ぶ → その階に停まる
 	var arrivals: Array[int] = []
 	car.arrived.connect(func(y): arrivals.append(y))
-	Engine.time_scale = 4.0
+	set_speed(4.0)
 	await click_cell(Vector2i(x, 15), MOUSE_BUTTON_LEFT)
 	check(main.funds == 1000000 - 5 * 80000, "シャフトのクリックでは建設されない（お金も減らない）")
 	await wait_until(func(): return car.state == car.State.MOVING, 5.0)
@@ -433,7 +433,7 @@ func run_elevator_scenario() -> bool:
 	check(car.direction == car.Direction.DOWN, "下の階を呼ぶと進行方向が「下」になる")
 	await capture("elevator_02b_direction")
 	await click_cell(Vector2i(x, 17), MOUSE_BUTTON_LEFT)
-	Engine.time_scale = 4.0
+	set_speed(4.0)
 	await wait_until(func(): return arrivals.size() >= 3, 15.0)
 	check(arrivals == [15, 17, 18], "下へ向かう途中で呼ばれた階(17)に寄ってから18に停まる")
 	
@@ -443,7 +443,7 @@ func run_elevator_scenario() -> bool:
 	await click_cell(Vector2i(x, 14), MOUSE_BUTTON_LEFT)
 	await wait_until(func(): return car.current_floor() <= 16, 5.0)
 	await click_cell(Vector2i(x, 17), MOUSE_BUTTON_LEFT)
-	Engine.time_scale = 4.0
+	set_speed(4.0)
 	await wait_until(func(): return arrivals.size() >= 5, 15.0)
 	check(arrivals.slice(3) == [14, 17], "上へ進んでいる間は後ろの階に引き返さず、14の後に17へ向かう")
 	await wait_until(func(): return car.state == car.State.IDLE, 5.0)
@@ -495,7 +495,7 @@ func run_ride_scenario() -> bool:
 	path.append_array(resident.path)
 	check(count_rides(path) == 1, "経路にエレベーターの乗車が1回含まれる")
 	
-	Engine.time_scale = 4.0
+	set_speed(4.0)
 	await wait_until(func(): return resident.state == resident.State.WAITING, 10.0)
 	check(resident.cell == Vector2i(x, 15), "シャフトの前(8,15)でカゴを待つ")
 	await capture("ride_01_waiting")
@@ -543,7 +543,7 @@ func run_stress_scenario() -> bool:
 	check(resident.get_body_color() == Color.WHITE, "服の色は種類の色（社員は白）のまま")
 	
 	car.set_process(false) # カゴを止めて、住人を待たせ続ける
-	Engine.time_scale = 4.0
+	set_speed(4.0)
 	await wait_until(func(): return resident.state == resident.State.WAITING, 10.0)
 	var walking_stress: float = resident.stress
 	check(walking_stress == 0.0, "歩いている間はストレスがたまらない")
@@ -649,7 +649,7 @@ func run_commute_scenario() -> bool:
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
 	check(main.clock_label.text != "", "上部バーに時刻が出る")
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 8 * 60 + 30, 20.0)
 	check(main.clock_label.text.begins_with("4月1日（月） 08:"), "時刻の表示が進む（4月1日（月） 08:xx）")
 	check(commute.count_in_building() > 0, "8時台に社員が入口から出勤してくる")
@@ -669,7 +669,7 @@ func run_commute_scenario() -> bool:
 	await capture("commute_02_at_office")
 	
 	# 夕方 → 全員帰る
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 19 * 60 + 45, 60.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 	Engine.time_scale = 1.0
 	await wait_frames(2)
@@ -704,7 +704,7 @@ func run_economy_scenario() -> bool:
 	# 1日目の朝に全員出勤させてから、夜中まで時計を進める
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
 	main.clock.set_time(1, 23, 58)
 	var funds_before: int = main.funds
@@ -762,7 +762,7 @@ func run_hotel_scenario() -> bool:
 	# 夕方 → 客が来て泊まる
 	main.clock.set_time(1, 16, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 21 * 60 + 30, 30.0)
 	check(hotel.count_rooms(hotel.RoomState.OCCUPIED) == 3, "21時半には3室とも宿泊中になる")
 	var guests_in_room := 0
@@ -838,7 +838,7 @@ func run_lunch_scenario() -> bool:
 	# 朝のうちに全員出勤させる
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60 + 45, 30.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 	check(commute.count_at_office() == 52, "10時45分には52人全員がオフィスにいる")
 	
@@ -847,7 +847,7 @@ func run_lunch_scenario() -> bool:
 	var lunch_stops := [0]
 	car.arrived.connect(func(_y): lunch_stops[0] += 1)
 	main.clock.set_time(1, 11, 59)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	var max_eating := [0]
 	var captured := [false]
 	await wait_until(func():
@@ -901,7 +901,7 @@ func run_recycling_scenario() -> bool:
 	
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
 	main.clock.set_time(1, 23, 58)
 	await wait_until(func(): return not main.economy_system.last_report.is_empty(), 10.0)
@@ -991,7 +991,7 @@ func run_housing_scenario() -> bool:
 	# 1日目の夕方: 家族が来て入居し、販売収入が入る
 	main.clock.set_time(1, 16, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 20 * 60 + 30, 30.0)
 	check(housing.count_moved_in() == 2 and housing.count_at_home() == 6, "夕方に2戸とも入居し、6人が家にいる")
 	var rooms := {}
@@ -1064,7 +1064,7 @@ func run_room_types_scenario() -> bool:
 	# 夕方: それぞれ2人ずつ泊まりに来る
 	main.clock.set_time(1, 16, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 21 * 60 + 30, 30.0)
 	check(hotel.rooms[twin].guests.size() == 2 and hotel.rooms[suite].guests.size() == 2, "ツインとスイートにそれぞれ2人ずつ泊まる")
 	var arrived := 0
@@ -1129,11 +1129,11 @@ func run_weekday_scenario() -> bool:
 	# 5日目（金）: 社員は出勤し、夕方に入居者が入居する
 	clock.set_time(5, 7, 59)
 	clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return clock.minute_of_day() >= 10 * 60 + 45, 30.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 	check(main.commute_system.count_at_office() == 52, "金曜日は52人が出勤する（10時45分）")
 	clock.set_time(5, 16, 59)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.housing_system.count_at_home() == 3 and clock.minute_of_day() >= 20 * 60, 30.0)
 	
 	# 6日目（土）: 休日。社員は来ない。入居者は遅めに出かける
@@ -1153,7 +1153,7 @@ func run_weekday_scenario() -> bool:
 	
 	# 8日目（月）: また出勤する
 	clock.set_time(8, 7, 59)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return clock.minute_of_day() >= 10 * 60 + 45, 30.0) # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 	Engine.time_scale = 1.0
 	clock.set_process(false)
@@ -1187,7 +1187,7 @@ func run_event_scenario() -> bool:
 	# 平日（月曜日）は催しがない
 	clock.set_time(1, 9, 59)
 	clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return clock.minute_of_day() >= 14 * 60 + 30, 30.0)
 	check(events.count_in_building() == 0, "平日は結婚式場・イベントホールに来客がない")
 	
@@ -1276,7 +1276,7 @@ func run_subway_scenario() -> bool:
 	var first_cells := {}
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	while main.clock.minute_of_day() < 10 * 60 + 45: # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
 		for r in main.residents:
 			if is_instance_valid(r) and not first_cells.has(r):
@@ -1349,7 +1349,7 @@ func run_capacity_scenario() -> bool:
 	var left_behind := false # 満員のカゴが動いている間に、乗れずに待っている人がいたか
 	var captured := false
 	var limit := Time.get_ticks_msec() + 30000
-	Engine.time_scale = 4.0
+	set_speed(4.0)
 	while Time.get_ticks_msec() < limit:
 		max_passengers = maxi(max_passengers, car.passengers.size())
 		var waiting := 0
@@ -1453,7 +1453,7 @@ func run_multi_car_scenario() -> bool:
 	var done_minute := 0
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	var captured := false
 	while main.clock.minute_of_day() < 10 * 60 + 45:
 		if not captured and main.clock.minute_of_day() >= 8 * 60 + 40:
@@ -1580,7 +1580,7 @@ func run_night_light_scenario() -> bool:
 	# 昼: 建物は暗くならない。社員がいるオフィスには明かりの判定がある（昼は描かない）
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60 + 45, 30.0)
 	check(main.tile_map.self_modulate == Color.WHITE, "昼は建物が暗くならない")
 	var lit: Dictionary = lighting.get_lit_cells()
@@ -1589,7 +1589,7 @@ func run_night_light_scenario() -> bool:
 	
 	# 夜: 宿泊客・住人が帰ってくる。オフィスは誰もいない
 	main.clock.set_time(1, 16, 59)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 21 * 60 + 30, 30.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
@@ -1816,7 +1816,7 @@ func run_hotel_rating_scenario() -> bool:
 	# 1日目の夜: 客が泊まりに来る。客をイライラさせておく（エレベーター待ちでストレスがたまった想定）
 	main.clock.set_time(1, 16, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 21 * 60 + 30, 30.0)
 	check(hotel.rooms[room].state == hotel.RoomState.OCCUPIED, "客が泊まっている")
 	for guest in hotel.rooms[room].guests:
@@ -1885,7 +1885,7 @@ func run_home_evening(day: int, stressed: bool) -> void:
 	var start := 14 * 60 + 59 if main.clock.is_holiday(day) else 16 * 60 + 59
 	main.clock.set_time(day, start / 60, start % 60)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 20 * 60 + 30, 30.0)
 	if stressed:
 		for home in main.housing_system.homes.values():
@@ -2021,7 +2021,7 @@ func run_express_elevator_scenario() -> bool:
 	check(count_rides(route) == 2 and route.has(Vector2i(8, 4)) and route.has(Vector2i(2, 4)), "経路は急行で15階へ上がり、スカイロビーで標準に乗り換える")
 	var r = main.spawn_resident(Vector2i(-8, 18))
 	r.go_to(goal)
-	Engine.time_scale = 4.0
+	set_speed(4.0)
 	var rode_express := false
 	var captured := false
 	var limit := Time.get_ticks_msec() + 30000
@@ -2032,7 +2032,7 @@ func run_express_elevator_scenario() -> bool:
 				focus_camera(Vector2i(6, 7))
 				Engine.time_scale = 1.0
 				await capture("express_01_riding")
-				Engine.time_scale = 4.0
+				set_speed(4.0)
 				captured = true
 		await wait_frames(1)
 	Engine.time_scale = 1.0
@@ -2147,7 +2147,7 @@ func run_escalator_scenario() -> bool:
 		var r = main.spawn_resident(Vector2i(4, 18))
 		r.go_to(Vector2i(12, 16))
 		people.append(r)
-	Engine.time_scale = 2.0
+	set_speed(2.0)
 	var captured := false
 	var waited := false
 	var limit := Time.get_ticks_msec() + 20000
@@ -2158,7 +2158,7 @@ func run_escalator_scenario() -> bool:
 		if not captured and people.any(func(r): return r.cell == Vector2i(9, 17)):
 			Engine.time_scale = 1.0
 			await capture("escalator_01")
-			Engine.time_scale = 2.0
+			set_speed(2.0)
 			captured = true
 		await wait_frames(1)
 	Engine.time_scale = 1.0
@@ -2197,7 +2197,7 @@ func run_home_floor_scenario() -> bool:
 	check(main.hover_label.text.contains("エレベーター（待機階）"), "カーソルを合わせると待機階と出る")
 	
 	# 呼び出しがなくなると、カゴは待機階に戻る
-	Engine.time_scale = 4.0
+	set_speed(4.0)
 	await wait_until(func(): return car.floor_y == 16 and car.state == car.State.IDLE, 20.0)
 	check(car.floor_y == 16, "呼び出しがないカゴは待機階（3階）に戻って待つ")
 	await hover_cell(Vector2i(12, 16)) # 印が見えるように、カーソルはシャフトから外しておく
@@ -2273,7 +2273,7 @@ func run_service_hours_scenario() -> bool:
 	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_LEFT) # 2階を待機階に
 	await choose_mode("elevator")
 	await click_cell(Vector2i(8, 13), MOUSE_BUTTON_LEFT) # 6階にカゴを呼んでおく
-	Engine.time_scale = 4.0
+	set_speed(4.0)
 	await wait_until(func(): return car.floor_y == 13, 20.0)
 	main.clock.set_time(1, 21, 0)
 	await wait_until(func(): return car.floor_y == 17 and car.state == car.State.IDLE, 20.0)
@@ -2318,7 +2318,7 @@ func run_service_elevator_scenario() -> bool:
 	# 汚れた客室を、清掃員がサービスエレベーターで上がって掃除する
 	hotel.rooms[Vector2i(9, 16)].state = hotel.RoomState.DIRTY
 	main.clock.set_process(true) # 清掃はゲーム内の時間で進むので、時計を動かす
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	var rode := false
 	var limit := Time.get_ticks_msec() + 60000
 	var captured := false
@@ -2330,7 +2330,7 @@ func run_service_elevator_scenario() -> bool:
 				if not captured:
 					Engine.time_scale = 1.0
 					await capture("service_elevator_01_riding")
-					Engine.time_scale = 8.0
+					set_speed(8.0)
 					captured = true
 		await wait_frames(1)
 	Engine.time_scale = 1.0
@@ -2385,7 +2385,7 @@ func run_parking_scenario() -> bool:
 	# 昼に車で来て、飲食店で食事をして帰る
 	main.clock.set_time(1, 10, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return parking.count_visitors() > 0, 30.0)
 	check(parking.count_visitors() > 0, "昼になると、車で来たお客さんが駐車場に現れる")
 	await wait_until(func(): return parking.visitors_by_day.get(1, 0) > 0, 30.0)
@@ -2443,7 +2443,7 @@ func run_shop_scenario() -> bool:
 	# 平日（1日目・月曜）: ショップ3人・飲食店2人が入口から来る
 	main.clock.set_time(1, 10, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return visitors.count_visitors() > 0, 30.0)
 	check(visitors.count_visitors() > 0, "昼になると、外からお客さんが入口に現れる")
 	await wait_until(func(): return main.clock.minute_of_day() >= 15 * 60, 60.0)
@@ -2454,7 +2454,7 @@ func run_shop_scenario() -> bool:
 	
 	# 休日（6日目・土曜）: 社員は来ないが、店にはもっとお客さんが来る
 	main.clock.set_time(6, 9, 59)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return visitors.count_visitors() > 0, 30.0)
 	check(main.clock.is_holiday(6), "6日目は休日")
 	await wait_until(func(): return main.clock.minute_of_day() >= 19 * 60, 90.0)
@@ -2500,7 +2500,7 @@ func run_cinema_scenario() -> bool:
 	# 平日1回目の上映（13時）: 30分前から集まり、15時に一斉に帰る
 	main.clock.set_time(1, 12, 25)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return visitors.count_at_shop(Vector2i(12, 17)) >= 10, 40.0)
 	check(visitors.count_at_shop(Vector2i(12, 17)) >= 10, "上映前に客が10人集まる")
 	await capture("cinema_01_showtime")
@@ -2521,7 +2521,7 @@ func run_cinema_scenario() -> bool:
 	check(main.parking_system.car_capacity() == 4, "スロープにつながった駐車場で4台停められる")
 	main.clock.set_time(2, 12, 25)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return visitors.cinema_audience_by_day.get(2, 0) >= 14, 40.0)
 	check(visitors.cinema_audience_by_day.get(2, 0) == 14, "駐車場4台ぶん、1回の客が10人から14人に増える")
 	await wait_until(func(): return main.clock.minute_of_day() >= 23 * 60 + 58, 90.0)
@@ -2820,7 +2820,7 @@ func run_vip_scenario() -> bool:
 	focus_camera(Vector2i(6, 17))
 	main.clock.set_time(1, 15, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return vips.is_visiting(), 30.0)
 	check(vips.is_visiting(), "16時にVIPが来館する")
 	check(main.last_message.contains("VIPが来館しました"), "来館がメッセージで知らされる")
@@ -2849,7 +2849,7 @@ func run_vip_scenario() -> bool:
 	hotel.rooms[Vector2i(10, 17)].guests = []
 	main.clock.set_time(2, 15, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return vips.is_visiting(), 30.0)
 	vips.vip.stress = 80.0 # エレベーターで待たされた想定
 	await wait_until(func(): return not vips.is_visiting(), 40.0)
@@ -2893,7 +2893,7 @@ func run_bomb_scenario() -> bool:
 	await wait_frames(2)
 	check(main.stats_label.text.contains("爆破予告！"), "上部バーに爆破予告と残り時間が出る")
 	await capture("bomb_01_alert")
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return not incidents.has_bomb(), 60.0)
 	Engine.time_scale = 1.0
 	check(main.get_building_type(Vector2i(11, 17)) == "restaurant", "解体が間に合い、飲食店は無事")
@@ -2906,7 +2906,7 @@ func run_bomb_scenario() -> bool:
 	check(incidents.guard_count() == 0, "警備室を撤去すると警備員もいなくなる")
 	incidents.start_bomb(Vector2i(11, 17))
 	check(logged("行ける警備員がいません"), "警備員がいないと、その旨がメッセージで出る")
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return not incidents.has_bomb(), 60.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
@@ -2957,7 +2957,7 @@ func run_fire_scenario() -> bool:
 	await wait_frames(2)
 	check(main.stats_label.text.contains("火災！"), "上部バーに火災と燃えているマスの数が出る")
 	await capture("fire_01_burning")
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return not incidents.has_fire(), 60.0)
 	Engine.time_scale = 1.0
 	check(logged("火を消し止めました"), "警備員が消し止める")
@@ -2969,7 +2969,7 @@ func run_fire_scenario() -> bool:
 	await wait_frames(2)
 	check(incidents.guard_count() == 0, "警備室を撤去すると警備員もいなくなる")
 	incidents.start_fire(Vector2i(12, 17))
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return incidents.fire.size() > 1, 30.0)
 	check(incidents.fire.size() > 1, "時間がたつと隣のマスへ燃え広がる")
 	await capture("fire_02_spreading")
@@ -3301,7 +3301,7 @@ func run_helipad_scenario() -> bool:
 	main.clock.set_process(true)
 	incidents.start_fire(Vector2i(14, 16))
 	check(not incidents.has_heli(), "火が出た直後は、まだヘリは飛んでいない")
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return incidents.has_heli(), 20.0)
 	check(incidents.has_heli(), "ヘリポートがあると消防ヘリが飛んでくる")
 	check(incidents.heli.target.y <= 16, "ヘリは高い階の火から消しに行く")
@@ -3605,7 +3605,7 @@ func run_effects_scenario() -> bool:
 	check(resident.body_sprite() == resident.BODY_SPRITE, "立っている人はふつうの絵")
 	resident.go_to(Vector2i(7, 18))
 	var shapes := {}
-	Engine.time_scale = 2.0
+	set_speed(2.0)
 	var limit := Time.get_ticks_msec() + 8000
 	while Time.get_ticks_msec() < limit and shapes.size() < 3 and resident.is_moving():
 		shapes[resident.body_sprite()[resident.BODY_SPRITE.size() - 2]] = true
@@ -3669,7 +3669,7 @@ func close_goal_panel() -> void:
 func run_day(day: int) -> void:
 	main.clock.set_time(day, 7, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 8.0
+	set_speed(8.0)
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
 	main.clock.set_time(day, 23, 58)
 	await wait_until(func(): return main.economy_system.last_report.get("day") == day, 10.0)
@@ -3861,6 +3861,17 @@ func wait_until(condition: Callable, timeout: float) -> void:
 	while not condition.call() and Time.get_ticks_msec() < limit:
 		await process_frame
 
+# 早送りの倍率の上限。ゲーム内で進む時間は「倍率×2分/秒」なので、倍率を上げるほどテストは速く終わる。
+# ただし倍率を fps に比べて上げすぎると1フレームが長くなりすぎて、エレベーターの扉が開いている
+# 1秒ぶんを1フレームで飛び越えてしまい、乗れない人が出る（実際の遊びと違う動きになる）。
+# そこで set_speed() では、今出ている fps の3分の1を超えない範囲で倍率を上げる
+#（画面の更新の上限は外してあるので、速い機械ほど速く終わる）。
+const SPEED_UP := 3.0
+
+# シナリオの早送り。scale はふだんの倍率で、機械（そのときのfps）が速ければ最大 SPEED_UP 倍まで上げる
+func set_speed(scale: float) -> void:
+	Engine.time_scale = clampf(Engine.get_frames_per_second() / 3.0, scale, scale * SPEED_UP)
+
 func wait_frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -3899,7 +3910,7 @@ func run_fastfood_scenario() -> bool:
 	# 出勤させてから昼休みへ
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.commute_system.count_at_office() == 8, 30.0)
 	main.clock.set_time(1, 11, 59)
 	var ate := {"fastfood": 0, "restaurant": 0}
@@ -3957,7 +3968,7 @@ func run_office_types_scenario() -> bool:
 	# 1日目の決算: 出勤した12人ぶんの賃料が種類ごとに計算される
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
-	Engine.time_scale = 16.0
+	set_speed(16.0)
 	await wait_until(func(): return main.commute_system.count_at_office() == 12, 40.0)
 	focus_camera(Vector2i(14, 17))
 	await wait_frames(2)
