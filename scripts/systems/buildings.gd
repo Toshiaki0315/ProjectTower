@@ -10,6 +10,7 @@ const TABLE := {
 	"small_office": {"name": "小さいオフィス", "cost": 240000, "source_id": 29, "width": 2},
 	"office": {"name": "オフィス", "cost": 400000, "source_id": 0, "width": 4},
 	"large_office": {"name": "大きいオフィス", "cost": 480000, "source_id": 30, "width": 6},
+	"frame": {"name": "空きフロア", "cost": 0, "source_id": 31, "floors": "any"}, # 撤去の跡地（骨組みだけ残る）
 	"stairs": {"name": "階段", "cost": 50000, "source_id": 1, "floors": "any"},
 	"elevator": {"name": "エレベーター", "cost": 80000, "source_id": 2, "floors": "any"},
 	"hotel": {"name": "シングル", "cost": 150000, "source_id": 3, "width": 2},
@@ -49,6 +50,10 @@ const SUBWAY_MIN_DEPTH := 5    # 地下鉄駅を建てられる深さ（地下5�
 # オフィスの種類（1マスにつき社員1人。1マスの賃料は economy_system.OFFICE_RENTS）
 const OFFICE_TYPES := ["small_office", "office", "large_office"]
 
+# 撤去の跡地（空きフロア）。上の階を支えているマスを撤去すると、建物の代わりにこれが残る。
+# 骨組みだけなので通り抜けられ、その上から別の建物を建て直せる
+const FRAME_TYPE := "frame"
+
 var world: Node2D # main.gd
 
 func setup(p_world: Node2D) -> void:
@@ -57,6 +62,10 @@ func setup(p_world: Node2D) -> void:
 # 建物の横幅（マス数）
 func get_width(type: String) -> int:
 	return TABLE[type].get("width", 1)
+
+# そのマスに建物を建てられるか（何もないマスか、撤去の跡地なら建てられる）
+func is_buildable_cell(cell: Vector2i) -> bool:
+	return world.is_cell_empty(cell) or world.get_building_type(cell) == FRAME_TYPE
 
 # 建物の高さ（階数）
 func get_height(type: String) -> int:
@@ -76,7 +85,7 @@ func get_footprint(origin: Vector2i, type: String) -> Array[Vector2i]:
 # 左端 origin に type の建物を建てられない理由（建てられるなら ""）
 func get_build_problem(origin: Vector2i, type: String) -> String:
 	for cell in get_footprint(origin, type):
-		if not world.is_cell_empty(cell):
+		if not is_buildable_cell(cell):
 			return "ほかの建物と重なるため建てられません"
 	var limit := get_size_limit_problem(origin, type)
 	if limit != "":

@@ -469,7 +469,9 @@ func can_click_cell(cell: Vector2i) -> bool:
 	if current_mode == MODE_SET_HOME or current_mode == MODE_SERVICE:
 		return elevator_system.is_shaft_type(get_building_type(cell))
 	if current_mode == MODE_DEMOLISH:
-		return not is_cell_empty(cell) and get_demolish_problem(cell) == ""
+		# 支えているマスも「空きフロアを残して撤去」ができる（跡地そのものは支えている間は撤去できない）
+		return not is_cell_empty(cell) \
+			and (get_building_type(cell) != Buildings.FRAME_TYPE or get_demolish_problem(cell) == "")
 	if elevator_system.is_shaft_type(current_mode) and get_building_type(cell) == current_mode:
 		return elevator_system.get_car_at(cell) != null and elevator_system.get_car_at(cell).is_stop_floor(cell.y) # シャフトをクリックするとカゴを呼べる
 	return get_build_problem(cell, current_mode) == ""
@@ -703,7 +705,7 @@ func rebuild_systems():
 
 # 建設処理（クリックしたマスを左端として、建物の横幅ぶんのマスに建てる）
 func build_at(map_pos: Vector2i):
-	if not is_cell_empty(map_pos):
+	if not buildings.is_buildable_cell(map_pos): # 何もないマスか、撤去の跡地にだけ建てられる
 		return
 	var problem := get_build_problem(map_pos, current_mode)
 	if problem != "":
@@ -739,6 +741,7 @@ func clear_world() -> void:
 		if is_instance_valid(resident):
 			resident.queue_free()
 	residents.clear()
+	effects.clear() # 消えた建物の演出が残らないようにする
 	rebuild_systems()
 
 # 建物を壊す（爆発・火災など。払い戻しはなく、支えのルールも見ない）
@@ -756,12 +759,15 @@ func demolish_at(map_pos: Vector2i):
 	if is_cell_empty(map_pos):
 		return
 	
+	var type = get_building_type(map_pos)
+	# 上（地下なら下）の階を支えているマスは、建物の代わりに「空きフロア」を残して撤去する。
+	# 跡地そのものを撤去しようとしたときだけは、支えが要るので断る
 	var problem := get_demolish_problem(map_pos)
-	if problem != "":
+	var leave_frame := problem != ""
+	if leave_frame and type == Buildings.FRAME_TYPE:
 		show_message(problem)
 		audio_system.play("error")
 		return
-	var type = get_building_type(map_pos)
 	var origin: Vector2i = building_grid[map_pos].origin
 	var refund = int(BUILDINGS[type].cost * REFUND_RATE)
 	
@@ -770,7 +776,10 @@ func demolish_at(map_pos: Vector2i):
 	for cell in get_unit_cells(map_pos):
 		tile_map.erase_cell(cell)
 		building_grid.erase(cell)
+		if leave_frame:
+			place_unit(cell, Buildings.FRAME_TYPE)
 	rebuild_systems()
 	update_funds_display()
 	audio_system.play("demolish")
-	show_message("%sを撤去しました %s 払い戻し: %d円" % [BUILDINGS[type].name, origin, refund])
+	var note := "（上の階を支えるため、空きフロアが残ります）" if leave_frame else ""
+	show_message("%sを撤去しました %s 払い戻し: %d円%s" % [BUILDINGS[type].name, origin, refund, note])

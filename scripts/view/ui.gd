@@ -1,6 +1,7 @@
 extends Node
 
 const ChartView := preload("res://scripts/view/chart_view.gd")
+const Buildings := preload("res://scripts/systems/buildings.gd")
 
 # ---------------------------------------------------
 # 画面（UI）の組み立てと更新。main.gd から使う。
@@ -184,6 +185,8 @@ func build_bars() -> void:
 			mode_select.set_item_metadata(mode_select.item_count - 1, mode)
 	mode_select.item_selected.connect(func(index): world.select_mode(mode_select.get_item_metadata(index)))
 	for type in world.BUILDINGS:
+		if type == Buildings.FRAME_TYPE:
+			continue # 空きフロアは撤去の跡地なので、メニューからは建てない
 		assert(world.MODE_GROUPS.any(func(group): return group.modes.has(type)), "%s が建設メニュー（world.MODE_GROUPS）にありません" % type)
 	build_row.add_child(mode_select)
 	mode_info_label = Label.new()
@@ -223,6 +226,7 @@ func build_bars() -> void:
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
 		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
 		"オフィスの大きさ: 小さいオフィス（横2マス・2人・賃料1.1万円/マス）と大きいオフィス（横6マス・6人・0.9万円/マス）もある",
+		"空きフロア: 上の階を支えているマスを撤去すると、骨組みだけの跡地が残る。通り抜けでき、その上から建て直せる",
 		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
 		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
 		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",

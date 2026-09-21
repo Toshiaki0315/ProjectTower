@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -456,12 +456,6 @@ func run_elevator_scenario() -> bool:
 	check(car.direction == car.Direction.NONE, "呼び出しがなくなると進行方向が消える")
 	Engine.time_scale = 1.0
 	
-	# 途中や最下段は、上のマスを支えているので撤去できない
-	await click_cell(Vector2i(x, 18), MOUSE_BUTTON_RIGHT)
-	await click_cell(Vector2i(x, 16), MOUSE_BUTTON_RIGHT)
-	check(main.get_building_type(Vector2i(x, 18)) == "elevator" and main.get_building_type(Vector2i(x, 16)) == "elevator", "シャフトの途中や最下段は撤去できない")
-	check(main.last_message.begins_with("上の階の建物を支えているため撤去できません"), "撤去できない理由がメッセージで出る")
-	
 	# 一番上のマスを撤去 → 同じカゴのまま範囲が縮む
 	await click_cell(Vector2i(x, 14), MOUSE_BUTTON_RIGHT)
 	check(elevators.cars.size() == 1 and elevators.cars[0] == car, "シャフトを縮めても同じカゴが残る")
@@ -470,6 +464,15 @@ func run_elevator_scenario() -> bool:
 	# 範囲外の階は呼べない
 	check(not car.request_floor(14), "シャフトからなくなった階には呼べない")
 	await capture("elevator_03_shrunk")
+	
+	# 途中のマスは上のマスを支えているので、撤去すると空きフロアが残ってシャフトが分かれる
+	await click_cell(Vector2i(x, 17), MOUSE_BUTTON_RIGHT)
+	check(main.get_building_type(Vector2i(x, 17)) == "frame", "シャフトの途中を撤去すると、空きフロアが残る")
+	check(main.last_message.contains("空きフロアが残ります"), "空きフロアが残ることがメッセージで出る")
+	check(main.get_building_type(Vector2i(x, 18)) == "elevator", "下のマスは残る（シャフトが上下に分かれる）")
+	await choose_mode("elevator")
+	await click_cell(Vector2i(x, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(x, 17)) == "elevator", "空きフロアの上にエレベーターを建て直すと、またつながる")
 	return true
 
 # ---------------------------------------------------
@@ -2088,26 +2091,30 @@ func run_support_scenario() -> bool:
 	check(main.last_message == "地下は、上の階に建物がある場所にしか建てられません", "建てられない理由（地下）がメッセージで出る")
 	await capture("support_01")
 	
-	# 支えている建物は撤去できない（上の階から＝地下は下の階から撤去する）
+	# 支えている建物を撤去すると、支えを保つために「空きフロア」が残る
 	var funds_before: int = main.funds
 	await click_cell(Vector2i(2, 15), MOUSE_BUTTON_RIGHT)
-	check(main.get_building_type(Vector2i(2, 15)) == "office", "上の階の建物を支えているオフィスは撤去できない")
-	check(main.last_message.begins_with("上の階の建物を支えているため撤去できません"), "撤去できない理由がメッセージで出る")
-	check(main.funds == funds_before, "撤去できないときは払い戻しもない")
+	check(main.get_building_type(Vector2i(2, 15)) == "frame", "上の階を支えているオフィスを撤去すると、空きフロアが残る")
+	check(main.get_building_type(Vector2i(0, 14)) == "office", "上の階のオフィスはそのまま残る")
+	check(main.last_message.contains("空きフロアが残ります"), "空きフロアが残ることがメッセージで出る")
+	check(main.funds == funds_before + 200000, "跡地が残るときも払い戻しは入る")
 	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_RIGHT)
-	check(main.get_building_type(Vector2i(0, 18)) == "lobby", "上にオフィスが乗っているロビーは撤去できない")
+	check(main.get_building_type(Vector2i(0, 18)) == "frame", "上に建物が乗っているロビーも、空きフロアになる")
 	await click_cell(Vector2i(0, 19), MOUSE_BUTTON_RIGHT)
-	check(main.get_building_type(Vector2i(0, 19)) == "office", "下にB2階があるB1階は撤去できない")
-	check(main.last_message.begins_with("下の階の建物を支えているため撤去できません"), "地下は下の階から撤去する")
+	check(main.get_building_type(Vector2i(0, 19)) == "frame", "下にB2階があるB1階も、空きフロアになる")
+	check(main.get_building_type(Vector2i(0, 20)) == "office", "地下も、下の階はそのまま残る")
+	await click_cell(Vector2i(0, 19), MOUSE_BUTTON_RIGHT)
+	check(main.get_building_type(Vector2i(0, 19)) == "frame", "跡地そのものは、支えている間は撤去できない")
+	check(main.last_message.begins_with("下の階の建物を支えているため撤去できません"), "撤去できない理由がメッセージで出る")
 	await click_cell(Vector2i(0, 14), MOUSE_BUTTON_RIGHT)
-	check(main.is_cell_empty(Vector2i(0, 14)), "一番上の建物は撤去できる")
+	check(main.is_cell_empty(Vector2i(0, 14)), "一番上の建物は、跡地を残さず撤去できる")
 	await click_cell(Vector2i(2, 15), MOUSE_BUTTON_RIGHT)
-	check(main.is_cell_empty(Vector2i(2, 15)), "上が空けば、下の建物も撤去できる")
+	check(main.is_cell_empty(Vector2i(2, 15)), "上が空けば、跡地も更地に戻せる")
 	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_RIGHT)
-	check(main.get_building_type(Vector2i(8, 18)) == "elevator", "シャフトの途中のマスも撤去できない（上のマスから撤去する）")
+	check(main.get_building_type(Vector2i(8, 18)) == "frame", "シャフトの途中のマスも、空きフロアになる（シャフトが分かれる）")
 	await click_cell(Vector2i(8, 17), MOUSE_BUTTON_RIGHT)
 	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_RIGHT)
-	check(main.is_cell_empty(Vector2i(8, 18)), "シャフトは上のマスから順に撤去できる")
+	check(main.is_cell_empty(Vector2i(8, 18)), "上が空けば、シャフトの跡地も更地に戻せる")
 	return true
 
 # ---------------------------------------------------
@@ -2420,7 +2427,8 @@ func run_parking_scenario() -> bool:
 	await hover_cell(Vector2i(9, 20))
 	check(main.hover_label.text.contains("車が下りてこられます"), "つながったスロープはカーソルでわかる")
 	await click_cell(Vector2i(9, 19), MOUSE_BUTTON_RIGHT)
-	check(main.get_building_type(Vector2i(9, 19)) == "ramp", "下の階のスロープを支えているので、上のスロープは壊せない")
+	check(main.get_building_type(Vector2i(9, 19)) == "frame", "上のスロープを撤去すると空きフロアが残り、下の階へは車で行けなくなる")
+	check(parking.car_capacity() == 0, "途中のスロープがなくなると、下の階の駐車場も使えなくなる")
 	await capture("parking_03_two_floors")
 	return true
 
@@ -3988,4 +3996,51 @@ func run_office_types_scenario() -> bool:
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
 	check(economy.last_report.get("rent") == 2 * 11000 + 6 * 9000 + 4 * 10000, "決算の賃料は種類ごとの合計（2.2万＋5.4万＋4万＝11.6万円）")
+	return true
+
+# シナリオ64: 空きフロア（撤去の跡地）
+# 上の階を支えているマスを撤去すると、建物の代わりに骨組み（空きフロア）が残り、
+# 上の階を崩さずに建て替えられる。跡地は通り抜けられて、その上から建て直せる。
+# ---------------------------------------------------
+func run_frame_scenario() -> bool:
+	print("[シナリオ] 空きフロア（撤去の跡地）")
+	main.clear_world()
+	main.funds = 10000000
+	build_support(cells_row(18, 8, 15), "lobby")
+	# 2階に飲食店（x=9〜11）、その上の3階にオフィス（x=9〜12）を建てる
+	var shop := Vector2i(9, 17)
+	await choose_mode("restaurant")
+	await click_cell(shop, MOUSE_BUTTON_LEFT)
+	build_support([Vector2i(12, 17)]) # 3階のオフィスを支える足場
+	await choose_mode("office")
+	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 16)) == "office", "3階にオフィスが建つ")
+
+	# 下の飲食店を撤去すると、上のオフィスを支えるために空きフロアが残る
+	main.funds = 10000000
+	await click_cell(shop, MOUSE_BUTTON_RIGHT)
+	check(main.get_building_type(shop) == "frame", "支えているマスを撤去すると、空きフロアが残る")
+	check(main.get_building_type(Vector2i(11, 17)) == "frame", "建物の幅のぶんだけ空きフロアになる")
+	check(main.get_building_type(Vector2i(9, 16)) == "office", "上の階のオフィスはそのまま残る")
+	check(main.funds == 10000000 + 100000, "撤去の払い戻し（建設費の半額）は入る")
+	check(logged("空きフロアが残ります"), "空きフロアが残ることがメッセージで出る")
+	await hover_cell(shop)
+	check(main.hover_label.text.contains("空きフロア"), "カーソルを合わせると空きフロアと出る")
+	await capture("frame_01_left")
+
+	# 空きフロアは通り抜けられる
+	check(main.is_walkable(shop), "空きフロアは通り抜けられる")
+	check(not main.find_path(Vector2i(12, 17), Vector2i(9, 17)).is_empty(), "空きフロアを通り抜ける経路が見つかる")
+
+	# 空きフロアの上には、そのまま別の建物を建て直せる
+	await choose_mode("housing")
+	await click_cell(shop, MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(shop) == "housing", "空きフロアの上には別の建物を建て直せる")
+	check(main.get_building_type(Vector2i(11, 17)) == "housing", "建物の幅のぶんの空きフロアが置き換わる")
+	await capture("frame_02_rebuilt")
+
+	# 支えるものがなくなった空きフロアは、ふつうに撤去できる
+	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_RIGHT) # 上のオフィスを撤去
+	await click_cell(shop, MOUSE_BUTTON_RIGHT)            # 住宅を撤去（もう支えていないので更地に戻る）
+	check(main.is_cell_empty(shop), "上に何もなくなったら、撤去で更地に戻る（跡地は残らない）")
 	return true

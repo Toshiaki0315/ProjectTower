@@ -35,6 +35,11 @@ func play_money(cell: Vector2i, amount: int) -> void:
 	var tile_size := Vector2(world.tile_map.tile_set.tile_size)
 	add_effect("money", Rect2(Vector2(cell) * tile_size, tile_size), "+%s円" % world.format_money(amount), MONEY_LIFE)
 
+# 出している演出を全部消す（更地にしたとき・セーブデータを読み込んだとき）
+func clear() -> void:
+	effects.clear()
+	queue_redraw()
+
 func add_effect(type: String, rect: Rect2, text: String, life: float) -> void:
 	if effects.size() >= MAX_EFFECTS:
 		effects.pop_front()
