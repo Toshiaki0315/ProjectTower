@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -178,21 +178,21 @@ func run_build_scenario() -> bool:
 	check(main.funds == start_funds - 450000, "オフィス（横4マス）の建設費40万円が引かれる")
 	await capture("build_03_built")
 
-	# 4. 建てた階段を右クリック → 撤去（+2.5万円）
+	# 4. 建てた階段を右クリック → 撤去（撤去費用5千円がかかる。建設費は戻らない）
 	await click_cell(stairs_cell, MOUSE_BUTTON_RIGHT)
 	check(main.is_cell_empty(stairs_cell), "右クリックで階段が撤去される")
 	check(main.tile_map.get_cell_source_id(stairs_cell) == -1, "撤去したマスのタイルが消える")
-	check(main.funds == start_funds - 425000, "階段の半額2.5万円が払い戻される")
+	check(main.funds == start_funds - 455000, "階段の撤去費用5千円（建設費の1割）がかかる")
 
-	# 5. 事前配置のタイルを右クリック → 撤去（+5万円）
+	# 5. 事前配置のタイルを右クリック → 撤去（撤去費用4万円）
 	var preset_cell := Vector2i(0, 15)
 	await click_cell(preset_cell, MOUSE_BUTTON_RIGHT)
 	check(main.is_cell_empty(preset_cell) and main.is_cell_empty(preset_cell + Vector2i(3, 0)), "事前配置のオフィスも横4マスまとめて撤去できる")
-	check(main.funds == start_funds - 225000, "オフィスの半額20万円が払い戻される")
+	check(main.funds == start_funds - 495000, "オフィスの撤去費用4万円（建設費の1割）がかかる")
 
 	# 6. 空マスを右クリック → 何も起きない
 	await click_cell(Vector2i(-10, 21), MOUSE_BUTTON_RIGHT)
-	check(main.funds == start_funds - 225000, "空マスの右クリックでは資金が変わらない")
+	check(main.funds == start_funds - 495000, "空マスの右クリックでは資金が変わらない")
 	await capture("build_04_demolished")
 	return true
 
@@ -1520,7 +1520,7 @@ func run_scroll_sky_scenario() -> bool:
 	check(select.get_popup().visible, "建設メニューをクリックするとリストが開く")
 	select.get_popup().hide()
 	await choose_mode("hotel_suite")
-	check(select.text == "スイート（500,000円）", "選んだ建物の名前と建設費が出る")
+	check(select.text.begins_with("スイート") and select.text.ends_with("500,000円"), "選んだ建物の名前と建設費が出る")
 	
 	# マウスホイール: 上下スクロール（ズームはしない）
 	var screen_pos := Vector2(600, 400)
@@ -2108,7 +2108,7 @@ func run_support_scenario() -> bool:
 	check(main.get_building_type(Vector2i(2, 15)) == "frame", "上の階を支えているオフィスを撤去すると、空きフロアが残る")
 	check(main.get_building_type(Vector2i(0, 14)) == "office", "上の階のオフィスはそのまま残る")
 	check(main.last_message.contains("空きフロアになります"), "空きフロアが残ることがメッセージで出る")
-	check(main.funds == funds_before + 200000, "跡地が残るときも払い戻しは入る")
+	check(main.funds == funds_before - 40000, "跡地が残るときも撤去費用（4万円）がかかる")
 	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_RIGHT)
 	check(main.get_building_type(Vector2i(0, 18)) == "frame", "上に建物が乗っているロビーも、空きフロアになる")
 	await click_cell(Vector2i(0, 19), MOUSE_BUTTON_RIGHT)
@@ -2935,7 +2935,7 @@ func run_bomb_scenario() -> bool:
 	await wait_until(func(): return not incidents.has_bomb(), 60.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
-	check(main.is_cell_empty(Vector2i(11, 17)), "時間切れで飲食店が吹き飛ぶ")
+	check(main.get_building_type(Vector2i(11, 17)) == "ruin", "時間切れで飲食店が吹き飛び、焼け跡が残る")
 	check(logged("爆発！"), "爆発がメッセージで知らされる")
 	await capture("bomb_02_exploded")
 	
@@ -2944,11 +2944,11 @@ func run_bomb_scenario() -> bool:
 	check(not incidents.roll_bomb(1) and not incidents.roll_bomb(2), "★1のうちは爆破予告が来ない")
 	main.rating_system.stars = 2
 	var days := 0
-	for day in range(1, 41):
+	for day in range(1, 366): # 1日3%なので、1年ぶんで数える
 		if incidents.roll_bomb(day):
 			days += 1
-	print("    40日のうち爆破予告が来た日: ", days)
-	check(days > 0 and days < 20, "★2以上では、ときどき爆破予告が届く（40日のうち%d日）" % days)
+	print("    1年のうち爆破予告が来た日: ", days)
+	check(days > 0 and days < 365 * incidents.BOMB_CHANCE * 3, "★2以上では、ときどき爆破予告が届く（1年のうち%d日）" % days)
 	incidents.last_incident_day = 10
 	check(incidents.is_incident_on_cooldown(11) and incidents.is_incident_on_cooldown(13) and not incidents.is_incident_on_cooldown(14), "事故の後は3日間、新しい事故が起きない")
 	return true
@@ -3000,8 +3000,8 @@ func run_fire_scenario() -> bool:
 	await wait_until(func(): return incidents.fire.size() > 1, 30.0)
 	check(incidents.fire.size() > 1, "時間がたつと隣のマスへ燃え広がる")
 	await capture("fire_02_spreading")
-	await wait_until(func(): return main.is_cell_empty(Vector2i(12, 17)), 60.0)
-	check(main.is_cell_empty(Vector2i(12, 17)), "燃え続けたテナントは焼け落ちる")
+	await wait_until(func(): return main.get_building_type(Vector2i(12, 17)) == "ruin", 60.0)
+	check(main.get_building_type(Vector2i(12, 17)) == "ruin", "燃え続けたテナントは焼け落ちて、焼け跡が残る")
 	check(logged("焼け落ちました"), "焼失がメッセージで知らされる")
 	await wait_until(func(): return not incidents.has_fire(), 90.0)
 	Engine.time_scale = 1.0
@@ -3012,11 +3012,11 @@ func run_fire_scenario() -> bool:
 	check(not incidents.roll_fire(1) and not incidents.roll_fire(5), "★1のうちは出火しない")
 	main.rating_system.stars = 2
 	var days := 0
-	for day in range(1, 41):
+	for day in range(1, 366): # 1日2%なので、1年ぶんで数える
 		if incidents.roll_fire(day):
 			days += 1
-	print("    40日のうち出火した日: ", days)
-	check(days > 0 and days < 20, "★2以上では、ときどき出火する（40日のうち%d日）" % days)
+	print("    1年のうち出火した日: ", days)
+	check(days > 0 and days < 365 * incidents.FIRE_CHANCE * 3, "★2以上では、ときどき出火する（1年のうち%d日）" % days)
 	return true
 
 # ---------------------------------------------------
@@ -3322,7 +3322,9 @@ func run_helipad_scenario() -> bool:
 	# 上に建物があるところには建てられない（テストのために、上の階へ直接建物を置いて確かめる）
 	main.place_unit(Vector2i(9, 16), "shop")
 	check(main.get_build_problem(Vector2i(9, 17), "helipad").contains("屋上（上に建物がないところ）にしか建てられません"), "上に建物があるところには建てられない")
-	main.destroy_unit(Vector2i(9, 16))
+	var funds_before_cleanup: int = main.funds
+	main.demolish_at(Vector2i(9, 16)) # 確かめ終わったので片づける（撤去費用は戻しておく）
+	main.funds = funds_before_cleanup
 	await click_cell(Vector2i(9, 19), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(9, 19)), "地下にも建てられない")
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
@@ -4050,7 +4052,7 @@ func run_frame_scenario() -> bool:
 	check(main.get_building_type(shop) == "frame", "支えているマスを撤去すると、空きフロアが残る")
 	check(main.get_building_type(Vector2i(11, 17)) == "frame", "建物の幅のぶんだけ空きフロアになる")
 	check(main.get_building_type(Vector2i(9, 16)) == "office", "上の階のオフィスはそのまま残る")
-	check(main.funds == 10000000 + 100000, "撤去の払い戻し（建設費の半額）は入る")
+	check(main.funds == 10000000 - 20000, "撤去費用（建設費の1割＝2万円）がかかる")
 	check(logged("空きフロアになります"), "空きフロアが残ることがメッセージで出る")
 	await hover_cell(shop)
 	check(main.hover_label.text.contains("空きフロア"), "カーソルを合わせると空きフロアと出る")
@@ -4251,4 +4253,54 @@ func run_menu_scenario() -> bool:
 	main.show_routes = false
 	ui.update_menu_checks(view_menu, items)
 	check(not view_menu.is_item_checked(routes_index), "オフのときはチェックが外れる")
+	return true
+
+# シナリオ68: 撤去費用・焼け跡・建て替え
+# 撤去にはお金がかかり（建設費は戻らない）、火災・爆破のあとは黒焦げの焼け跡が残る。
+# 建物の上に直接ほかの建物は建てられず、先に撤去してから建てる。
+# ---------------------------------------------------
+func run_demolish_rules_scenario() -> bool:
+	print("[シナリオ] 撤去費用・焼け跡・建て替え")
+	main.clear_world()
+	main.funds = 10000000
+	build_support(cells_row(18, 8, 16), "lobby")
+	focus_camera(Vector2i(11, 17))
+	await wait_frames(1)
+	await choose_mode("office")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT) # 2階のオフィス（x=9〜12）
+	await click_cell(Vector2i(9, 16), MOUSE_BUTTON_LEFT) # 3階のオフィス（x=9〜12）
+	check(main.demolish_fee("office") == 40000, "オフィスの撤去費用は建設費の1割（4万円）")
+	check(main.demolish_fee("lobby") == main.MIN_DEMOLISH_FEE, "建設費が安いものも、最低%d円かかる" % main.MIN_DEMOLISH_FEE)
+
+	# 建物の上には、直接ほかの建物を建てられない（先に撤去する）
+	await choose_mode("shop")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 17)) == "office", "オフィスの上に直接ショップは建てられない")
+
+	# 火災・爆破のあとは黒焦げの焼け跡が残る（上の階は支えたまま）
+	main.destroy_unit(Vector2i(9, 17))
+	check(main.get_building_type(Vector2i(9, 17)) == "ruin" and main.get_building_type(Vector2i(12, 17)) == "ruin", "焼け落ちた部屋のマスは全部、焼け跡になる")
+	check(main.get_building_type(Vector2i(9, 16)) == "office", "上の階のオフィスは浮かずに残る")
+	await hover_cell(Vector2i(10, 17))
+	check(main.hover_label.text.contains("焼け跡（撤去してから建て直せる"), "カーソルを合わせると、撤去が要ると出る")
+	await capture("demolish_01_ruin")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 17)) == "ruin", "焼け跡の上には、そのままでは建てられない")
+
+	# 撤去費用が足りないと撤去できない
+	main.funds = 1000
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_RIGHT)
+	check(main.get_building_type(Vector2i(9, 17)) == "ruin" and main.funds == 1000, "撤去費用が足りないと撤去できない")
+	check(main.last_message.begins_with("撤去費用が足りません"), "足りないことがメッセージで出る")
+
+	# 焼け跡を撤去すると（上に建物があるので）空きフロアになり、その上に建て直せる
+	main.funds = 10000000
+	main.select_mode(main.MODE_DEMOLISH)
+	await drag_cells(Vector2i(9, 17), Vector2i(12, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 17)) == "frame" and main.get_building_type(Vector2i(12, 17)) == "frame", "焼け跡をなぞって撤去すると、空きフロアになる")
+	check(main.funds == 10000000 - 4 * main.MIN_DEMOLISH_FEE, "焼け跡の撤去費用は1マス%d円" % main.MIN_DEMOLISH_FEE)
+	await choose_mode("shop")
+	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
+	check(main.get_building_type(Vector2i(9, 17)) == "shop", "撤去して空けた場所には、新しい施設を建てられる")
+	await capture("demolish_02_rebuilt")
 	return true

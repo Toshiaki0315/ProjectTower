@@ -11,11 +11,11 @@ extends Node
 #   （日ごとに決まった乱数なので、同じ日なら毎回同じ結果になる）。
 #   爆弾はテナント（TARGET_TYPES）1棟にランダムで仕掛けられ、BOMB_LIMIT 分で爆発する。
 #   一番近い警備員が現場へ行き、DEFUSE_MINUTES 分かけて解体できれば成功。
-#   時間切れだと爆発して、そのテナントが吹き飛ぶ（払い戻しなし。上の階の建物はそのまま残る）。
+#   時間切れだと爆発して、そのテナントが吹き飛ぶ（黒焦げの焼け跡が残る。上の階の建物はそのまま残る）。
 # ■ 火災
 #   ★MIN_STARS 以上のビルには、毎日 FIRE_MINUTE に FIRE_CHANCE の確率で出火する。
 #   燃えているマスは SPREAD_MINUTES ごとに、隣（左右）と上のマスの建物へ燃え広がる。
-#   1マスが BURN_MINUTES 燃え続けると、そのテナントは焼け落ちる（払い戻しなし）。
+#   1マスが BURN_MINUTES 燃え続けると、そのテナントは焼け落ちて焼け跡になる（建て直すには先に撤去する）。
 #   警備員が燃えているマスへ行き、EXTINGUISH_MINUTES 分かけて1マスずつ消し止める。
 #   ヘリポートがあると消防ヘリが飛んできて、上の階の火から順に HELI_MINUTES 分で消していく
 #   （警備員より速く、高い階に強い）。
@@ -235,7 +235,7 @@ func explode() -> void:
 	var guard = bomb.guard
 	bomb = null
 	world.destroy_unit(cell)
-	world.show_message("爆発！ %s の%sが吹き飛びました" % [world.get_floor_name(cell.y), name])
+	world.show_message("爆発！ %s の%sが吹き飛びました（焼け跡は撤去してから建て直せます）" % [world.get_floor_name(cell.y), name])
 	send_guards_home(guard)
 
 # 警備員を警備室へ帰す
@@ -301,7 +301,7 @@ func burn_down(cell: Vector2i) -> void:
 	for c in world.get_unit_cells(cell):
 		fire.erase(c)
 	world.destroy_unit(cell)
-	world.show_message("%s の%sが焼け落ちました" % [world.get_floor_name(cell.y), name])
+	world.show_message("%s の%sが焼け落ちました（焼け跡は撤去してから建て直せます）" % [world.get_floor_name(cell.y), name])
 
 # 燃えているマスから、隣（左右）と上のマスへ燃え広がる
 func spread_fire() -> void:

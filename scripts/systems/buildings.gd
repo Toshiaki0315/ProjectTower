@@ -11,6 +11,7 @@ const TABLE := {
 	"office": {"name": "オフィス", "cost": 400000, "source_id": 0, "width": 4},
 	"large_office": {"name": "大きいオフィス", "cost": 480000, "source_id": 30, "width": 6},
 	"frame": {"name": "空きフロア", "cost": 10000, "source_id": 31, "floors": "any"}, # 骨組みだけのフロア（撤去の跡地にもなる）
+	"ruin": {"name": "焼け跡", "cost": 0, "source_id": 33, "floors": "any"}, # 火災・爆破で壊れた部屋の残骸（メニューからは建てない）
 	"stairs": {"name": "階段", "cost": 50000, "source_id": 1, "floors": "any"},
 	"elevator": {"name": "エレベーター", "cost": 80000, "source_id": 2, "floors": "any"},
 	"hotel": {"name": "シングル", "cost": 150000, "source_id": 3, "width": 2},
@@ -55,6 +56,10 @@ const OFFICE_TYPES := ["small_office", "office", "large_office"]
 # メニューから建てることもできる（すき間を埋めて、上の階を建てられるようにする）。
 # 骨組みだけなので通り抜けられ、その上から別の建物を建て直せる
 const FRAME_TYPE := "frame"
+
+# 焼け跡（黒焦げの残骸）。火災で焼け落ちたり爆破で吹き飛んだりした部屋のマスに残る。
+# 上の階は支えたままだが、その上には建てられないので、先に撤去する必要がある
+const RUIN_TYPE := "ruin"
 
 var world: Node2D # main.gd
 

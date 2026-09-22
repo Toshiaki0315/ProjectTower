@@ -171,6 +171,8 @@ func build_bars() -> void:
 			mode_select.set_item_metadata(mode_select.item_count - 1, mode)
 	mode_select.item_selected.connect(func(index): world.select_mode(mode_select.get_item_metadata(index)))
 	for type in world.BUILDINGS:
+		if type == Buildings.RUIN_TYPE:
+			continue # 焼け跡は火災・爆破で残るもので、メニューからは建てない
 		assert(world.MODE_GROUPS.any(func(group): return group.modes.has(type)), "%s が建設メニュー（world.MODE_GROUPS）にありません" % type)
 	stats_row.add_child(mode_select)
 	
@@ -209,7 +211,9 @@ func build_bars() -> void:
 	help_row.add_child(make_spacer())
 	var help_label = Label.new()
 	help_label.text = "\n".join([
-		"建設: 上の「建設」メニューで選び、マップを左クリック（建てる大きさはカーソルの枠でわかる。くわしい説明はメニューにカーソルを合わせると出る） / 右クリック: 撤去（建設費の半額を返金）",
+		"建設: 上の「建設」メニューで選び、マップを左クリック（建てる大きさはカーソルの枠でわかる。くわしい説明はメニューにカーソルを合わせると出る） / 右クリック: 撤去（撤去費用がかかる。建設費の1割・最低2千円。建設費は戻らない）",
+		"建て替え: 建物の上に直接ほかの建物は建てられない。先に撤去してから建てる（空きフロアの上には、そのまま建てられる）",
+		"焼け跡: 火災で焼け落ちたり爆破で吹き飛んだりした部屋は、黒焦げの焼け跡になる。上の階は支えたままだが、建て直すには先に撤去が必要",
 		"更地から始まる。1階はロビー専用（ロビー・階段・エレベーターだけ）。人はロビーの左端（入口）から出入りする",
 		"吹き抜けロビー: 2階分・3階分の高さのロビー。上の階には床がないので、人は1階だけを歩く",
 		"スカイロビー: 15階・30階・45階…にだけ建てられる乗り換え専用のフロア（何階かはカーソル下の情報に出る）",
@@ -219,7 +223,7 @@ func build_bars() -> void:
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
 		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
 		"オフィスの大きさ: 小さいオフィス（横2マス・2人・賃料1.1万円/マス）と大きいオフィス（横6マス・6人・0.9万円/マス）もある",
-		"空きフロア: 骨組みだけのフロア（1万円）。メニューから建ててすき間を埋められるほか、上の階に建物が残っているマスを撤去・焼失したときにも残る（上の部屋が浮かないように）。通り抜けでき、その上から建て直せる",
+		"空きフロア: 骨組みだけのフロア（1万円）。メニューから建ててすき間を埋められるほか、上の階に建物が残っているマスを撤去したときにも残る（上の部屋が浮かないように）。通り抜けでき、その上から建て直せる",
 		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
 		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
 		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
@@ -456,7 +460,7 @@ func get_mode_info(mode: String) -> String:
 	if mode == world.MODE_SERVICE:
 		return "無料（シャフトをクリックで 終日 → 6時〜24時 → 8時〜20時 と切り替え）"
 	if mode == world.MODE_DEMOLISH:
-		return "クリックした建物を撤去（建設費の半額が戻る。ドラッグで続けて撤去）"
+		return "クリックした建物を撤去（撤去費用は建設費の1割・最低%s円。建設費は戻らない。ドラッグで続けて撤去）" % world.format_money(world.MIN_DEMOLISH_FEE)
 	if mode == world.MODE_ADD_CAR:
 		return "1台 %s円（シャフトをクリック。1本に%d台まで）" % [world.format_money(world.elevator_system.CAR_COST), world.elevator_system.MAX_CARS]
 	var info := "建設費 %s円・横%dマス" % [world.format_money(world.BUILDINGS[mode].cost), world.get_width(mode)]
@@ -678,6 +682,8 @@ func update_hover_label():
 		var home_rating: String = world.tenant_system.get_home_rating_text(cell)
 		text += "（%s%s・%s）" % [world.housing_system.get_home_state_text(cell), "・" + home_rating if home_rating != "" else "",
 			world.noise_system.get_noise_text(cell)]
+	elif type == Buildings.RUIN_TYPE:
+		text += "（撤去してから建て直せる。撤去費用 %s円）" % world.format_money(world.demolish_fee(type))
 	elif type == "parking":
 		text += "（%s）" % world.parking_system.get_parking_text(cell)
 	elif type == "ramp":

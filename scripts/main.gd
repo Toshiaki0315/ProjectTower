@@ -40,7 +40,8 @@ const MAX_FLOORS_BELOW := Buildings.MAX_FLOORS_BELOW
 const MAX_WIDTH := Buildings.MAX_WIDTH
 const OFFICE_TYPES := Buildings.OFFICE_TYPES
 const SUBWAY_MIN_DEPTH := Buildings.SUBWAY_MIN_DEPTH
-const REFUND_RATE := 0.5 # 撤去時の払い戻し率
+const DEMOLISH_RATE := 0.1      # 撤去費用: 建設費のこの割合を払う（撤去しても建設費は戻らない）
+const MIN_DEMOLISH_FEE := 2000  # 撤去費用の最低額（焼け跡・空きフロア・ロビーなども、これだけはかかる）
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
 const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴを追加するモード
 const MODE_SET_HOME := "set_home" # エレベーターの待機階（呼び出しがないとカゴが戻る階）を決めるモード
@@ -476,9 +477,11 @@ func can_click_cell(cell: Vector2i) -> bool:
 	if current_mode == MODE_SET_HOME or current_mode == MODE_SERVICE:
 		return elevator_system.is_shaft_type(get_building_type(cell))
 	if current_mode == MODE_DEMOLISH:
-		# 支えているマスも「空きフロアを残して撤去」ができる（跡地そのものは支えている間は撤去できない）
+		# 支えているマスも「空きフロアを残して撤去」ができる（跡地そのものは支えている間は撤去できない）。
+		# 撤去費用が足りないときは撤去できない
 		return not is_cell_empty(cell) \
-			and (get_building_type(cell) != Buildings.FRAME_TYPE or get_demolish_problem(cell) == "")
+			and (get_building_type(cell) != Buildings.FRAME_TYPE or get_demolish_problem(cell) == "") \
+			and funds >= demolish_fee(get_building_type(cell))
 	if elevator_system.is_shaft_type(current_mode) and get_building_type(cell) == current_mode:
 		return elevator_system.get_car_at(cell) != null and elevator_system.get_car_at(cell).is_stop_floor(cell.y) # シャフトをクリックするとカゴを呼べる
 	return get_build_problem(cell, current_mode) == ""
@@ -759,21 +762,23 @@ func clear_world() -> void:
 	effects.clear() # 消えた建物の演出が残らないようにする
 	rebuild_systems()
 
-# 建物を壊す（爆発・火災など。払い戻しはなく、支えのルールも見ない）
+# 建物を壊す（爆発・火災）。部屋のあったマスには、黒焦げの焼け跡が残る。
+# 焼け跡は上の階を支えたままだが、その上には建てられないので、建て直すには先に撤去する
 func destroy_unit(cell: Vector2i) -> void:
 	if is_cell_empty(cell):
 		return
-	# 上（地下なら下）の階に建物が残っているなら、骨組み（空きフロア）だけが残る
-	var leave_frame: bool = get_building_type(cell) != Buildings.FRAME_TYPE and buildings.has_building_beyond(cell)
 	effects.play_demolish(get_unit_cells(cell))
 	for c in get_unit_cells(cell):
 		tile_map.erase_cell(c)
 		building_grid.erase(c)
-		if leave_frame:
-			place_unit(c, Buildings.FRAME_TYPE)
+		place_unit(c, Buildings.RUIN_TYPE)
 	rebuild_systems()
 
-# 撤去（売却）処理（建物のどのマスをクリックしても、その建物全体を撤去する）
+# その建物を撤去するのにかかる費用（建設費の1割。ただし最低 MIN_DEMOLISH_FEE）
+func demolish_fee(type: String) -> int:
+	return maxi(int(BUILDINGS[type].cost * DEMOLISH_RATE), MIN_DEMOLISH_FEE)
+
+# 撤去（ブルドーザー）。建物のどのマスをクリックしても、その建物全体を撤去する。撤去費用がかかる
 func demolish_at(map_pos: Vector2i):
 	if is_cell_empty(map_pos):
 		return
@@ -787,11 +792,16 @@ func demolish_at(map_pos: Vector2i):
 		show_message(problem)
 		audio_system.play("error")
 		return
+	# 撤去にはお金がかかる（建設費は戻らない）。足りなければ撤去できない
+	var fee := demolish_fee(type)
+	if funds < fee:
+		show_message("撤去費用が足りません（%sの撤去には %s円かかります）" % [BUILDINGS[type].name, format_money(fee)])
+		audio_system.play("error")
+		return
 	var leave_frame: bool = type != Buildings.FRAME_TYPE and buildings.has_building_beyond(map_pos)
 	var origin: Vector2i = building_grid[map_pos].origin
-	var refund = int(BUILDINGS[type].cost * REFUND_RATE)
 	
-	funds += refund
+	funds -= fee
 	effects.play_demolish(get_unit_cells(map_pos))
 	for cell in get_unit_cells(map_pos):
 		tile_map.erase_cell(cell)
@@ -802,4 +812,4 @@ func demolish_at(map_pos: Vector2i):
 	update_funds_display()
 	audio_system.play("demolish")
 	var note := "（上の階が残っているので、空きフロアになります）" if leave_frame else ""
-	show_message("%sを撤去しました %s 払い戻し: %d円%s" % [BUILDINGS[type].name, origin, refund, note])
+	show_message("%sを撤去しました %s 撤去費用: %s円%s" % [BUILDINGS[type].name, origin, format_money(fee), note])
