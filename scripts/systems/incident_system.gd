@@ -7,7 +7,8 @@ extends Node
 #   警備室1つにつき1人が常駐する（裏方なので、サービスエレベーターにも乗れる）。
 #   事件がないときは警備室で待ち、爆破予告が来ると現場へ向かう。
 # ■ 爆破予告（テロ）
-#   ★MIN_STARS 以上のビルには、毎日 BOMB_MINUTE に BOMB_CHANCE の確率で予告が届く
+#   ★BOMB_MIN_STARS 以上で、資金が BOMB_MIN_FUNDS 以上ある（＝身代金をねらえる）ビルには、
+#   毎日 BOMB_MINUTE に BOMB_CHANCE の確率で予告が届く
 #   （日ごとに決まった乱数なので、同じ日なら毎回同じ結果になる）。
 #   爆弾はテナント（TARGET_TYPES）1棟にランダムで仕掛けられ、テロリストから身代金を要求される。
 #   支払えば（ransom_for()）、爆弾は取り除かれて確実に安全。
@@ -16,7 +17,8 @@ extends Node
 #   まだ調べていないテナントを近い順に1棟ずつ訪ね、SEARCH_MINUTES 分かけて調べる。
 #   爆弾のある棟に着いた警備員が見つけ、そのまま DEFUSE_MINUTES 分かけて解体できれば成功。
 #   警備室が多く、エレベーターで速く動けるほど、早く見つかる。
-#   時間切れだと爆発して、そのテナントが吹き飛ぶ（黒焦げの焼け跡が残る。上の階の建物はそのまま残る）。
+#   時間切れだと爆発して、爆弾の棟と、そのまわり BLAST_RANGE マス（上下の階・左右の隣）の
+#   テナントがまとめて吹き飛ぶ（黒焦げの焼け跡が残る。エレベーター・階段・ロビーは残る）。
 # ■ 火災
 #   ★MIN_STARS 以上のビルには、毎日 FIRE_MINUTE に FIRE_CHANCE の確率で出火する。
 #   燃えているマスは SPREAD_MINUTES ごとに、隣（左右）と上のマスのテナントへ燃え広がる
@@ -38,7 +40,10 @@ extends Node
 # ---------------------------------------------------
 
 const GUARD_COLOR := Color(0.45, 0.55, 0.95) # 警備員の服の色（青）
-const MIN_STARS := 2        # この評価以上のビルが狙われる
+const MIN_STARS := 2        # この評価以上のビルで火災が起きる
+const BOMB_MIN_STARS := 3   # この評価以上のビルに爆破予告が届く
+const BOMB_MIN_FUNDS := 5000000 # 資金がこれ以上あるビルにだけ予告が届く（身代金をねらうので）
+const BLAST_RANGE := 1      # 爆発で吹き飛ぶ範囲（爆弾の棟から上下・左右に何マスまで）
 const BOMB_CHANCE := 0.03   # 1日に爆破予告が届く確率
 const BOMB_MINUTE := 10 * 60 # 予告が届く時刻
 const BOMB_LIMIT := 120.0   # 予告から爆発までの時間（分）
@@ -171,7 +176,7 @@ func is_incident_on_cooldown(day: int) -> bool:
 
 # その日に爆破予告が届くか（日ごとに決まった乱数）
 func roll_bomb(day: int) -> bool:
-	if world.rating_system.stars < MIN_STARS:
+	if world.rating_system.stars < BOMB_MIN_STARS or world.funds < BOMB_MIN_FUNDS:
 		return false
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([day, "bomb"])
@@ -363,9 +368,29 @@ func explode() -> void:
 	var name: String = world.BUILDINGS[world.get_building_type(cell)].name
 	var guard = bomb.guard
 	bomb = null
-	world.destroy_unit(cell)
-	world.show_message("爆発！ %s の%sが吹き飛びました（焼け跡は撤去してから建て直せます）" % [world.get_floor_name(cell.y), name])
+	var victims := blast_units(cell)
+	for origin in victims:
+		world.destroy_unit(origin)
+	world.show_message("爆発！ %s の%sを中心に、%d棟のテナントが吹き飛びました（焼け跡は撤去してから建て直せます）"
+		% [world.get_floor_name(cell.y), name, victims.size()])
 	send_guards_home(guard)
+
+# 爆発で吹き飛ぶテナント（左端のマス）の一覧: 爆弾の棟と、そこから BLAST_RANGE マス以内に
+# かかるテナント（上下の階・左右の隣。ななめも含む）
+func blast_units(origin: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = world.get_unit_cells(origin)
+	var lo: Vector2i = cells[0] # 爆弾の棟の左上
+	var hi: Vector2i = cells[0] # 右下
+	for c in cells:
+		lo = Vector2i(mini(lo.x, c.x), mini(lo.y, c.y))
+		hi = Vector2i(maxi(hi.x, c.x), maxi(hi.y, c.y))
+	var result: Array[Vector2i] = []
+	for x in range(lo.x - BLAST_RANGE, hi.x + BLAST_RANGE + 1):
+		for y in range(lo.y - BLAST_RANGE, hi.y + BLAST_RANGE + 1):
+			var c := Vector2i(x, y)
+			if is_target(c) and not result.has(world.building_grid[c].origin):
+				result.append(world.building_grid[c].origin)
+	return result
 
 # 警備員を警備室へ帰す
 func send_guards_home(guard) -> void:

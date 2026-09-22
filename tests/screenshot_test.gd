@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -2971,16 +2971,24 @@ func run_bomb_scenario() -> bool:
 	check(logged("爆発！"), "爆発がメッセージで知らされる")
 	await capture("bomb_02_exploded")
 	
-	# 予告は★2以上のビルにだけ届く
-	check(incidents.MIN_STARS == 2 and main.rating_system.stars == 1, "今は★1")
-	check(not incidents.roll_bomb(1) and not incidents.roll_bomb(2), "★1のうちは爆破予告が来ない")
+	# 予告は★3以上で、資金が潤沢なビルにだけ届く（身代金をねらうので）
+	check(incidents.BOMB_MIN_STARS == 3 and main.rating_system.stars == 1, "今は★1")
+	main.funds = incidents.BOMB_MIN_FUNDS
+	var bomb_days := func() -> int:
+		var n := 0
+		for day in range(1, 366): # 1日3%なので、1年ぶんで数える
+			if incidents.roll_bomb(day):
+				n += 1
+		return n
+	check(bomb_days.call() == 0, "★1のうちは爆破予告が来ない")
 	main.rating_system.stars = 2
-	var days := 0
-	for day in range(1, 366): # 1日3%なので、1年ぶんで数える
-		if incidents.roll_bomb(day):
-			days += 1
+	check(bomb_days.call() == 0, "★2でも、まだ爆破予告は来ない")
+	main.rating_system.stars = 3
+	var days: int = bomb_days.call()
 	print("    1年のうち爆破予告が来た日: ", days)
-	check(days > 0 and days < 365 * incidents.BOMB_CHANCE * 3, "★2以上では、ときどき爆破予告が届く（1年のうち%d日）" % days)
+	check(days > 0 and days < 365 * incidents.BOMB_CHANCE * 3, "★3以上では、ときどき爆破予告が届く（1年のうち%d日）" % days)
+	main.funds = incidents.BOMB_MIN_FUNDS - 1
+	check(bomb_days.call() == 0, "★3でも、資金が%s未満のうちは来ない" % main.money_text(incidents.BOMB_MIN_FUNDS))
 	incidents.last_incident_day = 10
 	check(incidents.is_incident_on_cooldown(11) and incidents.is_incident_on_cooldown(13) and not incidents.is_incident_on_cooldown(14), "事故の後は3日間、新しい事故が起きない")
 	return true
@@ -4427,4 +4435,44 @@ func run_bomb_search_scenario() -> bool:
 	await wait_until(func(): return not incidents.has_bomb(), 30.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
+	return true
+
+# シナリオ71: 爆発の範囲（爆弾の棟のまわりのテナントも、上下の階ごと吹き飛ぶ）
+#   y=16: オフィスD(9〜12)  オフィスE(13〜16)
+#   y=17: ショップA(9〜11) 階段(12) ショップB(13〜15)★爆弾 ショップC(16〜18)
+#   y=15: オフィスF(9〜12)（2つ上の階なので範囲の外）
+# ---------------------------------------------------
+func run_blast_scenario() -> bool:
+	print("[シナリオ] 爆発の範囲")
+	main.clear_world()
+	main.funds = 10000000
+	var incidents = main.incident_system
+	build_support(cells_row(18, 8, 18), "lobby")
+	main.select_mode("shop")
+	for x in [9, 13, 16]:
+		main.build_at(Vector2i(x, 17))
+	build_support([Vector2i(12, 17)])
+	main.select_mode("office")
+	main.build_at(Vector2i(9, 16))
+	main.build_at(Vector2i(13, 16))
+	main.build_at(Vector2i(9, 15))
+	check(main.get_building_type(Vector2i(9, 15)) == "office", "テストの建物がそろう")
+	var victims: Array = incidents.blast_units(Vector2i(13, 17))
+	victims.sort()
+	check(victims == [Vector2i(9, 16), Vector2i(13, 16), Vector2i(13, 17), Vector2i(16, 17)], "吹き飛ぶのは、爆弾の棟と、1マス以内にかかるテナント（上の階・隣・ななめ）")
+
+	focus_camera(Vector2i(13, 16))
+	await wait_frames(1)
+	incidents.start_bomb(Vector2i(13, 17))
+	incidents.bomb.decided = true
+	main.ui.hide_ransom_panel()
+	incidents.explode()
+	check(main.get_building_type(Vector2i(13, 17)) == "ruin", "爆弾のショップは焼け跡になる")
+	check(main.get_building_type(Vector2i(16, 17)) == "ruin" and main.get_building_type(Vector2i(18, 17)) == "ruin", "隣のショップも吹き飛ぶ")
+	check(main.get_building_type(Vector2i(13, 16)) == "ruin" and main.get_building_type(Vector2i(9, 16)) == "ruin", "上の階のオフィスも吹き飛ぶ（複数階）")
+	check(main.get_building_type(Vector2i(9, 17)) == "shop", "離れたショップは無事")
+	check(main.get_building_type(Vector2i(9, 15)) == "office", "2つ上の階は範囲の外で無事（焼け跡に支えられて浮かない）")
+	check(main.get_building_type(Vector2i(12, 17)) == "stairs" and main.get_building_type(Vector2i(13, 18)) == "lobby", "階段やロビーは吹き飛ばない")
+	check(logged("4棟のテナントが吹き飛びました"), "何棟吹き飛んだかがメッセージで出る")
+	await capture("blast_01")
 	return true
