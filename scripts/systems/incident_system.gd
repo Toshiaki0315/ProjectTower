@@ -9,7 +9,9 @@ extends Node
 # ■ 爆破予告（テロ）
 #   ★MIN_STARS 以上のビルには、毎日 BOMB_MINUTE に BOMB_CHANCE の確率で予告が届く
 #   （日ごとに決まった乱数なので、同じ日なら毎回同じ結果になる）。
-#   爆弾はテナント（TARGET_TYPES）1棟にランダムで仕掛けられ、BOMB_LIMIT 分で爆発する。
+#   爆弾はテナント（TARGET_TYPES）1棟にランダムで仕掛けられ、テロリストから身代金を要求される。
+#   支払えば（ransom_for()）、爆弾は取り除かれて確実に安全。
+#   支払わなければ、そこから BOMB_LIMIT 分で爆発する（決めるまでは時間が進まない）。
 #   一番近い警備員が現場へ行き、DEFUSE_MINUTES 分かけて解体できれば成功。
 #   時間切れだと爆発して、そのテナントが吹き飛ぶ（黒焦げの焼け跡が残る。上の階の建物はそのまま残る）。
 # ■ 火災
@@ -38,6 +40,8 @@ const BOMB_CHANCE := 0.03   # 1日に爆破予告が届く確率
 const BOMB_MINUTE := 10 * 60 # 予告が届く時刻
 const BOMB_LIMIT := 120.0   # 予告から爆発までの時間（分）
 const DEFUSE_MINUTES := 10.0 # 爆弾の解体にかかる時間（分）
+const RANSOM_RATE := 0.2       # 身代金: そのときの資金のこの割合
+const RANSOM_MIN := 300000     # 身代金の最低額
 const FIRE_CHANCE := 0.02      # 1日に出火する確率
 const FIRE_MINUTE := 20 * 60   # 出火する時刻
 const SPREAD_MINUTES := 20.0   # 隣のマスへ燃え広がるまでの時間（分）
@@ -66,7 +70,8 @@ const TARGET_TYPES := ["small_office", "office", "large_office", "hotel", "hotel
 var world: Node2D # main.gd
 
 var guards := {}    # 警備室（左端のマス） -> {"home": マス, "resident": 警備員}
-var bomb = null     # 今の爆破予告 {"cell": 仕掛けられたマス, "left": 残り時間（分）, "defuse_left": 解体の残り, "guard": 向かっている警備員}
+var bomb = null     # 今の爆破予告 {"cell": 仕掛けられたマス, "left": 残り時間（分）, "defuse_left": 解体の残り,
+                   #               "guard": 向かっている警備員, "ransom": 身代金, "decided": 支払わないと決めたか}
 var bomb_day := 0   # 最後に予告の判定をした日
 var fire := {}      # 燃えているマス -> {"burn_left": 焼け落ちるまでの分, "work_left": 消火の残りの分}
 var fire_spread_left := 0.0 # 次に燃え広がるまでの分
@@ -87,6 +92,8 @@ func setup(p_world: Node2D) -> void:
 # セーブデータを読み込むときに呼ぶ（前の続きの火事が、読み込んだビルを燃やさないように）
 func reset_incidents() -> void:
 	bomb = null
+	if world.ui:
+		world.ui.hide_ransom_panel()
 	fire.clear()
 	fire_spread_left = 0.0
 	heli = null
@@ -189,10 +196,37 @@ func start_bomb(cell) -> void:
 	if cell == null or world.is_cell_empty(cell):
 		return
 	last_incident_day = world.clock.day
-	bomb = {"cell": cell, "left": BOMB_LIMIT, "defuse_left": DEFUSE_MINUTES, "guard": null}
+	var ransom := ransom_for(world.funds)
+	bomb = {"cell": cell, "left": BOMB_LIMIT, "defuse_left": DEFUSE_MINUTES, "guard": null,
+		"ransom": ransom, "decided": false}
 	world.audio_system.play("alert")
-	world.show_message("爆破予告！ %s の%sに爆弾が仕掛けられました（残り%d分）。警備員が向かいます"
-		% [world.get_floor_name(cell.y), world.BUILDINGS[world.get_building_type(cell)].name, int(BOMB_LIMIT)])
+	var place := "%s の%s" % [world.get_floor_name(cell.y), world.BUILDINGS[world.get_building_type(cell)].name]
+	world.show_message("爆破予告！ %sに爆弾を仕掛けたと、テロリストから身代金 %s の要求が届きました"
+		% [place, world.money_text(ransom)])
+	world.ui.show_ransom_panel(place, ransom, world.funds >= ransom)
+
+# 身代金の額（そのときの資金の2割。1万Cr単位に切り捨て、最低 RANSOM_MIN）
+func ransom_for(funds: int) -> int:
+	return maxi(int(funds * RANSOM_RATE) / 10000 * 10000, RANSOM_MIN)
+
+# 身代金を支払う: 爆弾は取り除かれる（資金が足りなければ支払えない）
+func pay_ransom() -> bool:
+	if not has_bomb() or bomb.decided or world.funds < bomb.ransom:
+		return false
+	world.funds -= bomb.ransom
+	world.update_funds_display()
+	world.show_message("身代金 %s を支払いました。爆弾は取り除かれました" % world.money_text(bomb.ransom))
+	bomb = null
+	world.ui.hide_ransom_panel()
+	return true
+
+# 身代金を支払わない: 警備員が爆弾に向かい、ここから爆発までの時間が進み始める
+func refuse_ransom() -> void:
+	if not has_bomb() or bomb.decided:
+		return
+	bomb.decided = true
+	world.ui.hide_ransom_panel()
+	world.show_message("身代金の支払いを断りました。%d分以内に爆弾を解体します。警備員が向かいます" % int(BOMB_LIMIT))
 	send_guard()
 
 # 一番近い警備員を現場へ向かわせる
@@ -215,9 +249,13 @@ func send_guard() -> void:
 
 func process_bomb(minutes: float) -> void:
 	# 爆弾が仕掛けられた建物がなくなった（撤去された）ら、予告は終わり
-	if world.is_cell_empty(bomb.cell):
+	#（撤去すると空きフロアが残るので、マスが空かではなく、テナントが残っているかで見る）
+	if not is_target(bomb.cell):
 		bomb = null
+		world.ui.hide_ransom_panel()
 		return
+	if not bomb.decided:
+		return # 身代金を払うか決めるまでは、時間は進まない
 	bomb.left -= minutes
 	var guard = bomb.guard
 	if is_instance_valid(guard) and guard.cell == bomb.cell and not guard.is_moving():
@@ -491,4 +529,6 @@ func get_fire_text() -> String:
 func get_bomb_text() -> String:
 	if not has_bomb():
 		return ""
+	if not bomb.decided:
+		return "爆破予告！ 身代金 %s を要求されています" % world.money_text(bomb.ransom)
 	return "爆破予告！ %s に爆弾（残り%d分）" % [world.get_floor_name(bomb.cell.y), int(bomb.left)]

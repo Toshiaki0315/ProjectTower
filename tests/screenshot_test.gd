@@ -2909,12 +2909,24 @@ func run_bomb_scenario() -> bool:
 	main.select_mode("restaurant")
 	main.build_at(Vector2i(11, 17)) # 警備室(x=9〜10)の隣（x=11〜13）
 	
-	# 爆破予告 → 警備員が現場へ向かい、解体する
+	# 爆破予告 → 身代金を要求される
 	main.clock.set_time(1, 10, 0)
 	main.clock.set_process(true)
+	main.funds = 10000000
 	incidents.start_bomb(Vector2i(11, 17))
 	check(incidents.has_bomb(), "爆破予告が出ている")
-	check(logged("爆破予告！") and logged("飲食店"), "予告がメッセージで知らされる")
+	check(logged("爆破予告！") and logged("飲食店") and logged("身代金"), "予告と身代金の要求がメッセージで知らされる")
+	check(incidents.bomb.ransom == 2000000, "身代金は資金の2割（1,000万Crなら200万Cr）")
+	check(main.ui.ransom_panel.visible, "払うか払わないかを選ぶ画面が出る")
+	check(main.ui.ransom_pay_button.text.contains("2,000,000Cr") and not main.ui.ransom_pay_button.disabled, "「支払う」ボタンに身代金の額が出る")
+	await capture("bomb_00_ransom")
+	await wait_frames(30)
+	check(incidents.bomb.left == incidents.BOMB_LIMIT and incidents.bomb.guard == null, "決めるまでは、爆発までの時間は進まず、警備員も動かない")
+
+	# 支払わない → 警備員が現場へ向かい、解体する
+	main.ui.ransom_refuse_button.pressed.emit()
+	check(not main.ui.ransom_panel.visible, "選ぶと画面が閉じる")
+	check(logged("支払いを断りました"), "断ったことがメッセージで出る")
 	check(incidents.bomb.guard == guard, "一番近い警備員が向かう")
 	await wait_frames(2)
 	check(main.stats_label.text.contains("爆破予告！"), "ビルの状況に爆破予告と残り時間が出る")
@@ -2930,7 +2942,23 @@ func run_bomb_scenario() -> bool:
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_RIGHT) # 警備室を撤去
 	await wait_frames(2)
 	check(incidents.guard_count() == 0, "警備室を撤去すると警備員もいなくなる")
+
+	# 身代金を支払うと、爆弾は取り除かれる（確実に安全）
+	var funds_before: int = main.funds
 	incidents.start_bomb(Vector2i(11, 17))
+	var ransom: int = incidents.bomb.ransom
+	main.ui.ransom_pay_button.pressed.emit()
+	check(not incidents.has_bomb() and main.funds == funds_before - ransom, "身代金を払うと爆弾が取り除かれ、資金が減る")
+	check(main.get_building_type(Vector2i(11, 17)) == "restaurant", "払えば、テナントは確実に無事")
+	check(logged("身代金") and logged("取り除かれました"), "支払ったことがメッセージで出る")
+
+	# 資金が足りなければ払えない（払わずに解体するしかない）
+	main.funds = 100000
+	incidents.start_bomb(Vector2i(11, 17))
+	check(incidents.bomb.ransom == incidents.RANSOM_MIN, "身代金には最低額がある")
+	check(main.ui.ransom_pay_button.disabled and main.ui.ransom_pay_button.text.contains("資金が足りません"), "資金が足りないと「支払う」は押せない")
+	check(not incidents.pay_ransom() and incidents.has_bomb(), "資金が足りないと支払えない")
+	main.ui.ransom_refuse_button.pressed.emit()
 	check(logged("行ける警備員がいません"), "警備員がいないと、その旨がメッセージで出る")
 	set_speed(16.0)
 	await wait_until(func(): return not incidents.has_bomb(), 60.0)

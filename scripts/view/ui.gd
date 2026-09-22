@@ -40,6 +40,10 @@ var tutorial_panel: Control # はじめての案内
 var tutorial_label: Label
 var title_panel: Control   # タイトル画面
 var goal_panel: Control    # 目標を達成したときの画面
+var ransom_panel: Control  # 爆破予告の身代金を払うか決める画面
+var ransom_text: Label
+var ransom_pay_button: Button
+var ransom_refuse_button: Button
 var goal_title: Label
 var goal_text: Label
 var v_scroll: VScrollBar   # 右端の上下スクロールバー
@@ -776,6 +780,54 @@ func build_title() -> void:
 	box.add_child(hint)
 	title_panel = back
 	build_goal_panel(canvas, theme)
+	build_ransom_panel(canvas, theme)
+
+# 爆破予告の身代金を払うか決める画面を作る（中身はそのつど差し替える）
+func build_ransom_panel(canvas: CanvasLayer, theme: Theme) -> void:
+	var back = ColorRect.new()
+	back.color = Color(0.18, 0.03, 0.04, 0.9) # 赤黒い背景で、ただごとでないことを伝える
+	back.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	back.visible = false
+	canvas.add_child(back)
+	var box = VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 12 * UI_SCALE)
+	box.theme = theme
+	back.add_child(box)
+	var title = Label.new()
+	title.text = "爆破予告！"
+	title.add_theme_font_size_override("font_size", 32 * UI_SCALE)
+	title.add_theme_color_override("font_color", Color(1.0, 0.4, 0.35))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	ransom_text = Label.new()
+	ransom_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(ransom_text)
+	ransom_pay_button = Button.new()
+	ransom_pay_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	ransom_pay_button.custom_minimum_size.x = 420 * UI_SCALE
+	ransom_pay_button.pressed.connect(func(): world.incident_system.pay_ransom())
+	box.add_child(ransom_pay_button)
+	ransom_refuse_button = Button.new()
+	ransom_refuse_button.text = "支払わない（警備員に爆弾を解体させる）"
+	ransom_refuse_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	ransom_refuse_button.custom_minimum_size.x = 420 * UI_SCALE
+	ransom_refuse_button.pressed.connect(func(): world.incident_system.refuse_ransom())
+	box.add_child(ransom_refuse_button)
+	ransom_panel = back
+
+# 身代金の画面を出す。払えるだけの資金がないときは「支払う」を押せない
+func show_ransom_panel(place: String, ransom: int, can_pay: bool) -> void:
+	ransom_text.text = "テロリストから電話です。\n「%sに爆弾を仕掛けた。身代金 %s を払え」\n\n支払わない場合、警備員が%d分以内に解体できなければ爆発します。" \
+		% [place, world.money_text(ransom), int(world.incident_system.BOMB_LIMIT)]
+	ransom_pay_button.text = "支払う（%s）" % world.money_text(ransom) if can_pay else "支払う（資金が足りません）"
+	ransom_pay_button.disabled = not can_pay
+	ransom_panel.visible = true
+
+func hide_ransom_panel() -> void:
+	if ransom_panel:
+		ransom_panel.visible = false
 
 # 目標を達成したときの画面を作る（中身はそのつど差し替える）
 func build_goal_panel(canvas: CanvasLayer, theme: Theme) -> void:
