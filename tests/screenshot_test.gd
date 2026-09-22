@@ -2758,6 +2758,26 @@ func run_pollution_scenario() -> bool:
 	check(economy.pollution == before - 1, "ゴミが足りている日は、悪化が1レベル戻る")
 	await run_day(3)
 	check(economy.pollution == before - 2, "次の日もまた1レベル戻る")
+
+	# 汚れたビルは、レベルに応じて茶色くくすんで見える
+	economy.pollution = 4
+	focus_camera(Vector2i(0, 16))
+	await wait_frames(2)
+	await capture("pollution_02_grimy")
+
+	# 掃除が追いつかない客室（ハウスキーパー室がない）も、衛生を悪くする
+	economy.pollution = 0
+	main.select_mode("hotel")
+	build_support(cells_row(16, 9, 12), "frame")
+	main.build_at(Vector2i(9, 15))
+	main.build_at(Vector2i(11, 15))
+	var hotel = main.hotel_system
+	for room in [Vector2i(9, 15), Vector2i(11, 15)]:
+		hotel.rooms[room].state = hotel.RoomState.DIRTY # チェックアウトしたまま、掃除されていない
+	await run_day(4)
+	check(economy.last_report.unclean == 2, "決算のときに掃除されていない客室を数える（2室）")
+	check(economy.pollution == 1, "掃除されていない客室が2室あると、ゴミが足りていても衛生が1レベル悪化する")
+	check(logged("掃除の済んでいない客室 2室（ハウスキーパー室が足りません）"), "決算のメッセージに原因が出る")
 	return true
 
 # ---------------------------------------------------

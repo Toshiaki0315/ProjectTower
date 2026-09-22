@@ -22,6 +22,9 @@ const ROUTE_EDGE_COLOR := Color(0.05, 0.05, 0.1, 0.8) # 経路の縁取り（明
 const ROUTE_ALPHA := 0.7           # 経路の濃さ
 const ROUTE_SELECTED_WIDTH := 6.0  # 選んでいる住人の経路は太く描く（旧3.0から倍増）
 const HOME_COLOR := Color(1.0, 0.85, 0.2) # エレベーターの待機階の印
+const GRIME_COLOR := Color(0.35, 0.25, 0.1) # 衛生の悪化で建物にかかる、くすんだ茶色
+const GRIME_ALPHA_PER_LEVEL := 0.07        # 悪化のレベル1につき、くすみの濃さ（レベル5で0.35）
+const GRIME_SPOT_COLOR := Color(0.2, 0.14, 0.06, 0.55) # 汚れの点
 const VIP_ONLY_COLOR := Color(1.0, 0.75, 0.1) # VIP専用のシャフトの印（金色）
 const BOMB_COLOR := Color(1.0, 0.25, 0.2) # 爆破予告のマスの印
 const FIRE_COLORS := [Color(1.0, 0.5, 0.1), Color(1.0, 0.8, 0.2)] # 燃えているマス（交互に点滅）
@@ -63,6 +66,23 @@ func update_hover() -> void:
 	if hover_visible:
 		hover_cell = world.tile_map.local_to_map(make_canvas_position_local(hover_screen_pos))
 
+# 衛生の悪化の汚れを描く。first〜last は画面に映っているマスの範囲
+func draw_grime(level: int, first: Vector2i, last: Vector2i, tile_size: Vector2) -> void:
+	var tint := GRIME_COLOR
+	tint.a = GRIME_ALPHA_PER_LEVEL * level
+	for x in range(first.x, last.x + 1):
+		for y in range(first.y, last.y + 1):
+			var cell := Vector2i(x, y)
+			if world.is_cell_empty(cell):
+				continue
+			var pos := Vector2(cell) * tile_size
+			draw_rect(Rect2(pos, tile_size), tint)
+			# 汚れの点（マスごとに決まった場所。レベルが上がるほど増える）
+			var h := absi(hash(cell))
+			for i in mini(level, 4):
+				var spot := Vector2((h >> (i * 4)) % 14 + 1, (h >> (i * 4 + 2)) % 12 + 2)
+				draw_rect(Rect2(pos + spot, Vector2(1.5, 1.5)), GRIME_SPOT_COLOR)
+
 # 住人の動線を、今いるところから行き先まで線で描く
 func draw_route(resident, tile_size: Vector2, px: float) -> void:
 	var points := PackedVector2Array([resident.position])
@@ -102,6 +122,11 @@ func _draw() -> void:
 		for resident in world.residents:
 			if is_instance_valid(resident) and not resident.path.is_empty():
 				draw_route(resident, tile_size, px)
+
+	# 衛生の悪化: レベルに応じて、ビル全体が茶色くくすみ、汚れの点が増える（画面に映っている範囲だけ）
+	var pollution: int = world.economy_system.pollution
+	if pollution > 0:
+		draw_grime(pollution, first, last, tile_size)
 
 	# カーソル下のマス
 	# 建設モードなら、建てたときに使うマス全体を強調する
