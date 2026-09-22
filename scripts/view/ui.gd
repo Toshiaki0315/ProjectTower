@@ -260,6 +260,7 @@ func build_bars() -> void:
 		"ヘリポート（横4マス）: 屋上にだけ建てられる。火事のとき消防ヘリが飛んできて、上の階の火から消す",
 		"火災: ★2以上のビルでときどき出火。20分ごとに隣と上へ燃え広がり、60分燃えたテナントは焼け落ちる（警備員が消火する）",
 		"爆破予告: ★3以上で資金500万Cr以上のビルにときどき届く。身代金を払うか、警備員に探させる。120分以内に見つけて解体できないと、まわりの階ごと吹き飛ぶ",
+		"家賃: 「家賃」を選んでオフィスをクリックすると 普通 → 高い（賃料1.4倍・不満+15・入居しにくい） → 安い（0.7倍・不満-10・すぐ入居） と切り替わる",
 		"VIP専用: エレベーターのシャフトをクリックして設定。VIPがスイートへ向かう間は、VIPだけが乗れる（待機階を1階にしておくと待たせずに乗せられる）",
 		"VIP: ★4の条件がそろうと朝9時に予告、16時に来館してスイートに一泊。翌朝のチェックアウトまでのストレスが30以下なら合格（不合格なら翌日また来る）",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
@@ -445,6 +446,8 @@ func get_mode_label(mode: String) -> String:
 		return "稼働時間帯"
 	if mode == world.MODE_VIP_ONLY:
 		return "VIP専用"
+	if mode == world.MODE_RENT:
+		return "家賃"
 	if mode == world.MODE_DEMOLISH:
 		return "撤去"
 	var name: String = world.BUILDINGS[mode].name
@@ -469,6 +472,8 @@ func get_mode_info(mode: String) -> String:
 		return "無料（シャフトをクリックで 終日 → 6時〜24時 → 8時〜20時 と切り替え）"
 	if mode == world.MODE_VIP_ONLY:
 		return "無料（シャフトをクリックで、VIPの来館中はVIPだけが乗れるエレベーターにする。もう一度クリックで解除）"
+	if mode == world.MODE_RENT:
+		return "無料（オフィスをクリックで 普通 → 高い → 安い と切り替え。高いと賃料は増えるが不満も増え、空室に次のテナントが決まりにくい）"
 	if mode == world.MODE_DEMOLISH:
 		return "クリックした建物を撤去（撤去費用は建設費の1割・最低%s。建設費は戻らない。ドラッグで続けて撤去）" % world.money_text(world.MIN_DEMOLISH_FEE)
 	if mode == world.MODE_ADD_CAR:
@@ -660,8 +665,9 @@ func update_hover_label():
 	var text = "%s: %s" % [world.get_floor_name(cell.y), world.BUILDINGS[type].name if type != "" else "空き"]
 	if world.incident_system.has_roach_at(cell):
 		text += "（ゴキブリ発生中）"
-	if type in world.OFFICE_TYPES and world.tenant_system.get_rating_text(cell) != "":
-		text += "（%s）" % world.tenant_system.get_rating_text(cell)
+	if type in world.OFFICE_TYPES:
+		var rating: String = world.tenant_system.get_rating_text(cell)
+		text += "（%s%s）" % [world.tenant_system.get_rent_text(cell), "・" + rating if rating != "" else ""]
 	if world.hotel_system.is_room_type(type):
 		var room_rating: String = world.tenant_system.get_room_rating_text(cell)
 		text += "（%s%s・%s）" % [world.hotel_system.get_room_state_text(cell), "・" + room_rating if room_rating != "" else "",

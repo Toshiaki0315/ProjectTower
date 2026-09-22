@@ -48,6 +48,7 @@ const MODE_ADD_CAR := "add_car"   # エレベーターのシャフトにカゴ�
 const MODE_SET_HOME := "set_home" # エレベーターの待機階（呼び出しがないとカゴが戻る階）を決めるモード
 const MODE_SERVICE := "service"   # エレベーターの稼働時間帯を切り替えるモード
 const MODE_VIP_ONLY := "vip_only" # エレベーターをVIP専用にする（VIPの来館中はVIPだけが乗れる）
+const MODE_RENT := "rent"         # オフィスの家賃（安い・普通・高い）を切り替えるモード
 const MODE_DEMOLISH := "demolish" # 左クリックで撤去するモード（右クリックでも撤去できる）
 
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
@@ -55,7 +56,7 @@ const MODE_GROUPS := [
 	{"name": "テナント", "modes": ["small_office", "office", "large_office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "fastfood", "shop", "cinema", "housing", "wedding", "event_hall"]},
 	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "frame", "stairs", "escalator", "elevator", "express_elevator", "large_elevator", "service_elevator", "add_car", "set_home", "service", "vip_only"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking", "helipad", "garden"]},
-	{"name": "その他", "modes": ["demolish", "resident"]},
+	{"name": "その他", "modes": ["rent", "demolish", "resident"]},
 ]
 const SCROLL_MARGIN_ROWS := 10 # スクロールできる範囲の、建物の上下に足す余白（行数）
 
@@ -485,6 +486,8 @@ func can_click_cell(cell: Vector2i) -> bool:
 		return elevator_system.is_shaft_type(get_building_type(cell))
 	if current_mode == MODE_VIP_ONLY:
 		return elevator_system.is_shaft_type(get_building_type(cell)) and get_building_type(cell) != "service_elevator"
+	if current_mode == MODE_RENT:
+		return OFFICE_TYPES.has(get_building_type(cell))
 	if current_mode == MODE_DEMOLISH:
 		# 支えているマスも「空きフロアを残して撤去」ができる（跡地そのものは支えている間は撤去できない）。
 		# 撤去費用が足りないときは撤去できない
@@ -498,7 +501,7 @@ func can_click_cell(cell: Vector2i) -> bool:
 # カーソル下で強調表示するマス（建設モードなら、建てたときに使うマス全部）
 func get_hover_footprint(cell: Vector2i) -> Array[Vector2i]:
 	if current_mode == MODE_RESIDENT or current_mode == MODE_ADD_CAR or current_mode == MODE_SET_HOME \
-			or current_mode == MODE_SERVICE or current_mode == MODE_VIP_ONLY or current_mode == MODE_DEMOLISH \
+			or current_mode == MODE_SERVICE or current_mode == MODE_VIP_ONLY or current_mode == MODE_RENT or current_mode == MODE_DEMOLISH \
 			or elevator_system.is_shaft_type(get_building_type(cell)):
 		return [cell]
 	return get_footprint(cell, current_mode)
@@ -634,6 +637,8 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 		show_message(elevator_system.cycle_service(map_pos))
 	elif current_mode == MODE_VIP_ONLY:
 		show_message(elevator_system.toggle_vip_only(map_pos))
+	elif current_mode == MODE_RENT:
+		show_message(tenant_system.cycle_rent(map_pos))
 	elif current_mode == MODE_DEMOLISH:
 		demolish_at(map_pos)
 	elif elevator_system.is_shaft_type(current_mode) and get_building_type(map_pos) == current_mode:
@@ -723,6 +728,7 @@ func call_elevator(cell: Vector2i):
 
 # 建物が増減したときに、建物に対応する仕組み（エレベーター・社員・客室・住宅・会場）を更新する
 func rebuild_systems():
+	tenant_system.remove_lost_rents()
 	elevator_system.rebuild()
 	incident_system.rebuild()
 	noise_system.rebuild()

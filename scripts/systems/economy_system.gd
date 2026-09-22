@@ -151,7 +151,7 @@ func settle(day: int) -> void:
 
 # オフィスの1マスの1日の賃料（オフィスの種類で変わる）
 func office_rent(cell: Vector2i) -> int:
-	return OFFICE_RENTS.get(world.get_building_type(cell), 0)
+	return int(OFFICE_RENTS.get(world.get_building_type(cell), 0) * world.tenant_system.rent_rate(cell)) # 家賃の設定で変わる
 
 # 入口からたどり着けるオフィスの賃料の合計（休日の計算用）
 func holiday_rent() -> int:

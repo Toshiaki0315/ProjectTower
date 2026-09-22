@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -1732,7 +1732,7 @@ func run_tenant_rating_scenario() -> bool:
 			upper_bad += 1
 	check(upper_bad > 0, "カゴ1台でエレベーター待ちが長いので、評価が悪いオフィスがある（%d棟）" % upper_bad)
 	await hover_cell(Vector2i(6, 13))
-	check(main.hover_label.text.contains("オフィス（評価: "), "カーソルを合わせるとオフィスの評価と平均ストレスが出る")
+	check(main.hover_label.text.contains("オフィス（家賃 普通") and main.hover_label.text.contains("評価: "), "カーソルを合わせるとオフィスの家賃・評価・平均ストレスが出る")
 	check(main.stats_label.text.contains("オフィス: 良い"), "ビルの状況に評価ごとのオフィスの数が出る")
 	await capture("tenant_rating_01")
 	
@@ -1784,7 +1784,7 @@ func run_vacancy_scenario() -> bool:
 	check(main.last_message.contains("オフィス退去 %d棟" % vacant.size()), "決算のメッセージに退去した数が出る")
 	check(main.rating_system.population() == 52 - 4 * vacant.size(), "空室のオフィスの社員は人口に数えない")
 	await hover_cell(vacant[0])
-	check(main.hover_label.text.contains("空室・2日後に新しいテナントが入居"), "空室にカーソルを合わせると入居までの日数が出る")
+	check(main.hover_label.text.contains("空室・2日後から入居者を募集"), "空室にカーソルを合わせると入居者の募集までの日数が出る")
 	check(main.stats_label.text.contains("空室%d" % vacant.size()), "ビルの状況に空室の数が出る")
 	await capture("vacancy_01_vacant")
 	
@@ -1803,6 +1803,12 @@ func run_vacancy_scenario() -> bool:
 	print("    4日目に退去: %d棟" % second_wave)
 	
 	# 5日目の決算: 3日目に空室になったオフィスは2日たったので、新しいテナントが入居する
+	#（ゴミ処理場がないので衛生の悪化が進み、ゴキブリも出ている。汚れたビルには入居が決まりにくいので、きれいに戻しておく）
+	check(tenants.move_in_chance(vacant[0]) < 1.0, "衛生の悪化やゴキブリのあるビルは、入居が決まりにくい（%d%%）" % int(tenants.move_in_chance(vacant[0]) * 100))
+	main.economy_system.pollution = 0
+	main.incident_system.roaches.clear()
+	build_support([Vector2i(-8, 19), Vector2i(-5, 19), Vector2i(-2, 19)], "recycling") # ゴミ処理場3つ（1日60まで処理）で、きれいなまま保つ
+	check(tenants.move_in_chance(vacant[0]) == 1.0, "きれいなビルで家賃が普通なら、募集を始めた日に入居が決まる")
 	await run_day(5)
 	var moved_in := true
 	for origin in vacant:
@@ -4559,4 +4565,55 @@ func run_vip_elevator_scenario() -> bool:
 	await choose_mode("vip_only")
 	await click_cell(Vector2i(9, 15), MOUSE_BUTTON_LEFT)
 	check(not elevators.is_vip_only(Vector2i(9, 18)), "もう一度クリックすると解除できる")
+	return true
+
+# シナリオ73: オフィスの家賃（安い・普通・高い）
+# 家賃で賃料・社員の不満・空室への入居の決まりやすさが変わる。
+# ---------------------------------------------------
+func run_rent_scenario() -> bool:
+	print("[シナリオ] オフィスの家賃")
+	var tenants = main.tenant_system
+	var economy = main.economy_system
+	var office := Vector2i(0, 17) # はじめからある2階のオフィス（x=0〜3）
+	focus_camera(Vector2i(2, 16))
+	await wait_frames(1)
+	check(economy.office_rent(office) == 10000 and tenants.rent_info(office).name == "普通", "家賃ははじめ「普通」（1マス10,000Cr）")
+
+	# 「家賃」でオフィスをクリックするたびに 普通 → 高い → 安い → 普通 と切り替わる
+	await choose_mode("rent")
+	check(main.mode_select.text == "家賃" and main.mode_select.tooltip_text.contains("普通 → 高い → 安い"), "建設メニューに「家賃」がある")
+	await click_cell(Vector2i(2, 17), MOUSE_BUTTON_LEFT)
+	check(tenants.rent_info(office).name == "高い" and economy.office_rent(Vector2i(3, 17)) == 14000, "高い: 賃料が1.4倍（1マス14,000Cr）")
+	check(logged("家賃を「高い」（1マス1日 14,000Cr）にしました"), "切り替えたことがメッセージで出る")
+	await hover_cell(Vector2i(1, 17))
+	check(main.hover_label.text.contains("家賃 高い・14,000Cr/マス"), "カーソルを合わせると家賃が出る")
+	check(tenants.rent_info(office).stress == 15.0 and tenants.move_in_chance(office) < 0.5, "高いと、社員の不満が増え、空室に次のテナントが決まりにくい")
+	await click_cell(Vector2i(2, 17), MOUSE_BUTTON_LEFT)
+	check(tenants.rent_info(office).name == "安い" and economy.office_rent(office) == 7000, "安い: 賃料が0.7倍（1マス7,000Cr）")
+	check(tenants.rent_info(office).stress < 0.0 and tenants.rent_info(office).wait_days == 1, "安いと、社員の不満が減り、空室はすぐ入居者を探し始める")
+	await click_cell(Vector2i(2, 17), MOUSE_BUTTON_LEFT)
+	check(tenants.rent_info(office).name == "普通", "もう一度で「普通」に戻る")
+	await click_cell(Vector2i(2, 18), MOUSE_BUTTON_LEFT)
+	check(main.last_message == "家賃はオフィスに設定します", "オフィス以外には家賃を設定できない")
+
+	# 家賃が高いと、同じ働き方でも評価のストレスが15高くなる
+	await click_cell(Vector2i(2, 17), MOUSE_BUTTON_LEFT) # 高い
+	var normal_office := Vector2i(4, 17)
+	for cell in main.get_unit_cells(office) + main.get_unit_cells(normal_office):
+		main.commute_system.workers[cell].arrived_day = 1
+		tenants.day_peak_stress[cell] = 10.0
+	main.economy_system.pollution = 0
+	tenants.evaluate_day(1)
+	check(is_equal_approx(tenants.offices[office].average - tenants.offices[normal_office].average, 15.0), "家賃が高いオフィスは、評価のストレスが15高い")
+
+	# 家賃はセーブに残り、撤去して建て直したオフィスには引き継がない
+	var save_path := "user://test_rent.json"
+	main.save_system.save_game(save_path)
+	tenants.rent_levels.clear()
+	main.save_system.load_game(save_path)
+	check(tenants.rent_info(office).name == "高い", "家賃の設定はセーブに残る")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
+	main.funds = 10000000
+	main.demolish_at(office)
+	check(not tenants.rent_levels.has(office), "撤去すると、そのオフィスの家賃の設定は消える")
 	return true

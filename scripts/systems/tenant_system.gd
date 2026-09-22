@@ -13,7 +13,10 @@ extends Node2D
 #   退去:            評価が「悪い」の日が LEAVE_AFTER_BAD_DAYS 日続くと、テナントが退去して空室になる
 #                     （1日に退去するのは MAX_LEAVE_PER_DAY 棟まで。一度に全部出ていかないようにする）
 #                     （空室の間は社員が出勤せず、賃料も入らず、人口にも数えない）
-#   入居:            空室になって VACANT_DAYS 日たつと、新しいテナントが入居する（評価は「良い」から）
+#   家賃:            オフィスごとに 安い・普通・高い を選べる（RENT_LEVELS。「家賃」の道具でクリックして切り替え）。
+#                     高いほど賃料は増えるが、社員の不満（ストレス）が増え、空室に次のテナントが決まりにくい
+#   入居:            空室になって、家賃ごとの日数（wait_days）がたつと、毎日の決算で入居者が決まるか抽選する。
+#                     決まる確率は家賃ごとの move_in から、衛生の悪化・ゴキブリのぶん下がる（評価は「良い」から）
 # ■ ホテルの客室
 #   宿泊客がチェックインしてから帰るまでのストレスの一番高い値で、チェックアウトのときに評価が決まる。
 #   評価が悪い部屋ほど客が来にくい（CHECKIN_CHANCE: その夜に客が来る確率）。
@@ -31,6 +34,7 @@ extends Node2D
 # ---------------------------------------------------
 
 enum Rating { GOOD, NORMAL, BAD }
+enum Rent { LOW, NORMAL, HIGH }
 
 const GOOD_BELOW := 30.0
 const BAD_FROM := 60.0
@@ -40,6 +44,16 @@ const MAX_LEAVE_PER_DAY := 2    # 1日に退去するテナントの数の上限
 const CHECKIN_CHANCE := {Rating.GOOD: 1.0, Rating.NORMAL: 0.6, Rating.BAD: 0.2} # 客室の評価ごとの、客が来る確率
 const RATING_NAMES := {Rating.GOOD: "良い", Rating.NORMAL: "普通", Rating.BAD: "悪い"}
 const WARN_BEFORE_LEAVE := 1 # 退去まで残りこの日数になると、評価のマークが点滅して知らせる
+# オフィスの家賃: rate … 賃料の倍率 / stress … 社員の評価に足すストレス /
+#                wait_days … 空室になってから入居者を探し始めるまでの日数 / move_in … 1日に入居が決まる確率
+const RENT_LEVELS := {
+	Rent.LOW: {"name": "安い", "rate": 0.7, "stress": -10.0, "wait_days": 1, "move_in": 1.0},
+	Rent.NORMAL: {"name": "普通", "rate": 1.0, "stress": 0.0, "wait_days": VACANT_DAYS, "move_in": 1.0},
+	Rent.HIGH: {"name": "高い", "rate": 1.4, "stress": 15.0, "wait_days": VACANT_DAYS, "move_in": 0.35},
+}
+const RENT_ORDER := [Rent.NORMAL, Rent.HIGH, Rent.LOW] # クリックするたびにこの順に切り替わる
+const MOVE_IN_POLLUTION_PENALTY := 0.15 # 衛生の悪化1につき、入居が決まる確率がこの割合だけ下がる
+const MOVE_IN_ROACH_RATE := 0.5         # ゴキブリのいるビルでは、入居が決まる確率がこの倍になる
 const BLINK_PERIOD := 0.6    # マークの点滅の周期（秒）
 const RATING_COLORS := {
 	Rating.GOOD: Color(0.3, 0.9, 0.4),
@@ -57,6 +71,7 @@ var day_peak_stress := {} # 社員（オフィスのマス）・住宅の家族�
 var offices := {}
 var homes := {} # 住宅（左端のマス） -> オフィスと同じ形 {rating, average, bad_days, vacant, vacant_days}
 var rooms := {} # 客室（左端のマス） -> {rating, average}（最後に泊まった客のストレス）
+var rent_levels := {} # オフィス（左端のマス） -> Rent（決めていなければ普通）
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -92,7 +107,7 @@ func evaluate_day(day: int) -> Dictionary:
 		# 空室: 決まった日数がたったら新しいテナントが入居する
 		if office.vacant:
 			office.vacant_days += 1
-			if office.vacant_days >= VACANT_DAYS:
+			if office.vacant_days >= rent_info(origin).wait_days and roll_move_in(origin, day):
 				offices[origin] = new_tenant()
 				result.moved_in += 1
 			continue
@@ -105,7 +120,8 @@ func evaluate_day(day: int) -> Dictionary:
 		if count == 0:
 			continue # 出勤がなかった日は前の評価のまま
 		# ビルが汚れている（ゴミ処理が追いつかない）ほど、働きにくい
-		office.average = total / count + world.economy_system.pollution_stress() + world.incident_system.roach_stress(origin)
+		office.average = total / count + world.economy_system.pollution_stress() + world.incident_system.roach_stress(origin) \
+			+ rent_info(origin).stress # 家賃が高いほど不満が増える
 		office.rating = rating_for(office.average)
 		office.bad_days = office.bad_days + 1 if office.rating == Rating.BAD else 0
 		# 評価の悪い日が続いたら退去する（1日に退去するのは MAX_LEAVE_PER_DAY 棟まで）
@@ -231,11 +247,63 @@ func get_rating_text(cell: Vector2i) -> String:
 		return ""
 	var office = offices[cell]
 	if office.vacant:
-		return "空室・%d日後に新しいテナントが入居" % (VACANT_DAYS - office.vacant_days)
+		var wait: int = rent_info(cell).wait_days - office.vacant_days
+		if wait > 0:
+			return "空室・%d日後から入居者を募集" % wait
+		return "空室・入居者を募集中（1日に決まる見込み %d%%）" % int(move_in_chance(cell) * 100)
 	var text := "評価: %s・平均ストレス%d" % [RATING_NAMES[office.rating], int(office.average)]
 	if office.bad_days > 0:
 		text += "・悪い日が%d日続いている" % office.bad_days
 	return text
+
+# そのオフィスの家賃の設定（決めていなければ普通）
+func rent_info(origin: Vector2i) -> Dictionary:
+	return RENT_LEVELS[rent_levels.get(origin, Rent.NORMAL)]
+
+# 賃料の倍率（economy_system の賃料の計算で使う。どのマスを指定してもよい）
+func rent_rate(cell: Vector2i) -> float:
+	if world.building_grid.has(cell):
+		cell = world.building_grid[cell].origin
+	return rent_info(cell).rate
+
+# 家賃を 普通 → 高い → 安い → 普通 … と切り替える。メッセージを返す
+func cycle_rent(cell: Vector2i) -> String:
+	if not world.OFFICE_TYPES.has(world.get_building_type(cell)):
+		return "家賃はオフィスに設定します"
+	var origin: Vector2i = world.building_grid[cell].origin
+	var now: int = rent_levels.get(origin, Rent.NORMAL)
+	var next: int = RENT_ORDER[(RENT_ORDER.find(now) + 1) % RENT_ORDER.size()]
+	if next == Rent.NORMAL:
+		rent_levels.erase(origin)
+	else:
+		rent_levels[origin] = next
+	var per_cell := int(world.economy_system.OFFICE_RENTS[world.get_building_type(cell)] * RENT_LEVELS[next].rate)
+	return "このオフィスの家賃を「%s」（1マス1日 %s）にしました" % [RENT_LEVELS[next].name, world.money_text(per_cell)]
+
+# 家賃の表示（カーソルの説明用）
+func get_rent_text(cell: Vector2i) -> String:
+	var origin: Vector2i = world.building_grid[cell].origin
+	var per_cell := int(world.economy_system.OFFICE_RENTS[world.get_building_type(cell)] * rent_info(origin).rate)
+	return "家賃 %s・%s/マス" % [rent_info(origin).name, world.money_text(per_cell)]
+
+# 空室に入居者が決まる、1日あたりの確率（家賃・衛生の悪化・ゴキブリで変わる）
+func move_in_chance(origin: Vector2i) -> float:
+	var chance: float = rent_info(origin).move_in * (1.0 - MOVE_IN_POLLUTION_PENALTY * world.economy_system.pollution)
+	if world.incident_system.has_roaches():
+		chance *= MOVE_IN_ROACH_RATE
+	return clampf(chance, 0.0, 1.0)
+
+# その日に入居者が決まるか（日ごとに決まった乱数）
+func roll_move_in(origin: Vector2i, day: int) -> bool:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([origin, day, "move_in"])
+	return rng.randf() < move_in_chance(origin)
+
+# なくなったオフィスの家賃の設定を消す（同じ場所に建て直したオフィスに引き継がないように）
+func remove_lost_rents() -> void:
+	for origin in rent_levels.keys():
+		if not world.OFFICE_TYPES.has(world.get_building_type(origin)) or world.building_grid[origin].origin != origin:
+			rent_levels.erase(origin)
 
 func count_rating(rating: Rating) -> int:
 	var n := 0

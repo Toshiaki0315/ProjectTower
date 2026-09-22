@@ -71,6 +71,7 @@ func collect() -> Dictionary:
 		"service_hours": collect_keyed(elevators.service_hours),
 		"vip_only": collect_keyed(elevators.vip_only),
 		"offices": collect_tenants(tenants.offices),
+		"rents": tenants.rent_levels.keys().map(func(cell): return {"x": cell.x, "y": cell.y, "value": tenants.rent_levels[cell]}),
 		"homes": collect_tenants(tenants.homes),
 		"rooms": collect_tenants(tenants.rooms),
 		"hotel_rooms": collect_hotel_rooms(),
@@ -185,6 +186,9 @@ func apply_elevators(data: Dictionary) -> void:
 	elevators.apply_home_floors()
 
 func apply_tenants(data: Dictionary) -> void:
+	world.tenant_system.rent_levels.clear()
+	for record in data.get("rents", []): # 古いセーブデータにはない
+		world.tenant_system.rent_levels[Vector2i(int(record.x), int(record.y))] = int(record.value)
 	var tenants = world.tenant_system
 	tenants.offices = restore_tenants(data.offices)
 	tenants.homes = restore_tenants(data.homes)
