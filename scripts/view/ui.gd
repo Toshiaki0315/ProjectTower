@@ -260,7 +260,7 @@ func build_bars() -> void:
 		"ヘリポート（横4マス）: 屋上にだけ建てられる。火事のとき消防ヘリが飛んできて、上の階の火から消す",
 		"火災: ★2以上のビルでときどき出火。20分ごとに隣と上へ燃え広がり、60分燃えたテナントは焼け落ちる（警備員が消火する）",
 		"爆破予告: ★3以上で資金500万Cr以上のビルにときどき届く。身代金を払うか、警備員に探させる。120分以内に見つけて解体できないと、まわりの階ごと吹き飛ぶ",
-		"VIP: ★4の条件がそろうと16時にVIPが来館。ストレス30以下できれいな空きスイートに着けば合格（不合格なら翌日また来る）",
+		"VIP: ★4の条件がそろうと朝9時に予告、16時に来館してスイートに一泊。翌朝のチェックアウトまでのストレスが30以下なら合格（不合格なら翌日また来る）",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
 		"オフィスの評価: 毎日の決算で、社員のその日の最大ストレスの平均から 良い（緑）・普通（黄）・悪い（赤）を付ける",
@@ -571,7 +571,7 @@ func update_stats_panel(warning_list: Array[String]) -> void:
 			hotel.count_rooms(hotel.RoomState.OCCUPIED), hotel.count_rooms(hotel.RoomState.DIRTY),
 			hotel.count_rooms(hotel.RoomState.CLEAN)])
 	if world.vip_system.is_visiting():
-		lines.append("VIPが来館中（ストレス %d）" % int(world.vip_system.vip.stress))
+		lines.append(world.vip_system.get_status_text())
 	for w in warning_list:
 		lines.append("⚠ " + w)
 	stats_label.text = "\n".join(lines)

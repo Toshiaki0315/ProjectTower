@@ -2842,47 +2842,64 @@ func run_vip_scenario() -> bool:
 	check(rating.waiting_for_vip() and not vips.passed, "VIPの来館を待っている状態")
 	check(not rating.evaluate(), "VIPが来るまでは★4に昇格できない")
 	
-	# 16時: VIPが来館して、スイートへ向かう
+	# 9時: 来館の予告が届く
 	focus_camera(Vector2i(6, 17))
-	main.clock.set_time(1, 15, 59)
+	main.clock.set_time(1, 8, 59)
 	main.clock.set_process(true)
 	set_speed(8.0)
+	await wait_until(func(): return vips.state == vips.State.ANNOUNCED, 20.0)
+	check(vips.state == vips.State.ANNOUNCED and logged("本日16時にVIPが来館します"), "朝のうちに、来館の予告が届く")
+	check(not vips.is_visiting(), "予告の時点では、まだ来ていない")
+
+	# 16時: VIPが来館して、スイートへ向かう
+	main.clock.set_time(1, 15, 59)
 	await wait_until(func(): return vips.is_visiting(), 30.0)
 	check(vips.is_visiting(), "16時にVIPが来館する")
-	check(main.last_message.contains("VIPが来館しました"), "来館がメッセージで知らされる")
+	check(logged("VIPが来館しました"), "来館がメッセージで知らされる")
 	check(vips.vip.base_color == vips.VIP_COLOR, "VIPは金色の服")
 	await wait_frames(2)
 	check(main.stats_label.text.contains("VIPが来館中"), "ビルの状況にVIPの来館が出る")
 	await capture("vip_01_arrived")
-	
-	# スイートに着けば合格。VIPはその部屋に泊まる
-	await wait_until(func(): return vips.passed or not vips.is_visiting(), 40.0)
+
+	# スイートに着くとチェックインして一泊する（まだ合否は決まらない）
+	await wait_until(func(): return vips.state == vips.State.STAYING or not vips.is_visiting(), 40.0)
+	var hotel = main.hotel_system
+	check(vips.state == vips.State.STAYING and hotel.rooms[Vector2i(10, 17)].state == hotel.RoomState.OCCUPIED, "VIPはスイートにチェックインする")
+	check(not vips.passed, "チェックインした時点では、まだ合否は決まらない")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("VIPが宿泊中"), "ビルの状況にVIPの宿泊が出る")
+
+	# 翌朝のチェックアウトで合否が決まる
+	main.clock.set_time(2, 6, 59)
+	await wait_until(func(): return vips.state == vips.State.NONE, 40.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
-	check(vips.passed, "ストレス30以下でスイートに着いたので合格")
-	check(main.last_message.contains("VIPがスイートに満足しました"), "合格がメッセージで知らされる")
-	var hotel = main.hotel_system
-	check(hotel.rooms[Vector2i(10, 17)].state == hotel.RoomState.OCCUPIED, "VIPはそのスイートに泊まる")
+	check(vips.passed, "待たせずに泊まってもらえたので、チェックアウトのときに合格")
+	check(logged("大満足です"), "合格がメッセージで知らされる")
 	check(rating.missing_for_next().is_empty(), "★4の条件がそろう")
 	check(rating.evaluate() and rating.stars == 4, "次の決算で★4に昇格する")
 	await capture("vip_02_passed")
-	
-	# 待たせてしまったときは不合格（ストレスが高いVIPは帰る）
+
+	# 待たせてしまったときは、チェックアウトのときに不合格になる
 	vips.passed = false
 	vips.visit_day = 0
 	rating.stars = 3
+	await wait_frames(2)
 	hotel.rooms[Vector2i(10, 17)].state = hotel.RoomState.CLEAN
 	hotel.rooms[Vector2i(10, 17)].guests = []
-	main.clock.set_time(2, 15, 59)
+	main.clock.set_time(3, 15, 59)
 	main.clock.set_process(true)
 	set_speed(8.0)
 	await wait_until(func(): return vips.is_visiting(), 30.0)
 	vips.vip.stress = 80.0 # エレベーターで待たされた想定
-	await wait_until(func(): return not vips.is_visiting(), 40.0)
+	await wait_until(func(): return vips.state == vips.State.STAYING or not vips.is_visiting(), 40.0)
+	check(vips.state == vips.State.STAYING, "ストレスが高くても、その日は泊まっていく")
+	main.clock.set_time(4, 6, 59)
+	await wait_until(func(): return vips.state == vips.State.NONE, 40.0)
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
-	check(not vips.passed, "ストレスが高いままだと不合格")
-	check(main.last_message.contains("VIPを待たせてしまいました"), "不合格の理由がメッセージで出る")
+	check(not vips.passed, "ストレスが高かったので、チェックアウトのときに不合格")
+	check(logged("待たされて不満でした"), "不合格の理由がメッセージで出る")
 	check(rating.waiting_for_vip(), "★4にはまたVIPの宿泊が必要")
 	return true
 
