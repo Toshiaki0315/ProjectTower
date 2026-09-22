@@ -14,7 +14,8 @@ extends Node
 #   時間切れだと爆発して、そのテナントが吹き飛ぶ（黒焦げの焼け跡が残る。上の階の建物はそのまま残る）。
 # ■ 火災
 #   ★MIN_STARS 以上のビルには、毎日 FIRE_MINUTE に FIRE_CHANCE の確率で出火する。
-#   燃えているマスは SPREAD_MINUTES ごとに、隣（左右）と上のマスの建物へ燃え広がる。
+#   燃えているマスは SPREAD_MINUTES ごとに、隣（左右）と上のマスのテナントへ燃え広がる
+#   （エレベーター・階段・ロビー・空きフロア・焼け跡には燃え移らない）。
 #   1マスが BURN_MINUTES 燃え続けると、そのテナントは焼け落ちて焼け跡になる（建て直すには先に撤去する）。
 #   警備員が燃えているマスへ行き、EXTINGUISH_MINUTES 分かけて1マスずつ消し止める。
 #   ヘリポートがあると消防ヘリが飛んできて、上の階の火から順に HELI_MINUTES 分で消していく
@@ -24,7 +25,7 @@ extends Node
 #   衛生の悪化（economy_system.pollution）が ROACH_POLLUTION 以上の日が ROACH_DAYS 日続くと発生し、
 #   毎日 ROACH_SPAWN 棟ずつテナントに広がる。
 #   ゴキブリがいるテナントは、評価にストレス ROACH_STRESS 相当が足される。
-#   ゴミの処理が追いついて悪化が0に戻ると、いなくなる。
+#   ゴミの処理が追いついて悪化が0に戻ると、いなくなる。撤去・焼失したテナントのゴキブリはすぐ消える。
 # ■ 埋蔵金の発見
 #   地下に建物を建てる（＝掘る）と、マスごとに TREASURE_CHANCE の確率で埋蔵金が見つかる。
 #   深いほど見つかりやすく、金額も大きい（TREASURE_PER_FLOOR × 深さ）。
@@ -108,6 +109,15 @@ func rebuild() -> void:
 			if is_instance_valid(guards[origin].resident):
 				guards[origin].resident.queue_free()
 			guards.erase(origin)
+	remove_lost_roaches()
+
+# 撤去・焼失してなくなったテナントのゴキブリを消す。撤去すると空きフロアや焼け跡が残って
+# マスが空にならないので、「その場所にまだ同じテナントがあるか」で見る
+#（見ないと、同じ場所に建て直した新しいテナントにゴキブリが引き継がれてしまう）
+func remove_lost_roaches() -> void:
+	for origin in roaches.keys():
+		if not is_target(origin) or world.building_grid[origin].origin != origin:
+			roaches.erase(origin)
 
 func guard_count() -> int:
 	return guards.size()
@@ -308,8 +318,13 @@ func spread_fire() -> void:
 	for cell in fire.keys():
 		for dir in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP]:
 			var next: Vector2i = cell + dir
-			if not world.is_cell_empty(next) and not fire.has(next):
+			# 燃え移るのはテナントだけ（エレベーター・階段・ロビー・空きフロア・焼け跡には移らない）
+			if is_target(next) and not fire.has(next):
 				burn(next)
+
+# 事件の的になるテナントのマスか（爆弾を仕掛けられる・燃え移る・ゴキブリが出る）
+func is_target(cell: Vector2i) -> bool:
+	return TARGET_TYPES.has(world.get_building_type(cell))
 
 # ---------------------------------------------------
 # 消防ヘリ（ヘリポートがあるときだけ飛んでくる）
@@ -428,10 +443,7 @@ func roach_stress(origin: Vector2i) -> float:
 
 # 1日1回の判定（衛生が悪い日が続くと増え、きれいになるといなくなる）
 func update_roaches(day: int) -> void:
-	# なくなったテナントのゴキブリは消す
-	for origin in roaches.keys():
-		if world.is_cell_empty(origin):
-			roaches.erase(origin)
+	remove_lost_roaches() # なくなったテナントのゴキブリは消す
 	if world.economy_system.pollution >= ROACH_POLLUTION:
 		roach_days += 1
 	else:

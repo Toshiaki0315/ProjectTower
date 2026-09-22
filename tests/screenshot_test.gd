@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -4304,4 +4304,39 @@ func run_demolish_rules_scenario() -> bool:
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(9, 17)) == "shop", "撤去して空けた場所には、新しい施設を建てられる")
 	await capture("demolish_02_rebuilt")
+	return true
+
+# シナリオ69: 事件の的はテナントだけ（火はエレベーターや階段に燃え移らない・
+# 撤去して建て直したテナントにゴキブリは引き継がれない）
+# ---------------------------------------------------
+func run_incident_targets_scenario() -> bool:
+	print("[シナリオ] 事件の的はテナントだけ")
+	main.clear_world()
+	main.funds = 10000000
+	var incidents = main.incident_system
+	build_support(cells_row(18, 8, 16), "lobby")
+	main.select_mode("shop")
+	main.build_at(Vector2i(9, 17)) # ショップ（x=9〜11）
+	build_support([Vector2i(12, 17), Vector2i(8, 17)]) # 左右に階段
+	main.select_mode("office")
+	main.build_at(Vector2i(9, 16)) # 上にオフィス（x=9〜12）
+
+	# 火はテナントにだけ燃え移る
+	incidents.start_fire(Vector2i(11, 17))
+	for i in 3:
+		incidents.spread_fire()
+	check(incidents.fire.has(Vector2i(10, 17)), "同じショップの隣のマスには燃え広がる")
+	check(incidents.fire.has(Vector2i(11, 16)), "上の階のオフィスにも燃え広がる")
+	check(not incidents.fire.has(Vector2i(12, 17)) and not incidents.fire.has(Vector2i(8, 17)), "階段には燃え移らない")
+	check(not incidents.fire.has(Vector2i(11, 18)), "下の階のロビーには燃え移らない")
+	incidents.reset_incidents()
+
+	# 撤去して建て直したテナントに、ゴキブリは引き継がれない
+	incidents.roaches[Vector2i(9, 17)] = true
+	main.demolish_at(Vector2i(9, 17)) # 上にオフィスがあるので、空きフロアになる
+	check(main.get_building_type(Vector2i(9, 17)) == "frame", "ゴキブリのいたショップを撤去すると空きフロアになる")
+	check(not incidents.roaches.has(Vector2i(9, 17)), "撤去すると、そのテナントのゴキブリはすぐ消える")
+	main.select_mode("shop")
+	main.build_at(Vector2i(9, 17))
+	check(main.get_building_type(Vector2i(9, 17)) == "shop" and not incidents.has_roaches(), "同じ場所に建て直したテナントには、ゴキブリがいない")
 	return true
