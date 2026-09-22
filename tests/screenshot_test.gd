@@ -3079,7 +3079,16 @@ func run_fire_scenario() -> bool:
 		if incidents.roll_fire(day):
 			days += 1
 	print("    1年のうち出火した日: ", days)
-	check(days > 0 and days < 365 * incidents.FIRE_CHANCE * 3, "★2以上では、ときどき出火する（1年のうち%d日）" % days)
+	check(days > 0 and days < 365 * incidents.fire_chance() * 3, "★2以上では、ときどき出火する（1年のうち%d日）" % days)
+	# 大きなビルほど火が出やすい（テナントが多いほど出火の確率が上がる。上限あり）
+	var small_chance: float = incidents.fire_chance()
+	main.funds = 100000000
+	main.select_mode("office")
+	for y in range(14, 4, -1):
+		for x in [-8, -4, 0, 4]:
+			main.build_at(Vector2i(x, y))
+	check(incidents.fire_chance() > small_chance, "テナントが増えると、出火しやすくなる（%.1f%% → %.1f%%）" % [small_chance * 100, incidents.fire_chance() * 100])
+	check(incidents.fire_chance() <= incidents.FIRE_CHANCE_MAX, "出火の確率には上限がある（%d%%）" % int(incidents.FIRE_CHANCE_MAX * 100))
 	return true
 
 # ---------------------------------------------------
@@ -4392,6 +4401,10 @@ func run_incident_targets_scenario() -> bool:
 	check(incidents.fire.has(Vector2i(11, 16)), "上の階のオフィスにも燃え広がる")
 	check(not incidents.fire.has(Vector2i(12, 17)) and not incidents.fire.has(Vector2i(8, 17)), "階段には燃え移らない")
 	check(not incidents.fire.has(Vector2i(11, 18)), "下の階のロビーには燃え移らない")
+	incidents.reset_incidents()
+	incidents.start_fire(Vector2i(10, 16)) # 上の階のオフィスから出火
+	incidents.spread_fire()
+	check(incidents.fire.has(Vector2i(10, 17)), "下の階のテナントにも燃え広がる（上下左右）")
 	incidents.reset_incidents()
 
 	# 撤去して建て直したテナントに、ゴキブリは引き継がれない

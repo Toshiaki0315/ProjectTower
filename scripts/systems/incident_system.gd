@@ -20,8 +20,9 @@ extends Node
 #   時間切れだと爆発して、爆弾の棟と、そのまわり BLAST_RANGE マス（上下の階・左右の隣）の
 #   テナントがまとめて吹き飛ぶ（黒焦げの焼け跡が残る。エレベーター・階段・ロビーは残る）。
 # ■ 火災
-#   ★MIN_STARS 以上のビルには、毎日 FIRE_MINUTE に FIRE_CHANCE の確率で出火する。
-#   燃えているマスは SPREAD_MINUTES ごとに、隣（左右）と上のマスのテナントへ燃え広がる
+#   ★MIN_STARS 以上のビルには、毎日 FIRE_MINUTE に fire_chance() の確率で出火する
+#   （FIRE_CHANCE から、テナントが多いほど上がる。上限 FIRE_CHANCE_MAX）。
+#   燃えているマスは SPREAD_MINUTES ごとに、上下左右のマスのテナントへ燃え広がる
 #   （エレベーター・階段・ロビー・空きフロア・焼け跡には燃え移らない）。
 #   1マスが BURN_MINUTES 燃え続けると、そのテナントは焼け落ちて焼け跡になる（建て直すには先に撤去する）。
 #   警備員が燃えているマスへ行き、EXTINGUISH_MINUTES 分かけて1マスずつ消し止める。
@@ -51,7 +52,10 @@ const DEFUSE_MINUTES := 10.0 # 爆弾の解体にかかる時間（分）
 const SEARCH_MINUTES := 3.0    # 警備員が1棟を調べるのにかかる時間（分）
 const RANSOM_RATE := 0.2       # 身代金: そのときの資金のこの割合
 const RANSOM_MIN := 300000     # 身代金の最低額
-const FIRE_CHANCE := 0.02      # 1日に出火する確率
+const FIRE_CHANCE := 0.01      # 小さなビルで1日に出火する確率
+const FIRE_CHANCE_PER_TENANT := 0.0005 # テナント1棟ごとに上がる出火の確率（大きなビルほど火が出やすい）
+                                       #（テナント20棟の中くらいのビルで、ちょうど2%になる）
+const FIRE_CHANCE_MAX := 0.04  # 出火の確率の上限
 const FIRE_MINUTE := 20 * 60   # 出火する時刻
 const SPREAD_MINUTES := 20.0   # 隣のマスへ燃え広がるまでの時間（分）
 const BURN_MINUTES := 60.0     # 1マスが燃え尽きる（建物が焼け落ちる）までの時間（分）
@@ -188,7 +192,14 @@ func roll_fire(day: int) -> bool:
 		return false
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([day, "fire"])
-	return rng.randf() < FIRE_CHANCE
+	return rng.randf() < fire_chance()
+
+# 1日に出火する確率（テナントが多い大きなビルほど高い）
+func fire_chance() -> float:
+	var tenants := 0
+	for type in TARGET_TYPES:
+		tenants += world.find_units_of_type(type).size()
+	return minf(FIRE_CHANCE + FIRE_CHANCE_PER_TENANT * tenants, FIRE_CHANCE_MAX)
 
 # 爆弾を仕掛けるテナントを選ぶ（なければnull）
 func pick_target(day: int):
@@ -460,7 +471,7 @@ func burn_down(cell: Vector2i) -> void:
 # 燃えているマスから、隣（左右）と上のマスへ燃え広がる
 func spread_fire() -> void:
 	for cell in fire.keys():
-		for dir in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP]:
+		for dir in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
 			var next: Vector2i = cell + dir
 			# 燃え移るのはテナントだけ（エレベーター・階段・ロビー・空きフロア・焼け跡には移らない）
 			if is_target(next) and not fire.has(next):
