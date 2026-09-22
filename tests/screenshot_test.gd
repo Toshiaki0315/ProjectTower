@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -4492,4 +4492,71 @@ func run_blast_scenario() -> bool:
 	check(main.get_building_type(Vector2i(12, 17)) == "stairs" and main.get_building_type(Vector2i(13, 18)) == "lobby", "階段やロビーは吹き飛ばない")
 	check(logged("4棟のテナントが吹き飛びました"), "何棟吹き飛んだかがメッセージで出る")
 	await capture("blast_01")
+	return true
+
+# シナリオ72: VIP専用エレベーター（VIPの来館中は、VIPだけが乗れる）
+#   1階: ロビー(8) エレベーターA(9) ロビー(10) エレベーターB(11) ロビー(12〜16)
+#   4階: 空きフロア(10) スイート(12〜15)。A・Bとも1階〜4階
+# ---------------------------------------------------
+func run_vip_elevator_scenario() -> bool:
+	print("[シナリオ] VIP専用エレベーター")
+	main.clear_world()
+	main.funds = 10000000
+	var vips = main.vip_system
+	var elevators = main.elevator_system
+	build_support([Vector2i(8, 18), Vector2i(10, 18)] + cells_row(18, 12, 16), "lobby")
+	build_support([Vector2i(9, 18), Vector2i(9, 17), Vector2i(9, 16), Vector2i(9, 15)], "elevator")
+	build_support([Vector2i(11, 18), Vector2i(11, 17), Vector2i(11, 16), Vector2i(11, 15)], "elevator")
+	for y in [17, 16]:
+		build_support([Vector2i(10, y)] + cells_row(y, 12, 15), "frame")
+	build_support([Vector2i(10, 15)], "frame")
+	main.select_mode("hotel_suite")
+	main.build_at(Vector2i(12, 15))
+	check(main.get_building_type(Vector2i(12, 15)) == "hotel_suite", "4階にスイートがある")
+	focus_camera(Vector2i(11, 16))
+	await wait_frames(1)
+
+	# エレベーターAをVIP専用にする
+	await choose_mode("vip_only")
+	check(main.mode_select.text == "VIP専用" and main.mode_select.tooltip_text.contains("VIPだけが乗れる"), "建設メニューに「VIP専用」がある")
+	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
+	check(elevators.is_vip_only(Vector2i(9, 16)), "シャフトをクリックするとVIP専用になる（どの階でも同じシャフト）")
+	check(logged("VIP専用にしました"), "設定したことがメッセージで出る")
+	check(elevators.get_vip_only_cells().size() == 4, "VIP専用のシャフトには目印が付く")
+	await hover_cell(Vector2i(9, 17))
+	check(main.hover_label.text.contains("（VIP専用）"), "カーソルを合わせるとVIP専用と出る")
+
+	# VIPが来ていないときは、ふつうに誰でも乗れる
+	var can_ride_a := func(vip: bool) -> bool:
+		return main.get_moves(Vector2i(9, 18), false, vip).any(func(m): return m.to == Vector2i(9, 15))
+	check(can_ride_a.call(false), "VIPが来ていないうちは、ほかの人もVIP専用のエレベーターに乗れる")
+
+	# VIPがスイートへ向かっている間は、VIPだけが乗れる
+	vips.invite()
+	check(vips.is_arriving(), "VIPが来館してスイートへ向かう")
+	check(elevators.is_reserved_for_vip(Vector2i(9, 18)), "VIPが向かっている間、VIP専用のシャフトは空けておく")
+	check(not can_ride_a.call(false) and can_ride_a.call(true), "VIPが向かっている間は、VIPだけが乗れる")
+	var others: Array[Vector2i] = main.find_path(Vector2i(8, 18), Vector2i(12, 15))
+	check(not others.has(Vector2i(9, 15)) and others.has(Vector2i(11, 15)), "ほかの人は、もう1本のエレベーターを使う")
+	check(vips.vip.path.has(Vector2i(9, 15)), "VIPはVIP専用のエレベーターに乗る")
+	await capture("vip_elevator_01")
+
+	# すでに乗り場で待っていた人も、別のエレベーターへ回る
+	var waiter = main.spawn_resident(Vector2i(8, 18))
+	vips.vip.go_to(vips.room_origin)
+	main.clock.set_process(true)
+	set_speed(4.0)
+	await wait_until(func(): return vips.state == vips.State.STAYING or not vips.is_visiting(), 30.0)
+	check(vips.state == vips.State.STAYING, "VIPはVIP専用のエレベーターでスイートに着く")
+	check(not elevators.is_reserved_for_vip(Vector2i(9, 18)), "VIPが着いたら、VIP専用のシャフトはまた誰でも使える")
+	check(can_ride_a.call(false), "VIPが着いた後は、ほかの人もまた乗れる")
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	if is_instance_valid(waiter):
+		waiter.queue_free()
+
+	# もう一度クリックで解除
+	await choose_mode("vip_only")
+	await click_cell(Vector2i(9, 15), MOUSE_BUTTON_LEFT)
+	check(not elevators.is_vip_only(Vector2i(9, 18)), "もう一度クリックすると解除できる")
 	return true

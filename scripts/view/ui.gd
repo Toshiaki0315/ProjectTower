@@ -260,6 +260,7 @@ func build_bars() -> void:
 		"ヘリポート（横4マス）: 屋上にだけ建てられる。火事のとき消防ヘリが飛んできて、上の階の火から消す",
 		"火災: ★2以上のビルでときどき出火。20分ごとに隣と上へ燃え広がり、60分燃えたテナントは焼け落ちる（警備員が消火する）",
 		"爆破予告: ★3以上で資金500万Cr以上のビルにときどき届く。身代金を払うか、警備員に探させる。120分以内に見つけて解体できないと、まわりの階ごと吹き飛ぶ",
+		"VIP専用: エレベーターのシャフトをクリックして設定。VIPがスイートへ向かう間は、VIPだけが乗れる（待機階を1階にしておくと待たせずに乗せられる）",
 		"VIP: ★4の条件がそろうと朝9時に予告、16時に来館してスイートに一泊。翌朝のチェックアウトまでのストレスが30以下なら合格（不合格なら翌日また来る）",
 		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
 		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
@@ -442,6 +443,8 @@ func get_mode_label(mode: String) -> String:
 		return "待機階を設定"
 	if mode == world.MODE_SERVICE:
 		return "稼働時間帯"
+	if mode == world.MODE_VIP_ONLY:
+		return "VIP専用"
 	if mode == world.MODE_DEMOLISH:
 		return "撤去"
 	var name: String = world.BUILDINGS[mode].name
@@ -464,6 +467,8 @@ func get_mode_info(mode: String) -> String:
 		return "無料（シャフトをクリックでその階を待機階に。もう一度クリックで解除）"
 	if mode == world.MODE_SERVICE:
 		return "無料（シャフトをクリックで 終日 → 6時〜24時 → 8時〜20時 と切り替え）"
+	if mode == world.MODE_VIP_ONLY:
+		return "無料（シャフトをクリックで、VIPの来館中はVIPだけが乗れるエレベーターにする。もう一度クリックで解除）"
 	if mode == world.MODE_DEMOLISH:
 		return "クリックした建物を撤去（撤去費用は建設費の1割・最低%s。建設費は戻らない。ドラッグで続けて撤去）" % world.money_text(world.MIN_DEMOLISH_FEE)
 	if mode == world.MODE_ADD_CAR:
@@ -676,6 +681,8 @@ func update_hover_label():
 		elif not cars.is_empty():
 			if world.elevator_system.get_home(cell) == cell.y:
 				text += "（待機階）"
+			if world.elevator_system.is_vip_only(cell):
+				text += "（VIP専用%s）" % ("・VIPを案内中" if world.vip_system.is_arriving() else "")
 			var service: Dictionary = world.elevator_system.get_service(cell)
 			if service.name != "終日":
 				text += "（稼働 %s%s）" % [service.name, "" if cars[0].in_service else "・今は停止中"]

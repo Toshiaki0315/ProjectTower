@@ -32,6 +32,10 @@ var room_origin := Vector2i.ZERO # 向かっている・泊まっているスイ
 func setup(p_world: Node2D) -> void:
 	world = p_world
 
+# VIPがスイートへ向かっている間か（VIP専用のエレベーターを空けておく間）
+func is_arriving() -> bool:
+	return state == State.ARRIVING and is_instance_valid(vip)
+
 # 今、VIPが来館中か（向かっている間と、泊まっている間）
 func is_visiting() -> bool:
 	return is_instance_valid(vip) and (state == State.ARRIVING or state == State.STAYING)
@@ -74,12 +78,14 @@ func invite() -> void:
 		return
 	vip = world.spawn_resident(entrance)
 	vip.base_color = VIP_COLOR
+	vip.vip = true # VIP専用のエレベーターに乗れる
+	state = State.ARRIVING # 先に来館中にしておく（VIP専用のエレベーターを使った経路を探すため）
 	if not vip.go_to(room_origin):
 		world.show_message("VIPがスイートまでたどり着けないため、帰ってしまいました（明日もう一度来ます）")
 		vip.queue_free()
 		vip = null
+		state = State.NONE
 		return
-	state = State.ARRIVING
 	world.show_message("VIPが来館しました！ スイートへ向かっています。明朝のチェックアウトで評価が決まります")
 
 # きれいな空きスイート（左端のマス）を探す。なければnull

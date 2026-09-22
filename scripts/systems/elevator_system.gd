@@ -32,6 +32,7 @@ var cars: Array = [] # すべてのカゴ（シャフトは column と top_y〜b
 var hall_assignments := {} # [乗り場のマス, 方向] -> 割り当てたカゴ
 var home_floors := {}      # [シャフトの種類, 列のx] -> 待機階のy
 var service_hours := {}    # [シャフトの種類, 列のx] -> SERVICE_PRESETS の番号（省略時は0＝終日）
+var vip_only := {}         # [シャフトの種類, 列のx] -> true（VIPの来館中は、VIPだけが乗れる）
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -93,6 +94,9 @@ func set_home(cell: Vector2i) -> String:
 
 # 待機階の設定をカゴに反映する。シャフトからなくなった階の設定は消す
 func apply_home_floors() -> void:
+	for key in vip_only.keys(): # なくなったシャフトのVIP専用の設定は消す
+		if not cars.any(func(car): return is_instance_valid(car) and car.shaft_type == key[0] and car.column == key[1]):
+			vip_only.erase(key)
 	for key in home_floors.keys():
 		var found := false
 		for car in cars:
@@ -122,6 +126,34 @@ func cycle_service(cell: Vector2i) -> String:
 	var key := shaft_key(cell)
 	service_hours[key] = (service_hours.get(key, 0) + 1) % SERVICE_PRESETS.size()
 	return "このエレベーターの稼働時間帯を「%s」にしました" % SERVICE_PRESETS[service_hours[key]].name
+
+# VIP専用の設定を切り替える。メッセージを返す
+func toggle_vip_only(cell: Vector2i) -> String:
+	var type: String = world.get_building_type(cell)
+	if not is_shaft_type(type) or type == "service_elevator":
+		return "VIP専用はお客さんが乗るエレベーター（標準・急行・大型）に設定します"
+	var key := shaft_key(cell)
+	if vip_only.has(key):
+		vip_only.erase(key)
+		return "VIP専用を解除しました"
+	vip_only[key] = true
+	return "VIP専用にしました（VIPが来館している間は、VIPだけが乗れます。待機階を1階にしておくと、着いたVIPをすぐ乗せられます）"
+
+func is_vip_only(cell: Vector2i) -> bool:
+	return world.building_grid.has(cell) and vip_only.has(shaft_key(cell))
+
+# 今、VIPのために空けているシャフトか（VIP専用で、VIPがスイートへ向かっている間）
+func is_reserved_for_vip(cell: Vector2i) -> bool:
+	return is_vip_only(cell) and world.vip_system.is_arriving()
+
+# VIP専用のシャフトのマス（目印を描くため）
+func get_vip_only_cells() -> Array:
+	var cells: Array = []
+	for car in cars:
+		if is_instance_valid(car) and vip_only.has([car.shaft_type, car.column]):
+			for y in range(car.top_y, car.bottom_y + 1):
+				cells.append(Vector2i(car.column, y))
+	return cells
 
 # 今この時刻に動いているシャフトか
 func is_in_service(type: String, column: int) -> bool:

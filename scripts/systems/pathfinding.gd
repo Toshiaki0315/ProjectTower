@@ -18,6 +18,7 @@ const STAIRS_COST := 2.0         # 階段で1階分上り下りする
 const ESCALATOR_COST := 1.0      # エスカレーターで1階分上り下りする（待ち時間がなく、階段より楽）
 const ELEVATOR_WAIT_COST := 4.0  # エレベーターに乗る（待ち時間の見込み。定員が大きいカゴほど短くなる）
 const ELEVATOR_FLOOR_COST := 0.5 # エレベーターで1階分移動する
+const VIP_WAIT_COST := 0.5      # VIPがVIP専用のカゴに乗る（待たずに乗れる）
 
 # 指定マスから1回で移動できる先とそのコストの一覧（住人の移動ルールはすべてここで決まる）
 # - 横移動:       隣のマスに建物があれば歩ける（エレベーターの扉の前も通り抜けられる）
@@ -28,7 +29,8 @@ const ELEVATOR_FLOOR_COST := 0.5 # エレベーターで1階分移動する
 #                 （サービスエレベーターは裏方＝清掃員だけ乗れる。staff で切り替える）
 #                 （急行は1階とスカイロビーの階の間だけ。速いので1階分のコストは標準の1/3）
 # 戻り値: [{"to": Vector2i, "cost": float}, ...]
-func get_moves(cell: Vector2i, staff := false) -> Array:
+#                 （VIP専用のシャフトは、VIPの来館中はVIPだけが乗れる。vip で切り替える）
+func get_moves(cell: Vector2i, staff := false, vip := false) -> Array:
 	var result: Array = []
 	if not world.is_walkable(cell):
 		return result
@@ -43,12 +45,16 @@ func get_moves(cell: Vector2i, staff := false) -> Array:
 		result.append({"to": cell + ESCALATOR_UP, "cost": ESCALATOR_COST})
 	if is_escalator_foot(cell - ESCALATOR_UP):
 		result.append({"to": cell - ESCALATOR_UP, "cost": ESCALATOR_COST})
-	if world.elevator_system.is_shaft_type(world.get_building_type(cell)) and (staff or world.get_building_type(cell) != "service_elevator"):
+	var reserved: bool = world.elevator_system.is_reserved_for_vip(cell)
+	if world.elevator_system.is_shaft_type(world.get_building_type(cell)) and (staff or world.get_building_type(cell) != "service_elevator") \
+			and (vip or not reserved):
 		var car = world.elevator_system.get_car_at(cell)
 		if car and car.in_service and car.is_stop_floor(cell.y):
 			# 速いカゴほど1階ぶんが安く、定員の大きいカゴほど待ち時間の見込みが短い
 			var floor_cost: float = ELEVATOR_FLOOR_COST * car.SPEED / car.speed
 			var wait_cost: float = ELEVATOR_WAIT_COST * car.CAPACITY / car.capacity
+			if vip and reserved:
+				wait_cost = VIP_WAIT_COST # VIP専用のカゴは待たずに乗れるので、VIPはこちらを選ぶ
 			for y in range(car.top_y, car.bottom_y + 1):
 				if y != cell.y and car.is_stop_floor(y):
 					var cost := wait_cost + floor_cost * absi(y - cell.y)
@@ -56,8 +62,8 @@ func get_moves(cell: Vector2i, staff := false) -> Array:
 	return result
 
 # fromからtoへ1回で移動できるか
-func can_move(from: Vector2i, to: Vector2i, staff := false) -> bool:
-	for move in get_moves(from, staff):
+func can_move(from: Vector2i, to: Vector2i, staff := false, vip := false) -> bool:
+	for move in get_moves(from, staff, vip):
 		if move.to == to:
 			return true
 	return false
@@ -80,7 +86,7 @@ func is_elevator_ride(from: Vector2i, to: Vector2i) -> bool:
 
 # ダイクストラ法でコストが最小の経路を求める
 # 戻り値: [from, ..., to] のマス配列。経路がなければ空配列。
-func find_path(from: Vector2i, to: Vector2i, staff := false) -> Array[Vector2i]:
+func find_path(from: Vector2i, to: Vector2i, staff := false, vip := false) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	if world.is_cell_empty(from) or world.is_cell_empty(to):
 		return result
@@ -108,7 +114,7 @@ func find_path(from: Vector2i, to: Vector2i, staff := false) -> Array[Vector2i]:
 			result.push_front(from)
 			return result
 		done[current] = true
-		for move in get_moves(current, staff):
+		for move in get_moves(current, staff, vip):
 			var next: Vector2i = move.to
 			if done.has(next):
 				continue

@@ -79,6 +79,7 @@ var stress := 0.0
 var walked := 0.0 # 歩いた距離（px。足の動かし方を決めるのに使う）
 var base_color := Color.WHITE  # 平常時の体の色（社員: 白 / 宿泊客: 薄紫 / 清掃員: 水色）
 var staff := false             # 裏方（清掃員など）。サービスエレベーターに乗れる
+var vip := false               # VIP。VIP専用のエレベーターに乗れる
 var sprite_offset := Vector2.ZERO # 体を描く位置のずれ（同じマスにいる連れ同士が重ならないように）
 var selected := false:
 	set(value):
@@ -97,7 +98,7 @@ func is_moving() -> bool:
 
 # 目的地を設定して経路を求める。経路がなければfalseを返す。
 func go_to(target: Vector2i) -> bool:
-	var new_path: Array[Vector2i] = world.find_path(cell, target, staff)
+	var new_path: Array[Vector2i] = world.find_path(cell, target, staff, vip)
 	if new_path.is_empty():
 		return false
 	new_path.pop_front() # 先頭は現在地なので除く
@@ -135,7 +136,7 @@ func process_walking(delta: float) -> void:
 		var at_cell_center: bool = position == world.tile_map.map_to_local(cell)
 
 		# マスの中心から次の一歩を踏み出す前に、まだ通れるか確認する
-		if at_cell_center and not world.can_move(cell, next, staff):
+		if at_cell_center and not world.can_move(cell, next, staff, vip):
 			if not go_to(goal):
 				path.clear()
 				world.show_message("経路が途切れたため、住人が立ち止まりました")
@@ -171,7 +172,8 @@ func process_waiting() -> void:
 		leave("住人の足元が撤去されたため、住人が退場しました")
 		return
 	# シャフトが変わってカゴがなくなった／行き先の階に行けなくなったら経路を探し直す
-	if world.elevator_system.get_cars_at(cell).is_empty() or not world.can_move(cell, path[0], staff):
+	# （VIP専用になって乗れなくなったときも、ほかの道を探す）
+	if world.elevator_system.get_cars_at(cell).is_empty() or not world.can_move(cell, path[0], staff, vip):
 		if not go_to(goal):
 			path.clear()
 			state = State.WALKING

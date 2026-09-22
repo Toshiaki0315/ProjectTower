@@ -69,6 +69,7 @@ func collect() -> Dictionary:
 		"cars": collect_cars(),
 		"home_floors": collect_keyed(elevators.home_floors),
 		"service_hours": collect_keyed(elevators.service_hours),
+		"vip_only": collect_keyed(elevators.vip_only),
 		"offices": collect_tenants(tenants.offices),
 		"homes": collect_tenants(tenants.homes),
 		"rooms": collect_tenants(tenants.rooms),
@@ -156,6 +157,9 @@ func apply_elevators(data: Dictionary) -> void:
 	elevators.service_hours.clear()
 	for record in data.service_hours:
 		elevators.service_hours[[record.type, int(record.x)]] = int(record.value)
+	elevators.vip_only.clear()
+	for record in data.get("vip_only", []): # 古いセーブデータにはない
+		elevators.vip_only[[record.type, int(record.x)]] = true
 	# カゴ: シャフトを建て直すと1本に1台できるので、足りない分だけ追加する
 	var wanted := {} # [種類, 列] -> カゴがいた階の一覧
 	for record in data.cars:

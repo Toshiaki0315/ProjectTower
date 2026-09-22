@@ -22,6 +22,7 @@ const ROUTE_EDGE_COLOR := Color(0.05, 0.05, 0.1, 0.8) # 経路の縁取り（明
 const ROUTE_ALPHA := 0.7           # 経路の濃さ
 const ROUTE_SELECTED_WIDTH := 6.0  # 選んでいる住人の経路は太く描く（旧3.0から倍増）
 const HOME_COLOR := Color(1.0, 0.85, 0.2) # エレベーターの待機階の印
+const VIP_ONLY_COLOR := Color(1.0, 0.75, 0.1) # VIP専用のシャフトの印（金色）
 const BOMB_COLOR := Color(1.0, 0.25, 0.2) # 爆破予告のマスの印
 const FIRE_COLORS := [Color(1.0, 0.5, 0.1), Color(1.0, 0.8, 0.2)] # 燃えているマス（交互に点滅）
 const ROACH_COLOR := Color(0.25, 0.15, 0.1) # ゴキブリ
@@ -169,6 +170,10 @@ class HomeMarkers extends Node2D:
 			draw_rect(bomb_rect.grow(-1), overlay.BOMB_COLOR, false, 1.5)
 			var center := bomb_rect.get_center()
 			draw_circle(center, 3.0, overlay.BOMB_COLOR)
+		# VIP専用のシャフト（右端の金色の帯）
+		for cell in world.elevator_system.get_vip_only_cells():
+			var pos := Vector2(cell) * tile_size
+			draw_rect(Rect2(pos + Vector2(tile_size.x - 2.5, 1), Vector2(2, tile_size.y - 2)), overlay.VIP_ONLY_COLOR)
 		for cell in world.elevator_system.get_home_cells():
 			var pos := Vector2(cell) * tile_size
 			# マスの左端の黄色い帯と、その中の下向きの三角（「ここに戻る」の印）
