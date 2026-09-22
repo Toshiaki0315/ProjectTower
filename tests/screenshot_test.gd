@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -2915,7 +2915,8 @@ func run_bomb_scenario() -> bool:
 	main.funds = 10000000
 	incidents.start_bomb(Vector2i(11, 17))
 	check(incidents.has_bomb(), "爆破予告が出ている")
-	check(logged("爆破予告！") and logged("飲食店") and logged("身代金"), "予告と身代金の要求がメッセージで知らされる")
+	check(logged("爆破予告！") and logged("ビルのどこかに爆弾") and logged("身代金"), "予告と身代金の要求がメッセージで知らされる")
+	check(not logged("飲食店に爆弾") and not main.ui.ransom_text.text.contains("飲食店"), "爆弾の場所は知らされない")
 	check(incidents.bomb.ransom == 2000000, "身代金は資金の2割（1,000万Crなら200万Cr）")
 	check(main.ui.ransom_panel.visible, "払うか払わないかを選ぶ画面が出る")
 	check(main.ui.ransom_pay_button.text.contains("2,000,000Cr") and not main.ui.ransom_pay_button.disabled, "「支払う」ボタンに身代金の額が出る")
@@ -2926,14 +2927,16 @@ func run_bomb_scenario() -> bool:
 	# 支払わない → 警備員が現場へ向かい、解体する
 	main.ui.ransom_refuse_button.pressed.emit()
 	check(not main.ui.ransom_panel.visible, "選ぶと画面が閉じる")
-	check(logged("支払いを断りました"), "断ったことがメッセージで出る")
-	check(incidents.bomb.guard == guard, "一番近い警備員が向かう")
+	check(logged("支払いを断りました") and logged("捜索を始めます"), "断ったことと、捜索を始めることがメッセージで出る")
+	await wait_frames(2)
+	check(incidents.bomb.search.has(Vector2i(9, 17)) and not incidents.bomb.found, "警備員が捜索に出る（まだ場所は分からない）")
 	await wait_frames(2)
 	check(main.stats_label.text.contains("爆破予告！"), "ビルの状況に爆破予告と残り時間が出る")
 	await capture("bomb_01_alert")
 	set_speed(16.0)
 	await wait_until(func(): return not incidents.has_bomb(), 60.0)
 	Engine.time_scale = 1.0
+	check(logged("爆弾を見つけました"), "警備員が爆弾を見つける")
 	check(main.get_building_type(Vector2i(11, 17)) == "restaurant", "解体が間に合い、飲食店は無事")
 	check(logged("爆弾を解体しました"), "解体の成功がメッセージで出る")
 	
@@ -2959,7 +2962,7 @@ func run_bomb_scenario() -> bool:
 	check(main.ui.ransom_pay_button.disabled and main.ui.ransom_pay_button.text.contains("資金が足りません"), "資金が足りないと「支払う」は押せない")
 	check(not incidents.pay_ransom() and incidents.has_bomb(), "資金が足りないと支払えない")
 	main.ui.ransom_refuse_button.pressed.emit()
-	check(logged("行ける警備員がいません"), "警備員がいないと、その旨がメッセージで出る")
+	check(logged("爆弾を探せる警備員がいません"), "警備員がいないと、その旨がメッセージで出る")
 	set_speed(16.0)
 	await wait_until(func(): return not incidents.has_bomb(), 60.0)
 	Engine.time_scale = 1.0
@@ -3296,7 +3299,8 @@ func run_save_scenario() -> bool:
 	# ビルを壊してから読み込むと、元に戻る
 	# セーブした後に起きた火災・爆破予告は、読み込んだビルに持ち込まない
 	main.incident_system.fire[Vector2i(9, 17)] = {"burn_left": 30.0, "work_left": 0.0}
-	main.incident_system.bomb = {"cell": Vector2i(12, 17), "left": 60.0, "defuse_left": 0.0, "guard": null}
+	main.incident_system.bomb = {"cell": Vector2i(12, 17), "left": 60.0, "defuse_left": 0.0, "guard": null,
+		"ransom": 0, "decided": true, "found": false, "searched": {}, "search": {}}
 	main.incident_system.fire_day = 7
 	main.clear_world()
 	main.funds = 0
@@ -4367,4 +4371,60 @@ func run_incident_targets_scenario() -> bool:
 	main.select_mode("shop")
 	main.build_at(Vector2i(9, 17))
 	check(main.get_building_type(Vector2i(9, 17)) == "shop" and not incidents.has_roaches(), "同じ場所に建て直したテナントには、ゴキブリがいない")
+	return true
+
+# シナリオ70: 爆弾の捜索（場所が分からないので、警備員が近い棟から調べて回る）
+# 2階に「警備室｜ショップ×4」と並べ、一番遠いショップに爆弾を仕掛ける。
+# ---------------------------------------------------
+func run_bomb_search_scenario() -> bool:
+	print("[シナリオ] 爆弾の捜索")
+	main.clear_world()
+	main.funds = 10000000
+	var incidents = main.incident_system
+	build_support(cells_row(18, 8, 23), "lobby")
+	main.select_mode("security")
+	main.build_at(Vector2i(8, 17)) # 警備室A（x=8〜9）
+	main.select_mode("shop")
+	for x in [10, 13, 16, 19]:
+		main.build_at(Vector2i(x, 17)) # ショップ4棟（x=10〜21）
+	await wait_frames(2)
+	focus_camera(Vector2i(15, 17))
+	await wait_frames(1)
+
+	# 一番遠いショップに爆弾。警備員は近い棟から順に調べる
+	main.clock.set_time(1, 10, 0)
+	main.clock.set_process(true)
+	incidents.start_bomb(Vector2i(20, 17)) # ショップのどのマスでも、その棟に仕掛けられる
+	check(incidents.bomb.cell == Vector2i(19, 17), "爆弾は棟（左端のマス）ごとに扱う")
+	incidents.refuse_ransom()
+	await wait_frames(2)
+	check(incidents.bomb.search[Vector2i(8, 17)].target == Vector2i(10, 17), "警備員は一番近い棟から調べに行く")
+	set_speed(8.0)
+	await wait_until(func(): return incidents.bomb != null and incidents.bomb.searched.size() >= 1, 30.0)
+	check(not incidents.bomb.found, "爆弾のない棟を調べても、見つからない")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("捜索中") and main.stats_label.text.contains("/4棟を調べた"), "ビルの状況に捜索の進み具合が出る")
+	await capture("bomb_search_01")
+	await wait_until(func(): return incidents.bomb == null or incidents.bomb.found, 60.0)
+	check(incidents.bomb != null and incidents.bomb.found, "調べて回るうちに、爆弾を見つける")
+	check(incidents.bomb.searched.size() == 4, "近い順に4棟を調べて、4棟目で見つかる")
+	await wait_until(func(): return not incidents.has_bomb(), 30.0)
+	check(logged("爆弾を解体しました"), "見つけた警備員がそのまま解体する")
+
+	# 警備室が2つあると手分けして探す（反対側から来た警備員がすぐ見つける）
+	main.select_mode("security")
+	main.build_at(Vector2i(22, 17)) # 警備室B（x=22〜23）
+	await wait_frames(2)
+	main.clock.set_time(2, 10, 0)
+	incidents.start_bomb(Vector2i(19, 17))
+	incidents.refuse_ransom()
+	await wait_frames(2)
+	var targets: Array = incidents.bomb.search.values().map(func(job): return job.target)
+	check(targets.size() == 2 and targets[0] != targets[1], "警備員2人が別々の棟を調べに行く")
+	check(targets.has(Vector2i(19, 17)), "反対側の警備員は、近い爆弾の棟へ向かう")
+	await wait_until(func(): return incidents.bomb == null or incidents.bomb.found, 60.0)
+	check(incidents.bomb != null and incidents.bomb.searched.size() <= 2, "手分けすると、少ない棟数で見つかる")
+	await wait_until(func(): return not incidents.has_bomb(), 30.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
 	return true

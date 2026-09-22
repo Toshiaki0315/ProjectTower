@@ -12,7 +12,10 @@ extends Node
 #   爆弾はテナント（TARGET_TYPES）1棟にランダムで仕掛けられ、テロリストから身代金を要求される。
 #   支払えば（ransom_for()）、爆弾は取り除かれて確実に安全。
 #   支払わなければ、そこから BOMB_LIMIT 分で爆発する（決めるまでは時間が進まない）。
-#   一番近い警備員が現場へ行き、DEFUSE_MINUTES 分かけて解体できれば成功。
+#   爆弾の場所は分からないので、警備員が手分けして捜索する: 手の空いた警備員が、
+#   まだ調べていないテナントを近い順に1棟ずつ訪ね、SEARCH_MINUTES 分かけて調べる。
+#   爆弾のある棟に着いた警備員が見つけ、そのまま DEFUSE_MINUTES 分かけて解体できれば成功。
+#   警備室が多く、エレベーターで速く動けるほど、早く見つかる。
 #   時間切れだと爆発して、そのテナントが吹き飛ぶ（黒焦げの焼け跡が残る。上の階の建物はそのまま残る）。
 # ■ 火災
 #   ★MIN_STARS 以上のビルには、毎日 FIRE_MINUTE に FIRE_CHANCE の確率で出火する。
@@ -40,6 +43,7 @@ const BOMB_CHANCE := 0.03   # 1日に爆破予告が届く確率
 const BOMB_MINUTE := 10 * 60 # 予告が届く時刻
 const BOMB_LIMIT := 120.0   # 予告から爆発までの時間（分）
 const DEFUSE_MINUTES := 10.0 # 爆弾の解体にかかる時間（分）
+const SEARCH_MINUTES := 3.0    # 警備員が1棟を調べるのにかかる時間（分）
 const RANSOM_RATE := 0.2       # 身代金: そのときの資金のこの割合
 const RANSOM_MIN := 300000     # 身代金の最低額
 const FIRE_CHANCE := 0.02      # 1日に出火する確率
@@ -71,7 +75,9 @@ var world: Node2D # main.gd
 
 var guards := {}    # 警備室（左端のマス） -> {"home": マス, "resident": 警備員}
 var bomb = null     # 今の爆破予告 {"cell": 仕掛けられたマス, "left": 残り時間（分）, "defuse_left": 解体の残り,
-                   #               "guard": 向かっている警備員, "ransom": 身代金, "decided": 支払わないと決めたか}
+                   #               "guard": 解体する警備員, "ransom": 身代金, "decided": 支払わないと決めたか,
+                   #               "found": 見つけたか, "searched": 調べ終えた棟 -> true,
+                   #               "search": 警備室 -> {"target": 調べに行く棟, "work": 調べた分}}
 var bomb_day := 0   # 最後に予告の判定をした日
 var fire := {}      # 燃えているマス -> {"burn_left": 焼け落ちるまでの分, "work_left": 消火の残りの分}
 var fire_spread_left := 0.0 # 次に燃え広がるまでの分
@@ -196,14 +202,14 @@ func start_bomb(cell) -> void:
 	if cell == null or world.is_cell_empty(cell):
 		return
 	last_incident_day = world.clock.day
+	cell = world.building_grid[cell].origin # 爆弾はテナント（棟）ごとに探すので、左端のマスで持つ
 	var ransom := ransom_for(world.funds)
 	bomb = {"cell": cell, "left": BOMB_LIMIT, "defuse_left": DEFUSE_MINUTES, "guard": null,
-		"ransom": ransom, "decided": false}
+		"ransom": ransom, "decided": false, "found": false, "searched": {}, "search": {}}
 	world.audio_system.play("alert")
-	var place := "%s の%s" % [world.get_floor_name(cell.y), world.BUILDINGS[world.get_building_type(cell)].name]
-	world.show_message("爆破予告！ %sに爆弾を仕掛けたと、テロリストから身代金 %s の要求が届きました"
-		% [place, world.money_text(ransom)])
-	world.ui.show_ransom_panel(place, ransom, world.funds >= ransom)
+	world.show_message("爆破予告！ ビルのどこかに爆弾を仕掛けたと、テロリストから身代金 %s の要求が届きました"
+		% world.money_text(ransom))
+	world.ui.show_ransom_panel(ransom, world.funds >= ransom)
 
 # 身代金の額（そのときの資金の2割。1万Cr単位に切り捨て、最低 RANSOM_MIN）
 func ransom_for(funds: int) -> int:
@@ -226,8 +232,10 @@ func refuse_ransom() -> void:
 		return
 	bomb.decided = true
 	world.ui.hide_ransom_panel()
-	world.show_message("身代金の支払いを断りました。%d分以内に爆弾を解体します。警備員が向かいます" % int(BOMB_LIMIT))
-	send_guard()
+	if guard_count() == 0:
+		world.show_message("身代金の支払いを断りましたが、爆弾を探せる警備員がいません！ 警備室を建てておきましょう")
+		return
+	world.show_message("身代金の支払いを断りました。%d分以内に爆弾を見つけて解体します。警備員が捜索を始めます" % int(BOMB_LIMIT))
 
 # 一番近い警備員を現場へ向かわせる
 func send_guard() -> void:
@@ -257,6 +265,12 @@ func process_bomb(minutes: float) -> void:
 	if not bomb.decided:
 		return # 身代金を払うか決めるまでは、時間は進まない
 	bomb.left -= minutes
+	if not bomb.found:
+		search_bomb(minutes) # まだ見つかっていなければ、警備員が捜索する
+		if bomb == null or not bomb.found:
+			if bomb != null and bomb.left <= 0.0:
+				explode()
+			return
 	var guard = bomb.guard
 	if is_instance_valid(guard) and guard.cell == bomb.cell and not guard.is_moving():
 		# 現場に着いた警備員が解体する
@@ -268,6 +282,73 @@ func process_bomb(minutes: float) -> void:
 		send_guard() # 警備員がいなくなったら、ほかの警備員を呼ぶ
 	if bomb.left <= 0.0:
 		explode()
+
+# 爆弾を探す: 手の空いた警備員が、まだ調べていないテナントを近い順に訪ねて調べる
+func search_bomb(minutes: float) -> void:
+	for origin in guards:
+		var guard = guards[origin].resident
+		if not is_instance_valid(guard):
+			bomb.search.erase(origin)
+			continue
+		var job = bomb.search.get(origin)
+		if job == null:
+			job = next_search_target(guard)
+			if job != null:
+				bomb.search[origin] = job
+				guard.go_to(job.target)
+			continue
+		if guard.cell != job.target or guard.is_moving():
+			continue # まだ向かっている途中
+		job.work += minutes
+		if job.work < SEARCH_MINUTES:
+			continue # 調べている途中
+		bomb.searched[job.target] = true
+		bomb.search.erase(origin)
+		if job.target == bomb.cell:
+			found_bomb(guard)
+			return
+
+# その警備員が次に調べる棟（まだ誰も調べていない・向かっていない棟のうち、行ける一番近いもの）
+func next_search_target(guard):
+	var taken := {}
+	for job in bomb.search.values():
+		taken[job.target] = true
+	var candidates: Array = []
+	for type in TARGET_TYPES:
+		for origin in world.find_units_of_type(type):
+			if not bomb.searched.has(origin) and not taken.has(origin):
+				candidates.append(origin)
+	# 近い順（上下の移動は横より手間がかかるので、階の差を重く見る）
+	candidates.sort_custom(func(a, b): return search_distance(guard.cell, a) < search_distance(guard.cell, b))
+	for origin in candidates:
+		if not world.find_path(guard.cell, origin, true).is_empty():
+			return {"target": origin, "work": 0.0}
+	return null
+
+func search_distance(from: Vector2i, to: Vector2i) -> int:
+	return absi(to.x - from.x) + absi(to.y - from.y) * 4
+
+# 調べ終えた棟の数と、調べる棟の数（表示用）
+func search_progress() -> Vector2i:
+	var total := 0
+	for type in TARGET_TYPES:
+		total += world.find_units_of_type(type).size()
+	return Vector2i(bomb.searched.size(), total)
+
+# 爆弾を見つけた: その警備員が解体する。ほかの警備員は警備室へ戻る
+func found_bomb(guard) -> void:
+	bomb.found = true
+	bomb.guard = guard
+	for origin in bomb.search.keys():
+		send_guards_home(guards[origin].resident)
+	bomb.search.clear()
+	world.audio_system.play("alert")
+	world.show_message("警備員が %s の%sで爆弾を見つけました！ 解体を始めます"
+		% [world.get_floor_name(bomb.cell.y), world.BUILDINGS[world.get_building_type(bomb.cell)].name])
+
+# 爆弾の捜索や解体に当たっている警備員か（火事の消火より、爆弾が先）
+func is_on_bomb_duty(origin: Vector2i) -> bool:
+	return has_bomb() and (bomb.guard == guards[origin].resident or bomb.search.has(origin))
 
 # 解体成功: 警備員は警備室に戻る
 func defused() -> void:
@@ -420,8 +501,8 @@ func dispatch_guards() -> void:
 		var guard = guards[origin].resident
 		if not is_instance_valid(guard) or guard.is_moving() or fire.has(guard.cell):
 			continue
-		if has_bomb() and bomb.guard == guard:
-			continue # 爆弾の解体が先
+		if is_on_bomb_duty(origin):
+			continue # 爆弾の捜索・解体が先
 		var best = null
 		var best_length := 0
 		for cell in fire:
@@ -531,4 +612,7 @@ func get_bomb_text() -> String:
 		return ""
 	if not bomb.decided:
 		return "爆破予告！ 身代金 %s を要求されています" % world.money_text(bomb.ransom)
-	return "爆破予告！ %s に爆弾（残り%d分）" % [world.get_floor_name(bomb.cell.y), int(bomb.left)]
+	if not bomb.found:
+		var progress := search_progress()
+		return "爆破予告！ 警備員が捜索中（残り%d分・%d/%d棟を調べた）" % [int(bomb.left), progress.x, progress.y]
+	return "爆弾を発見！ %s で解体中（残り%d分）" % [world.get_floor_name(bomb.cell.y), int(bomb.left)]

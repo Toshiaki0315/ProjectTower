@@ -810,7 +810,7 @@ func build_ransom_panel(canvas: CanvasLayer, theme: Theme) -> void:
 	ransom_pay_button.pressed.connect(func(): world.incident_system.pay_ransom())
 	box.add_child(ransom_pay_button)
 	ransom_refuse_button = Button.new()
-	ransom_refuse_button.text = "支払わない（警備員に爆弾を解体させる）"
+	ransom_refuse_button.text = "支払わない（警備員に爆弾を探させる）"
 	ransom_refuse_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	ransom_refuse_button.custom_minimum_size.x = 420 * UI_SCALE
 	ransom_refuse_button.pressed.connect(func(): world.incident_system.refuse_ransom())
@@ -818,9 +818,9 @@ func build_ransom_panel(canvas: CanvasLayer, theme: Theme) -> void:
 	ransom_panel = back
 
 # 身代金の画面を出す。払えるだけの資金がないときは「支払う」を押せない
-func show_ransom_panel(place: String, ransom: int, can_pay: bool) -> void:
-	ransom_text.text = "テロリストから電話です。\n「%sに爆弾を仕掛けた。身代金 %s を払え」\n\n支払わない場合、警備員が%d分以内に解体できなければ爆発します。" \
-		% [place, world.money_text(ransom), int(world.incident_system.BOMB_LIMIT)]
+func show_ransom_panel(ransom: int, can_pay: bool) -> void:
+	ransom_text.text = "テロリストから電話です。\n「ビルのどこかに爆弾を仕掛けた。身代金 %s を払え」\n\n支払わない場合、警備員が手分けして探します。%d分以内に見つけて解体できなければ爆発します。" \
+		% [world.money_text(ransom), int(world.incident_system.BOMB_LIMIT)]
 	ransom_pay_button.text = "支払う（%s）" % world.money_text(ransom) if can_pay else "支払う（資金が足りません）"
 	ransom_pay_button.disabled = not can_pay
 	ransom_panel.visible = true

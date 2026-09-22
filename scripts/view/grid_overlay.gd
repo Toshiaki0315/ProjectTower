@@ -163,8 +163,8 @@ class HomeMarkers extends Node2D:
 				flame_rect.position + Vector2(tile_size.x - 3, tile_size.y - 2),
 				flame_rect.position + Vector2(tile_size.x / 2.0, 3)], color)
 
-		# 爆破予告のマス（赤い枠が点滅する）
-		if world.incident_system.has_bomb() and world.tenant_system.blink_on():
+		# 爆弾を見つけたマス（赤い枠が点滅する。見つかるまでは場所は分からない）
+		if world.incident_system.has_bomb() and world.incident_system.bomb.found and world.tenant_system.blink_on():
 			var bomb_rect := Rect2(Vector2(world.incident_system.bomb.cell) * tile_size, tile_size)
 			draw_rect(bomb_rect.grow(-1), overlay.BOMB_COLOR, false, 1.5)
 			var center := bomb_rect.get_center()
