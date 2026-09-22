@@ -40,6 +40,7 @@ const MAX_FLOORS_BELOW := Buildings.MAX_FLOORS_BELOW
 const MAX_WIDTH := Buildings.MAX_WIDTH
 const OFFICE_TYPES := Buildings.OFFICE_TYPES
 const SUBWAY_MIN_DEPTH := Buildings.SUBWAY_MIN_DEPTH
+const CURRENCY := "Cr" # お金の単位（クレジット）。画面に出る金額はすべてこの単位で書く
 const DEMOLISH_RATE := 0.1      # 撤去費用: 建設費のこの割合を払う（撤去しても建設費は戻らない）
 const MIN_DEMOLISH_FEE := 2000  # 撤去費用の最低額（焼け跡・空きフロア・ロビーなども、これだけはかかる）
 const MODE_RESIDENT := "resident" # 住人を配置・移動させるモード
@@ -258,6 +259,11 @@ func update_funds_display():
 	ui.update_funds_display()
 
 # 金額を3桁ごとのカンマ区切りにする（signed が true なら、プラスでも符号を付ける）
+# 金額を単位つきで書く（例: 12,000Cr / 符号つきなら +12,000Cr）
+func money_text(amount: int, signed := false) -> String:
+	return format_money(amount, signed) + CURRENCY
+
+# 金額を3桁ごとのカンマ区切りで書く（単位は付けない）
 func format_money(amount: int, signed := false) -> String:
 	var text := str(absi(amount))
 	var out := ""
@@ -795,7 +801,7 @@ func demolish_at(map_pos: Vector2i):
 	# 撤去にはお金がかかる（建設費は戻らない）。足りなければ撤去できない
 	var fee := demolish_fee(type)
 	if funds < fee:
-		show_message("撤去費用が足りません（%sの撤去には %s円かかります）" % [BUILDINGS[type].name, format_money(fee)])
+		show_message("撤去費用が足りません（%sの撤去には %sかかります）" % [BUILDINGS[type].name, money_text(fee)])
 		audio_system.play("error")
 		return
 	var leave_frame: bool = type != Buildings.FRAME_TYPE and buildings.has_building_beyond(map_pos)
@@ -812,4 +818,4 @@ func demolish_at(map_pos: Vector2i):
 	update_funds_display()
 	audio_system.play("demolish")
 	var note := "（上の階が残っているので、空きフロアになります）" if leave_frame else ""
-	show_message("%sを撤去しました %s 撤去費用: %s円%s" % [BUILDINGS[type].name, origin, format_money(fee), note])
+	show_message("%sを撤去しました %s 撤去費用: %s%s" % [BUILDINGS[type].name, origin, money_text(fee), note])

@@ -4,7 +4,7 @@ extends Node2D
 # 演出：建てたとき・撤去したとき・お金が入ったときの、短いエフェクト。
 #   "build":    白い枠がふわっと広がって消える
 #   "demolish": 土ぼこりの丸がいくつか広がって消える
-#   "money":    「+◯◯円」の文字が浮き上がって消える
+#   "money":    「+◯◯Cr」の文字が浮き上がって消える
 # TileMapLayerの子として追加するので、座標はタイルマップ座標系。
 # ---------------------------------------------------
 
@@ -12,7 +12,7 @@ const BUILD_COLOR := Color(1.0, 1.0, 0.85)
 const DUST_COLOR := Color(0.72, 0.62, 0.5)
 const MONEY_COLOR := Color(0.5, 1.0, 0.6)
 const LIFE := 0.8       # エフェクトが消えるまでの時間（秒）
-const MONEY_LIFE := 1.6 # 「+◯◯円」だけは長めに出す
+const MONEY_LIFE := 1.6 # 「+◯◯Cr」だけは長めに出す
 const MAX_EFFECTS := 40 # 出しすぎないように
 
 var world: Node2D # main.gd
@@ -33,7 +33,7 @@ func play_demolish(cells: Array) -> void:
 # お金が入ったことを、文字で知らせる
 func play_money(cell: Vector2i, amount: int) -> void:
 	var tile_size := Vector2(world.tile_map.tile_set.tile_size)
-	add_effect("money", Rect2(Vector2(cell) * tile_size, tile_size), "+%s円" % world.format_money(amount), MONEY_LIFE)
+	add_effect("money", Rect2(Vector2(cell) * tile_size, tile_size), "+%s" % world.money_text(amount), MONEY_LIFE)
 
 # 出している演出を全部消す（更地にしたとき・セーブデータを読み込んだとき）
 func clear() -> void:

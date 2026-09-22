@@ -92,7 +92,7 @@ func process_member(cell: Vector2i, home: Dictionary, m: Dictionary, day: int, n
 		# 家族の最初の1人が家に着いた → 入居が決まり、販売収入が入る
 		home.moved_in = true
 		revenue_by_day[day] = revenue_by_day.get(day, 0) + SALE_PRICE
-		world.show_message("住宅 %s に入居者が決まりました（販売収入 +%s円）" % [cell, world.format_money(SALE_PRICE)])
+		world.show_message("住宅 %s に入居者が決まりました（販売収入 +%s）" % [cell, world.money_text(SALE_PRICE)])
 	# 朝になったら入口へ出かける（家に着いてから）
 	if at_home and m.out_day != day and now >= leave_minute(m.room, day) and now < return_start(day):
 		m.out_day = day

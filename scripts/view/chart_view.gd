@@ -2,7 +2,7 @@ extends Control
 
 # ---------------------------------------------------
 # 収支のグラフ（⌘Gで開く）：最近の決算の合計を、日ごとの棒グラフで表す。
-#   0円の線より上（緑）が黒字、下（赤）が赤字。棒の高さは、その期間の一番大きい額に合わせる。
+#   0の線より上（緑）が黒字、下（赤）が赤字。棒の高さは、その期間の一番大きい額に合わせる。
 #   下に、いちばん新しい決算の内わけ（賃料・宿泊料・飲食…）を出す。
 # ---------------------------------------------------
 
@@ -40,12 +40,12 @@ func _draw() -> void:
 		var color := PLUS_COLOR if report.total >= 0 else MINUS_COLOR
 		var top: float = zero_y - height if report.total >= 0 else zero_y
 		draw_rect(Rect2(x + BAR_GAP / 2.0, top, maxf(bar_width - BAR_GAP, 1.0), height), color)
-	# 0円の線と目盛り（棒の上に描く。目盛りは右端に寄せて、棒と重ならないようにする）
+	# 0の線と目盛り（棒の上に描く。目盛りは右端に寄せて、棒と重ならないようにする）
 	draw_line(Vector2(chart.position.x, zero_y), Vector2(chart.end.x, zero_y), LINE_COLOR, 1.0)
-	var top_label := "+%s円" % world.format_money(int(peak / 1.2))
+	var top_label := "+%s" % world.money_text(int(peak / 1.2))
 	draw_string(font, Vector2(chart.position.x, chart.position.y + font_size), top_label,
 		HORIZONTAL_ALIGNMENT_RIGHT, chart.size.x, font_size, TEXT_COLOR)
-	draw_string(font, Vector2(chart.position.x, zero_y - 2), "0円", HORIZONTAL_ALIGNMENT_RIGHT, chart.size.x, font_size, TEXT_COLOR)
+	draw_string(font, Vector2(chart.position.x, zero_y - 2), "0" + world.CURRENCY, HORIZONTAL_ALIGNMENT_RIGHT, chart.size.x, font_size, TEXT_COLOR)
 	var first: Dictionary = history[0]
 	var last: Dictionary = history[history.size() - 1]
 	draw_string(font, Vector2(chart.position.x, chart.end.y + font_size), "%s 〜 %s（%d日分）"
@@ -64,5 +64,5 @@ func summary(report: Dictionary) -> String:
 	for item in [["維持費", "maintenance"], ["ゴミ", "garbage_cost"], ["返金", "refund"]]:
 		if report.get(item[1], 0) > 0:
 			items.append("%s -%s" % [item[0], world.format_money(report[item[1]])])
-	items.append("合計 %s円" % world.format_money(report.total, true))
+	items.append("合計 %s" % world.money_text(report.total, true))
 	return "%s（%d日目）: %s" % [world.clock.date_text(report.day), report.day, " / ".join(items)]

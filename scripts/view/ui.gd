@@ -211,19 +211,20 @@ func build_bars() -> void:
 	help_row.add_child(make_spacer())
 	var help_label = Label.new()
 	help_label.text = "\n".join([
-		"建設: 上の「建設」メニューで選び、マップを左クリック（建てる大きさはカーソルの枠でわかる。くわしい説明はメニューにカーソルを合わせると出る） / 右クリック: 撤去（撤去費用がかかる。建設費の1割・最低2千円。建設費は戻らない）",
+		"建設: 上の「建設」メニューで選び、マップを左クリック（建てる大きさはカーソルの枠でわかる。くわしい説明はメニューにカーソルを合わせると出る） / 右クリック: 撤去（撤去費用がかかる。建設費の1割・最低2,000Cr。建設費は戻らない）",
 		"建て替え: 建物の上に直接ほかの建物は建てられない。先に撤去してから建てる（空きフロアの上には、そのまま建てられる）",
 		"焼け跡: 火災で焼け落ちたり爆破で吹き飛んだりした部屋は、黒焦げの焼け跡になる。上の階は支えたままだが、建て直すには先に撤去が必要",
+		"お金: 単位は Cr（クレジット）。建設費・賃料・売上・撤去費用はすべて Cr で数える",
 		"更地から始まる。1階はロビー専用（ロビー・階段・エレベーターだけ）。人はロビーの左端（入口）から出入りする",
 		"吹き抜けロビー: 2階分・3階分の高さのロビー。上の階には床がないので、人は1階だけを歩く",
 		"スカイロビー: 15階・30階・45階…にだけ建てられる乗り換え専用のフロア（何階かはカーソル下の情報に出る）",
 		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"大型エレベーター（横2マス）: 全部の階に停まり、定員16人・速さ1.5倍。人の多いビルの渋滞をさばく",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
-		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3千円/日）。カゴの定員は8人",
+		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3,000Cr/日）。カゴの定員は8人",
 		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
-		"オフィスの大きさ: 小さいオフィス（横2マス・2人・賃料1.1万円/マス）と大きいオフィス（横6マス・6人・0.9万円/マス）もある",
-		"空きフロア: 骨組みだけのフロア（1万円）。メニューから建ててすき間を埋められるほか、上の階に建物が残っているマスを撤去したときにも残る（上の部屋が浮かないように）。通り抜けでき、その上から建て直せる",
+		"オフィスの大きさ: 小さいオフィス（横2マス・2人・賃料11,000Cr/マス）と大きいオフィス（横6マス・6人・9,000Cr/マス）もある",
+		"空きフロア: 骨組みだけのフロア（10,000Cr）。メニューから建ててすき間を埋められるほか、上の階に建物が残っているマスを撤去したときにも残る（上の部屋が浮かないように）。通り抜けでき、その上から建て直せる",
 		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
 		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
 		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
@@ -239,15 +240,15 @@ func build_bars() -> void:
 		"日付: 1日目は4月1日（月）。1年は365日で、12月24日・25日の夜にはサンタクロースのソリが空を横切る",
 		"駐車場: 地下の何階にでも作れる。使うには地下1階から目的の階まで、階ごとにスロープを建ててつなぐ（車は階段では下りられない）",
 		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
-		"結婚式場（横6マス）: 休日の10〜11時に12人が来て13時まで（1人1万円）",
-		"イベントホール（横6マス）: 休日の13〜14時に15人が来て17時まで（1人3千円）",
+		"結婚式場（横6マス）: 休日の10〜11時に12人が来て13時まで（1人10,000Cr）",
+		"イベントホール（横6マス）: 休日の13〜14時に15人が来て17時まで（1人3,000Cr）",
 		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料を払って帰る。清掃が済むまで次の客は泊まれない",
-		"　シングル（横2マス）: 1人・2万円・清掃20分 / ツイン（横3マス）: 2人・3.5万円・清掃30分 / スイート（横4マス）: 2人・8万円・清掃45分",
+		"　シングル（横2マス）: 1人・20,000Cr・清掃20分 / ツイン（横3マス）: 2人・35,000Cr・清掃30分 / スイート（横4マス）: 2人・80,000Cr・清掃45分",
 		"ハウスキーパー室（横2マス）: 清掃員が2人。清掃待ちの部屋を近い順に掃除する",
-		"飲食店（横3マス）: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1千円の売上）",
-		"ファストフード（横2マス）: 飲食店の小さくて速い版。食事は10分で、1人600円の売上",
-		"住宅（横3マス・3人家族）: 17〜20時に入居者が来て入居（販売収入70万円、1回だけ）。毎朝7〜9時に出かけ、17〜20時に帰る",
-		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1千円かかる",
+		"飲食店（横3マス）: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1,000Crの売上）",
+		"ファストフード（横2マス）: 飲食店の小さくて速い版。食事は10分で、1人600Crの売上",
+		"住宅（横3マス・3人家族）: 17〜20時に入居者が来て入居（販売収入700,000Cr、1回だけ）。毎朝7〜9時に出かけ、17〜20時に帰る",
+		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1,000Crかかる",
 		"　処理が足りない日が続くとビルが汚れ（衛生の悪化）、レベル1につきストレス5ぶん全テナントの評価が下がる",
 		"メディカルセンター（横3マス）: ビル全体のストレスの回復が速くなる（1施設で1.5倍・最大2.5倍）",
 		"埋蔵金: 地下に建てるとマスごとに見つかることがある（深いほど確率も金額も上がる。同じマスは一度きり）",
@@ -408,11 +409,11 @@ func _get_menu_target_width() -> float:
 	for key in world.BUILDINGS:
 		var b = world.BUILDINGS[key]
 		var nw: float = font.get_string_size(b.name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		var cw: float = font.get_string_size("%s円" % world.format_money(b.cost), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var cw: float = font.get_string_size("%s" % world.money_text(b.cost), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 		max_w = maxf(max_w, nw + cw)
 	# カゴ追加も価格表示があるので幅計算に含める
 	var car_nw: float = font.get_string_size("カゴ追加", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	var car_cw: float = font.get_string_size("%s円" % world.format_money(world.elevator_system.CAR_COST), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var car_cw: float = font.get_string_size("%s" % world.money_text(world.elevator_system.CAR_COST), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	max_w = maxf(max_w, car_nw + car_cw)
 	var space_w: float = font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	_menu_target_width = max_w + space_w * 4
@@ -423,7 +424,7 @@ func get_mode_label(mode: String) -> String:
 		return "住人（テスト）"
 	if mode == world.MODE_ADD_CAR:
 		var car_name := "カゴ追加"
-		var car_cost_text := "%s円" % world.format_money(world.elevator_system.CAR_COST)
+		var car_cost_text := "%s" % world.money_text(world.elevator_system.CAR_COST)
 		var font: Font = ThemeDB.fallback_font
 		var font_size: int = BASE_FONT_SIZE * UI_SCALE
 		var name_w: float = font.get_string_size(car_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
@@ -440,7 +441,7 @@ func get_mode_label(mode: String) -> String:
 	if mode == world.MODE_DEMOLISH:
 		return "撤去"
 	var name: String = world.BUILDINGS[mode].name
-	var cost_text: String = "%s円" % world.format_money(world.BUILDINGS[mode].cost)
+	var cost_text: String = "%s" % world.money_text(world.BUILDINGS[mode].cost)
 	var font: Font = ThemeDB.fallback_font
 	var font_size: int = BASE_FONT_SIZE * UI_SCALE
 	var name_w: float = font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
@@ -460,10 +461,10 @@ func get_mode_info(mode: String) -> String:
 	if mode == world.MODE_SERVICE:
 		return "無料（シャフトをクリックで 終日 → 6時〜24時 → 8時〜20時 と切り替え）"
 	if mode == world.MODE_DEMOLISH:
-		return "クリックした建物を撤去（撤去費用は建設費の1割・最低%s円。建設費は戻らない。ドラッグで続けて撤去）" % world.format_money(world.MIN_DEMOLISH_FEE)
+		return "クリックした建物を撤去（撤去費用は建設費の1割・最低%s。建設費は戻らない。ドラッグで続けて撤去）" % world.money_text(world.MIN_DEMOLISH_FEE)
 	if mode == world.MODE_ADD_CAR:
-		return "1台 %s円（シャフトをクリック。1本に%d台まで）" % [world.format_money(world.elevator_system.CAR_COST), world.elevator_system.MAX_CARS]
-	var info := "建設費 %s円・横%dマス" % [world.format_money(world.BUILDINGS[mode].cost), world.get_width(mode)]
+		return "1台 %s（シャフトをクリック。1本に%d台まで）" % [world.money_text(world.elevator_system.CAR_COST), world.elevator_system.MAX_CARS]
+	var info := "建設費 %s・横%dマス" % [world.money_text(world.BUILDINGS[mode].cost), world.get_width(mode)]
 	if world.get_height(mode) > 1:
 		info += "・高さ%d階分" % world.get_height(mode)
 	if mode == "express_elevator":
@@ -615,9 +616,9 @@ func update_mode_select():
 func update_funds_display():
 	if not funds_label:
 		return
-	funds_label.text = "現在の資金: %s円" % world.format_money(world.funds)
+	funds_label.text = "現在の資金: %s" % world.money_text(world.funds)
 	if world.economy_system and not world.economy_system.last_report.is_empty():
-		funds_label.text += "（前日 %s円）" % world.format_money(world.economy_system.last_report.total, true)
+		funds_label.text += "（前日 %s）" % world.money_text(world.economy_system.last_report.total, true)
 
 func update_scrollbar():
 	var tile_h: float = world.tile_map.tile_set.tile_size.y
@@ -683,7 +684,7 @@ func update_hover_label():
 		text += "（%s%s・%s）" % [world.housing_system.get_home_state_text(cell), "・" + home_rating if home_rating != "" else "",
 			world.noise_system.get_noise_text(cell)]
 	elif type == Buildings.RUIN_TYPE:
-		text += "（撤去してから建て直せる。撤去費用 %s円）" % world.format_money(world.demolish_fee(type))
+		text += "（撤去してから建て直せる。撤去費用 %s）" % world.money_text(world.demolish_fee(type))
 	elif type == "parking":
 		text += "（%s）" % world.parking_system.get_parking_text(cell)
 	elif type == "ramp":

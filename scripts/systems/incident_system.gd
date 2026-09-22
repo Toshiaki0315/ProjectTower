@@ -405,7 +405,7 @@ func dig(cell: Vector2i) -> void:
 	treasure_total += amount
 	world.funds += amount
 	world.update_funds_display()
-	world.show_message("埋蔵金を発見！ %s で %s円 を掘り当てました" % [world.get_floor_name(cell.y), world.format_money(amount)])
+	world.show_message("埋蔵金を発見！ %s で %s を掘り当てました" % [world.get_floor_name(cell.y), world.money_text(amount)])
 
 # その深さで埋蔵金が見つかる確率
 func treasure_chance(depth: int) -> float:

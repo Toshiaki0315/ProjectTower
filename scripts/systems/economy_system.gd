@@ -31,7 +31,7 @@ const OFFICE_RENTS := {
 const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーターは1マスが1つ）
 	"elevator": 2000,
 	"express_elevator": 3000,
-	"large_elevator": 3000, # 大型は1階ぶん（横2マス）で3,000円
+	"large_elevator": 3000, # 大型は1階ぶん（横2マス）で3,000Cr
 	"escalator": 2000,
 	"service_elevator": 1500,
 	"housekeeping": 10000,
@@ -121,27 +121,27 @@ func settle(day: int) -> void:
 		history.remove_at(0)
 	world.funds += total
 	world.update_funds_display() # last_reportを更新してから表示する（前日の収支も表示されるため）
-	# 0円の項目は省いて短くする
+	# 0の項目は省いて短くする
 	var items: Array[String] = []
 	for item in [["賃料", rent], ["宿泊料", hotel], ["飲食", food], ["ショップ", shop], ["映画館", cinema], ["住宅販売", housing], ["イベント", event], ["評価ボーナス", bonus]]:
 		if item[1] > 0:
-			items.append("%s +%s円" % [item[0], world.format_money(item[1])])
+			items.append("%s +%s" % [item[0], world.money_text(item[1])])
 	if maintenance > 0:
-		items.append("維持費 -%s円" % world.format_money(maintenance))
+		items.append("維持費 -%s" % world.money_text(maintenance))
 	if garbage_cost > 0:
-		items.append("ゴミ処理 -%s円（ゴミ%d・処理能力%d）" % [world.format_money(garbage_cost), garbage, recycling_capacity()])
+		items.append("ゴミ処理 -%s（ゴミ%d・処理能力%d）" % [world.money_text(garbage_cost), garbage, recycling_capacity()])
 	if pollution > 0:
 		items.append("衛生の悪化 レベル%d（テナントの評価が下がります）" % pollution)
 	if refund > 0:
-		items.append("住宅の返金 -%s円（%d戸退去）" % [world.format_money(refund), tenants.homes_left])
-	items.append("合計 %s円" % world.format_money(total, true))
+		items.append("住宅の返金 -%s（%d戸退去）" % [world.money_text(refund), tenants.homes_left])
+	items.append("合計 %s" % world.money_text(total, true))
 	var message := "%s（%d日目）の決算: %s" % [world.clock.date_text(day), day, " / ".join(items)]
 	if tenants.left > 0 or tenants.moved_in > 0:
 		message += " / オフィス退去 %d棟・入居 %d棟" % [tenants.left, tenants.moved_in]
 	# 評価（★）の判定。昇格したら、メッセージの先頭で知らせる（ボーナスは翌日の決算から）
 	if world.rating_system.evaluate():
 		message = "ビルの評価が★%dに上がりました！ %s" % [world.rating_system.stars, message]
-	# 入口のあたりに「+◯◯円」を浮かせる（黒字のときだけ）
+	# 入口のあたりに「+◯◯Cr」を浮かせる（黒字のときだけ）
 	var entrance = world.get_entrance()
 	if total > 0 and entrance != null:
 		world.effects.play_money(entrance, total)
