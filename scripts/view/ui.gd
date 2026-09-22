@@ -406,6 +406,10 @@ func _get_menu_target_width() -> float:
 		var nw: float = font.get_string_size(b.name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 		var cw: float = font.get_string_size("%s円" % world.format_money(b.cost), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 		max_w = maxf(max_w, nw + cw)
+	# カゴ追加も価格表示があるので幅計算に含める
+	var car_nw: float = font.get_string_size("カゴ追加", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var car_cw: float = font.get_string_size("%s円" % world.format_money(world.elevator_system.CAR_COST), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	max_w = maxf(max_w, car_nw + car_cw)
 	var space_w: float = font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	_menu_target_width = max_w + space_w * 4
 	return _menu_target_width
@@ -414,7 +418,17 @@ func get_mode_label(mode: String) -> String:
 	if mode == world.MODE_RESIDENT:
 		return "住人（テスト）"
 	if mode == world.MODE_ADD_CAR:
-		return "カゴ追加"
+		var car_name := "カゴ追加"
+		var car_cost_text := "%s円" % world.format_money(world.elevator_system.CAR_COST)
+		var font: Font = ThemeDB.fallback_font
+		var font_size: int = BASE_FONT_SIZE * UI_SCALE
+		var name_w: float = font.get_string_size(car_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var cost_w: float = font.get_string_size(car_cost_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var space_w: float = font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var target_w: float = _get_menu_target_width()
+		var gap: float = target_w - name_w - cost_w
+		var num_spaces: int = maxi(int(round(gap / space_w)), 2)
+		return "%s%s%s" % [car_name, " ".repeat(num_spaces), car_cost_text]
 	if mode == world.MODE_SET_HOME:
 		return "待機階を設定"
 	if mode == world.MODE_SERVICE:
