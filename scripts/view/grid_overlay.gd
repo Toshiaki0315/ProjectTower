@@ -17,10 +17,10 @@ const HOVER_NG_COLOR := Color(1.0, 0.3, 0.3)
 const PixelArt := preload("res://scripts/view/pixel_art.gd")
 const ENTRANCE_COLOR := Color(0.2, 0.42, 0.72)       # 1階の入口の庇（青）
 const SUBWAY_ENTRANCE_COLOR := Color(0.25, 0.65, 0.8) # 地下鉄駅の入口の庇（水色）
-const ROUTE_WIDTH := 1.5           # 動線の太さ（画面上のpx）
-const ROUTE_EDGE_COLOR := Color(0.05, 0.05, 0.1, 0.8) # 動線の縁取り（明るい建物の上でも見えるように）
-const ROUTE_ALPHA := 0.7           # 動線の濃さ
-const ROUTE_SELECTED_WIDTH := 3.0  # 選んでいる住人の動線は太く描く
+const ROUTE_WIDTH := 3.0           # 経路の太さ（画面上のpx、旧1.5から倍増）
+const ROUTE_EDGE_COLOR := Color(0.05, 0.05, 0.1, 0.8) # 経路の縁取り（明るい建物の上でも見えるように）
+const ROUTE_ALPHA := 0.7           # 経路の濃さ
+const ROUTE_SELECTED_WIDTH := 6.0  # 選んでいる住人の経路は太く描く（旧3.0から倍増）
 const HOME_COLOR := Color(1.0, 0.85, 0.2) # エレベーターの待機階の印
 const BOMB_COLOR := Color(1.0, 0.25, 0.2) # 爆破予告のマスの印
 const FIRE_COLORS := [Color(1.0, 0.5, 0.1), Color(1.0, 0.8, 0.2)] # 燃えているマス（交互に点滅）
@@ -71,10 +71,10 @@ func draw_route(resident, tile_size: Vector2, px: float) -> void:
 	color.a = ROUTE_ALPHA
 	var width: float = ROUTE_SELECTED_WIDTH if resident.selected else ROUTE_WIDTH
 	# 明るい建物の上でも見えるように、先に濃い色で縁取りしてから線を描く
-	draw_polyline(points, ROUTE_EDGE_COLOR, (width + 1.5) * px)
+	draw_polyline(points, ROUTE_EDGE_COLOR, (width + 2.0) * px)
 	draw_polyline(points, color, width * px)
 	var goal := Rect2(points[-1] - tile_size / 4.0, tile_size / 2.0) # 行き先の印
-	draw_rect(goal, ROUTE_EDGE_COLOR, false, (width + 1.5) * px)
+	draw_rect(goal, ROUTE_EDGE_COLOR, false, (width + 2.0) * px)
 	draw_rect(goal, color, false, width * px)
 
 func _draw() -> void:

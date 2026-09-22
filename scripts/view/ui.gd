@@ -163,7 +163,7 @@ func build_bars() -> void:
 	build_label.text = "建設:"
 	stats_row.add_child(build_label)
 	mode_select = OptionButton.new()
-	mode_select.custom_minimum_size.x = 260 * UI_SCALE
+	mode_select.custom_minimum_size.x = 290 * UI_SCALE
 	for group in world.MODE_GROUPS:
 		mode_select.add_separator(group.name)
 		for mode in group.modes:
@@ -174,7 +174,7 @@ func build_bars() -> void:
 		assert(world.MODE_GROUPS.any(func(group): return group.modes.has(type)), "%s が建設メニュー（world.MODE_GROUPS）にありません" % type)
 	stats_row.add_child(mode_select)
 	
-	# 動線（人の通り道）の表示。人が増えると線だらけになるので、既定はオフ
+	# 経路（人の通り道）の表示。人が増えると線だらけになるので、既定はオフ
 	route_button = Button.new()
 	route_button.custom_minimum_size.x = 100 * UI_SCALE
 	route_button.pressed.connect(func(): world.toggle_routes())
@@ -224,7 +224,7 @@ func build_bars() -> void:
 		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
 		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
 		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
-		"動線: 上部バーの「動線」ボタン（Rキー）で、人が通る道すじを線で表示する（人が多いと線だらけになるので既定はオフ）",
+		"経路: 上部バーの「経路」ボタン（Rキー）で、人が通る道すじを線で表示する（人が多いと線だらけになるので既定はオフ）",
 		"ビルの状況: 上部バーの★を押すと、人口・目標・社員・オフィス・客室のくわしい様子が出る（気をつけることがあるときは★の横に⚠と件数）",
 		"ショートカット: F1・H（この説明の開閉） / Esc（開いているパネルを閉じる） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
 		"収支のグラフ: ⌘G で、最近60日ぶんの決算の合計を棒グラフで見られる",
@@ -393,6 +393,23 @@ func make_spacer() -> Control:
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return spacer
 
+var _menu_target_width: float = -1.0
+
+func _get_menu_target_width() -> float:
+	if _menu_target_width > 0.0:
+		return _menu_target_width
+	var font: Font = ThemeDB.fallback_font
+	var font_size: int = BASE_FONT_SIZE * UI_SCALE
+	var max_w: float = 0.0
+	for key in world.BUILDINGS:
+		var b = world.BUILDINGS[key]
+		var nw: float = font.get_string_size(b.name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var cw: float = font.get_string_size("%s円" % world.format_money(b.cost), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		max_w = maxf(max_w, nw + cw)
+	var space_w: float = font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	_menu_target_width = max_w + space_w * 4
+	return _menu_target_width
+
 func get_mode_label(mode: String) -> String:
 	if mode == world.MODE_RESIDENT:
 		return "住人（テスト）"
@@ -404,7 +421,17 @@ func get_mode_label(mode: String) -> String:
 		return "稼働時間帯"
 	if mode == world.MODE_DEMOLISH:
 		return "撤去"
-	return "%s（%s円）" % [world.BUILDINGS[mode].name, world.format_money(world.BUILDINGS[mode].cost)]
+	var name: String = world.BUILDINGS[mode].name
+	var cost_text: String = "%s円" % world.format_money(world.BUILDINGS[mode].cost)
+	var font: Font = ThemeDB.fallback_font
+	var font_size: int = BASE_FONT_SIZE * UI_SCALE
+	var name_w: float = font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var cost_w: float = font.get_string_size(cost_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var space_w: float = font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var target_w: float = _get_menu_target_width()
+	var gap: float = target_w - name_w - cost_w
+	var num_spaces: int = maxi(int(round(gap / space_w)), 2)
+	return "%s%s%s" % [name, " ".repeat(num_spaces), cost_text]
 
 # 選んだもののくわしい説明（建設メニューにカーソルを合わせると出る）
 func get_mode_info(mode: String) -> String:
@@ -438,7 +465,7 @@ const MENUS := [
 	]},
 	{"name": "表示", "items": [
 		{"text": "ビルの状況（★を押しても開く）", "action": "stats", "check": true},
-		{"text": "動線（人の通り道）（R）", "action": "routes", "check": true},
+		{"text": "経路（人の通り道）（R）", "action": "routes", "check": true},
 		{"text": "メッセージの記録（⌘L）", "action": "log", "check": true},
 		{"text": "収支のグラフ（⌘G）", "action": "chart", "check": true},
 		{"text": "拡大（⌘+）", "action": "zoom_in"},
@@ -554,10 +581,10 @@ func warnings() -> Array[String]:
 		list.append(world.incident_system.get_bomb_text())
 	return list
 
-# 動線の表示ボタンの見た目を、今の設定に合わせる
+# 経路の表示ボタンの見た目を、今の設定に合わせる
 func update_route_button() -> void:
 	if route_button:
-		route_button.text = "動線 オン" if world.show_routes else "動線 オフ"
+		route_button.text = "経路 オン" if world.show_routes else "経路 オフ"
 
 # 建設メニューの選択と説明を、今のモードに合わせる
 func update_mode_select():

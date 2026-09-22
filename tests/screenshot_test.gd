@@ -107,7 +107,7 @@ func run_empty_start_scenario() -> bool:
 	check(main.funds == 2000000, "最初の資金は200万円")
 	check(main.ground_y == main.GROUND_FLOOR_Y, "1階の高さは決まっている（y=%d）" % main.GROUND_FLOOR_Y)
 	check(main.get_entrance() == null, "ロビーがないうちは入口もない")
-	check(main.current_mode == "lobby" and main.mode_select.text == "ロビー（15,000円）", "最初は建設メニューでロビーが選ばれている")
+	check(main.current_mode == "lobby" and main.mode_select.text.begins_with("ロビー") and main.mode_select.text.ends_with("15,000円"), "最初は建設メニューでロビーが選ばれている")
 	check(main.camera.position.is_equal_approx(Vector2(0, 272)), "カメラは地面の線が見える位置にある")
 	await capture("empty_01_start")
 	
@@ -159,8 +159,8 @@ func run_build_scenario() -> bool:
 	# 1. 階段ボタンをクリック → 階段が[選択中]になる
 	await choose_mode("stairs")
 	check(main.current_mode == "stairs", "建設メニューで階段を選ぶとモードがstairsになる")
-	check(main.mode_select.text == "階段（50,000円）", "建設メニューに「階段」が選ばれて表示される")
-	check(main.mode_select.text == "階段（50,000円）", "建設メニューに選んだものの名前と建設費が出る")
+	check(main.mode_select.text.begins_with("階段") and main.mode_select.text.ends_with("50,000円"), "建設メニューに「階段」が選ばれて表示される")
+	check(main.mode_select.text.begins_with("階段") and main.mode_select.text.ends_with("50,000円"), "建設メニューに選んだものの名前と建設費が出る")
 	await capture("build_02_stairs_selected")
 
 	# 2. 空マスを左クリック → 階段を建設（-5万円）
@@ -407,7 +407,7 @@ func run_ui_scenario() -> bool:
 	
 	# ビルの状況（★の行）は上部バーにある
 	check(main.stats_button.text.begins_with("★"), "上部バーの2段目には★だけを出す")
-	check(main.stats_button.get_global_rect().position.y == main.mode_select.get_global_rect().position.y, "★・速さ・建設メニュー・動線は同じ行に並ぶ（上部バーは2行）")
+	check(main.stats_button.get_global_rect().position.y == main.mode_select.get_global_rect().position.y, "★・速さ・建設メニュー・経路は同じ行に並ぶ（上部バーは2行）")
 	return true
 
 # ---------------------------------------------------
@@ -2142,7 +2142,7 @@ func run_escalator_scenario() -> bool:
 	for x in range(10, 14):
 		main.build_at(Vector2i(x, 18))
 	await choose_mode("escalator")
-	check(main.mode_select.text == "エスカレーター（100,000円）", "エスカレーターは10万円")
+	check(main.mode_select.text.begins_with("エスカレーター") and main.mode_select.text.ends_with("100,000円"), "エスカレーターは10万円")
 	await click_cell(Vector2i(8, 18), MOUSE_BUTTON_LEFT)
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_unit_cells(Vector2i(9, 18)) == [Vector2i(8, 18), Vector2i(9, 18)], "1階にエスカレーター（横2マス）を建てられる")
@@ -2318,7 +2318,7 @@ func run_service_elevator_scenario() -> bool:
 	await wait_frames(1)
 	build_support(cells_row(18, 9, 10), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	await choose_mode("service_elevator")
-	check(main.mode_select.text == "サービスエレベーター（80,000円）", "サービスエレベーターは1マス8万円")
+	check(main.mode_select.text.begins_with("サービスエレベーター") and main.mode_select.text.ends_with("80,000円"), "サービスエレベーターは1マス8万円")
 	for y in range(18, 15, -1):
 		await click_cell(Vector2i(8, y), MOUSE_BUTTON_LEFT)
 	check(main.funds == 10000000 - 3 * 80000, "1階から3階までのシャフトで24万円")
@@ -2383,7 +2383,7 @@ func run_parking_scenario() -> bool:
 	
 	# スロープは地下にだけ建てられる
 	await choose_mode("ramp")
-	check(main.mode_select.text == "スロープ（200,000円）", "スロープは20万円")
+	check(main.mode_select.text.begins_with("スロープ") and main.mode_select.text.ends_with("200,000円"), "スロープは20万円")
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(9, 17)) == "restaurant", "スロープは地上には建てられない")
 	await click_cell(Vector2i(9, 19), MOUSE_BUTTON_LEFT)
@@ -2458,7 +2458,7 @@ func run_shop_scenario() -> bool:
 	build_support([Vector2i(8, 18)] + cells_row(18, 10, 14), "lobby")
 	build_support([Vector2i(9, 18)])
 	await choose_mode("shop")
-	check(main.mode_select.text == "ショップ（250,000円）", "ショップは25万円")
+	check(main.mode_select.text.begins_with("ショップ") and main.mode_select.text.ends_with("250,000円"), "ショップは25万円")
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(11, 17)) == "shop", "2階にショップを建てられる")
 	main.select_mode("restaurant")
@@ -2512,7 +2512,7 @@ func run_cinema_scenario() -> bool:
 	build_support([Vector2i(8, 18)] + cells_row(18, 10, 16), "lobby")
 	build_support([Vector2i(9, 18)])
 	await choose_mode("cinema")
-	check(main.mode_select.text == "映画館（1,500,000円）", "映画館は150万円")
+	check(main.mode_select.text.begins_with("映画館") and main.mode_select.text.ends_with("1,500,000円"), "映画館は150万円")
 	await click_cell(Vector2i(9, 17), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(16, 17)) == "cinema" and main.get_building_type(Vector2i(16, 16)) == "cinema", "映画館は横8マス・上下2階分を使う")
 	check(main.funds == 10000000 - 1500000, "建設費150万円がかかる")
@@ -3318,7 +3318,7 @@ func run_helipad_scenario() -> bool:
 	
 	# ヘリポートは屋上（上に建物がないところ）にだけ建てられる
 	await choose_mode("helipad")
-	check(main.mode_select.text == "ヘリポート（800,000円）", "ヘリポートは80万円")
+	check(main.mode_select.text.begins_with("ヘリポート") and main.mode_select.text.ends_with("800,000円"), "ヘリポートは80万円")
 	# 上に建物があるところには建てられない（テストのために、上の階へ直接建物を置いて確かめる）
 	main.place_unit(Vector2i(9, 16), "shop")
 	check(main.get_build_problem(Vector2i(9, 17), "helipad").contains("屋上（上に建物がないところ）にしか建てられません"), "上に建物があるところには建てられない")
@@ -3677,7 +3677,7 @@ func run_garden_scenario() -> bool:
 	
 	# 屋上庭園は屋上にだけ建てられる
 	await choose_mode("garden")
-	check(main.mode_select.text == "屋上庭園（400,000円）", "屋上庭園は40万円")
+	check(main.mode_select.text.begins_with("屋上庭園") and main.mode_select.text.ends_with("400,000円"), "屋上庭園は40万円")
 	check(main.get_build_problem(Vector2i(20, 18), "garden").contains("屋上"), "1階（地上）には建てられない")
 	await click_cell(Vector2i(8, 15), MOUSE_BUTTON_LEFT) # 映画館（y=17〜16）の上が屋上
 	check(main.get_building_type(Vector2i(11, 15)) == "garden", "映画館の屋上に庭園を建てられる")
@@ -4156,14 +4156,14 @@ func run_large_elevator_scenario() -> bool:
 	await capture("large_elevator_01")
 	return true
 
-# シナリオ66: 動線表示（人の通り道を線で出す）
+# シナリオ66: 経路表示（人の通り道を線で出す）
 # 上部バーのボタンとRキーで切り替えられ、既定はオフ。描くだけで移動には影響しない。
 # ---------------------------------------------------
 func run_routes_scenario() -> bool:
-	print("[シナリオ] 動線表示")
+	print("[シナリオ] 経路表示")
 	main.funds = 10000000
-	check(not main.show_routes, "動線の表示は最初はオフ")
-	check(main.route_button.text == "動線 オフ", "上部バーのボタンに今の状態が出る")
+	check(not main.show_routes, "経路の表示は最初はオフ")
+	check(main.route_button.text == "経路 オフ", "上部バーのボタンに今の状態が出る")
 
 	# 住人を1人置いて、遠くへ歩かせる
 	main.select_mode(main.MODE_RESIDENT)
@@ -4176,10 +4176,10 @@ func run_routes_scenario() -> bool:
 
 	# Rキーでオンにすると線が出る
 	await press_key(KEY_R)
-	check(main.show_routes, "Rキーで動線の表示がオンになる")
-	check(main.route_button.text == "動線 オン", "ボタンの表示も切り替わる")
-	check(logged("動線の表示をオンにしました"), "切り替えたことがメッセージで出る")
-	check(resident.path.size() == steps, "動線を表示しても、通り道は変わらない（見た目だけ）")
+	check(main.show_routes, "Rキーで経路の表示がオンになる")
+	check(main.route_button.text == "経路 オン", "ボタンの表示も切り替わる")
+	check(logged("経路の表示をオンにしました"), "切り替えたことがメッセージで出る")
+	check(resident.path.size() == steps, "経路を表示しても、通り道は変わらない（見た目だけ）")
 	focus_camera(Vector2i(-2, 17))
 	await wait_frames(2)
 	await capture("routes_01_on")
@@ -4187,7 +4187,7 @@ func run_routes_scenario() -> bool:
 	# ボタンでもオフに戻せる
 	main.route_button.pressed.emit()
 	check(not main.show_routes, "ボタンでオフに戻せる")
-	check(main.route_button.text == "動線 オフ", "ボタンの表示ももとに戻る")
+	check(main.route_button.text == "経路 オフ", "ボタンの表示ももとに戻る")
 	await capture("routes_02_off")
 	return true
 
@@ -4212,10 +4212,10 @@ func run_menu_scenario() -> bool:
 	ui.do_menu_action("help")
 	check(not main.help_panel.visible, "もう一度選ぶと閉じる")
 
-	# 「表示 > 動線」はショートカットと同じ切り替え
-	check(not main.show_routes, "動線の表示は最初はオフ")
+	# 「表示 > 経路」はショートカットと同じ切り替え
+	check(not main.show_routes, "経路の表示は最初はオフ")
 	ui.do_menu_action("routes")
-	check(main.show_routes and main.route_button.text == "動線 オン", "メニューから動線を出せる（ボタンの表示も合う）")
+	check(main.show_routes and main.route_button.text == "経路 オン", "メニューから経路を出せる（ボタンの表示も合う）")
 	ui.do_menu_action("routes")
 	check(not main.show_routes, "もう一度選ぶとオフに戻る")
 
@@ -4247,7 +4247,7 @@ func run_menu_scenario() -> bool:
 			routes_index = i
 	main.show_routes = true
 	ui.update_menu_checks(view_menu, items)
-	check(view_menu.is_item_checked(routes_index), "動線がオンのときはチェックが付く")
+	check(view_menu.is_item_checked(routes_index), "経路がオンのときはチェックが付く")
 	main.show_routes = false
 	ui.update_menu_checks(view_menu, items)
 	check(not view_menu.is_item_checked(routes_index), "オフのときはチェックが外れる")

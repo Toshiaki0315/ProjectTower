@@ -678,11 +678,11 @@ func close_panels() -> bool:
 			closed = true
 	return closed
 
-# 動線（人の通り道）の表示を切り替える。見た目だけの機能で、経路探索や移動には触らない
+# 経路（人の通り道）の表示を切り替える。見た目だけの機能で、経路探索や移動には触らない
 func toggle_routes() -> void:
 	show_routes = not show_routes
 	ui.update_route_button()
-	show_message("動線の表示を%sにしました（Rキーで切り替え）" % ("オン" if show_routes else "オフ"))
+	show_message("経路の表示を%sにしました（Rキーで切り替え）" % ("オン" if show_routes else "オフ"))
 
 # ゲームの速度を変える（ボタンの表示も合わせる）
 func set_speed(speed: int) -> void:
