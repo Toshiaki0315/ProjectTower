@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario, run_elevator_stats_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario, run_elevator_stats_scenario, run_tower_name_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -1057,7 +1057,7 @@ func run_rating_scenario() -> bool:
 	check(rating.stars == 1 and rating.population() == 52, "最初は★1、人口52（社員52人）")
 	check(rating.missing_for_next() == ["警備室"], "★2に足りないのは警備室だけ")
 	await wait_frames(2)
-	check(main.stats_label.text.begins_with("★1 人口52（★2まで: 警備室）"), "ビルの状況に評価と次の★に足りないものが出る")
+	check(main.stats_label.text.split("\n")[1].begins_with("★1 人口52（★2まで: 警備室）"), "ビルの状況に評価と次の★に足りないものが出る（1行目はビルの名前）")
 	
 	build_support(cells_row(18, 9, 13), "lobby") # 足場: 2階に建てるため、1階にロビーを足す
 	await choose_mode("security")
@@ -3724,8 +3724,8 @@ func run_title_scenario() -> bool:
 	
 	# タイトル画面の間は、マップをクリックしても建たない
 	await choose_mode("lobby")
-	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_LEFT)
-	check(main.building_grid.is_empty(), "タイトル画面の間はマップを操作できない")
+	await click_cell(Vector2i(-9, 18), MOUSE_BUTTON_LEFT) # タイトル画面のボタンと重ならない、左のほうのマス
+	check(main.building_grid.is_empty() and not main.started, "タイトル画面の間はマップを操作できない")
 	
 	# 「はじめから」を押すと、更地から始まる
 	await click_button(buttons["はじめから"])
@@ -5500,4 +5500,49 @@ func run_elevator_stats_scenario() -> bool:
 	await wait_until(func(): return is_instance_valid(r) and r.cell == Vector2i(7, 15), 20.0)
 	main.clock.set_process(false)
 	check(elevators.wait_stats.get(elevators.shaft_key(Vector2i(8, 18)), {}).get("riders", 0) == 1, "人がカゴに乗ると、乗り場で待った時間が記録される")
+	return true
+
+# シナリオ85: ビルの名前（タイトル画面・メニューで付けて、屋上の看板・ビルの状況・セーブの枠に出る）
+# ---------------------------------------------------
+func run_tower_name_scenario() -> bool:
+	print("[シナリオ] ビルの名前")
+	var ui = main.ui
+	check(main.tower_name == main.DEFAULT_TOWER_NAME, "はじめの名前は「%s」" % main.DEFAULT_TOWER_NAME)
+	check(ui.title_name_edit != null and ui.title_name_edit.text == main.DEFAULT_TOWER_NAME, "タイトル画面に、ビルの名前の入力欄がある")
+	main.set_tower_name("  空の上ビル  ")
+	check(main.tower_name == "空の上ビル" and main.get_window().title == "空の上ビル - ProjectTower", "前後の空白は除いて名前を付け、ウィンドウのタイトルにも出す")
+	main.set_tower_name("あいうえおかきくけこさしすせそたちつてと")
+	check(main.tower_name.length() == main.TOWER_NAME_MAX, "名前は%d文字まで" % main.TOWER_NAME_MAX)
+	main.set_tower_name("")
+	check(main.tower_name == main.DEFAULT_TOWER_NAME, "空にすると、はじめの名前に戻る")
+
+	# メニューの「ビルの名前を変える」で変えられる（Enterで決める）
+	ui.do_menu_action("rename")
+	check(ui.name_panel.visible and ui.name_edit.has_focus(), "メニューから、名前を変える画面が開く")
+	var cam_before: Vector2 = main.camera.position
+	await hold_key(KEY_W, 0.2)
+	check(main.camera.position == cam_before, "名前を打っている間は、WASDで画面が動かない")
+	ui.name_edit.text = "ProjectTowerビル"
+	ui.name_edit.text_submitted.emit(ui.name_edit.text)
+	check(not ui.name_panel.visible and main.tower_name == "ProjectTowerビル" and logged("ビルの名前を「ProjectTowerビル」にしました"), "決めると名前が変わる")
+	await wait_frames(2)
+	check(main.stats_label.text.begins_with("ビル:「ProjectTowerビル」"), "ビルの状況の一番上に名前が出る")
+
+	# 屋上の看板: 一番上の階（共通のビルは4階）の屋根に立つ
+	var sign_rect: Rect2 = main.tower_sign.sign_rect()
+	var tile: float = main.tile_map.tile_set.tile_size.y
+	check(sign_rect.has_area() and sign_rect.end.y <= 15 * tile, "看板は一番上の階の屋根の上に立つ")
+	check(absf(sign_rect.get_center().x - 0.0) < tile, "看板は一番上の階の真ん中に立つ")
+	focus_camera(Vector2i(0, 14))
+	await wait_frames(2)
+	await capture("tower_name_01_sign")
+
+	# セーブの枠と読み込み
+	check(main.save_system.slot_path(1).begins_with(TEST_SAVE_DIR), "テストのセーブはテスト用のフォルダに書く")
+	main.save_system.save_slot(1)
+	check(main.save_system.slot_info(1).name == "ProjectTowerビル", "セーブの枠に名前が残る")
+	main.set_tower_name("べつの名前", false)
+	main.save_system.load_slot(1)
+	check(main.tower_name == "ProjectTowerビル", "読み込むと名前も戻る")
+	remove_test_save(main.save_system.slot_path(1))
 	return true

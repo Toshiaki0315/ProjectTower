@@ -30,6 +30,7 @@ const Lighting := preload("res://scripts/view/lighting.gd")
 const CinemaScreen := preload("res://scripts/view/cinema_screen.gd")
 const SkyEvents := preload("res://scripts/view/sky_events.gd")
 const RequestSystem := preload("res://scripts/systems/request_system.gd")
+const TowerSign := preload("res://scripts/view/tower_sign.gd")
 const TenantSystem := preload("res://scripts/systems/tenant_system.gd")
 
 @onready var tile_map = $TileMapLayer
@@ -64,6 +65,9 @@ const MODE_GROUPS := [
 const SCROLL_MARGIN_ROWS := 10 # スクロールできる範囲の、建物の上下に足す余白（行数）
 
 var funds: int = 2000000
+const DEFAULT_TOWER_NAME := "わたしのタワー"
+const TOWER_NAME_MAX := 16 # ビルの名前の長さの上限（文字）
+var tower_name := DEFAULT_TOWER_NAME # ビルの名前（タイトル画面やメニューで付ける。屋上の看板・ウィンドウのタイトルに出る）
 var current_mode: String = "lobby" # 更地から始めるので、最初はロビーを選んでおく
 # 画面の部品は ui.gd が持つ。ほかのファイル・テストから使えるよう、ここから読めるようにする
 var ui                     # scripts/view/ui.gd
@@ -151,6 +155,7 @@ var grid_overlay # マス目の表示
 var effects      # 建設・撤去・お金の演出
 var lighting     # 夜の明かり
 var cinema_screen # 映画館のスクリーン（上映中・開場中・閉館の見た目）
+var tower_sign   # 屋上の看板（ビルの名前）
 var sky_events   # 空のイベント（飛行機・鳥・気球・虹・流れ星・ロケット・UFO・花火。見た目だけ）
 
 # 仕組み（systems）
@@ -210,6 +215,7 @@ const PARTS := [
 	{"name": "grid_overlay", "script": GridOverlay, "parent": "map"},
 	{"name": "cinema_screen", "script": CinemaScreen, "parent": "map"},
 	{"name": "sky_events", "script": SkyEvents, "parent": "map"},
+	{"name": "tower_sign", "script": TowerSign, "parent": "map"},
 	{"name": "effects", "script": Effects, "parent": "map"},
 	{"name": "ui", "script": Ui},
 ]
@@ -747,7 +753,7 @@ func handle_shortcut(event: InputEventKey) -> bool:
 # Esc: 開いているパネルを閉じる。1つでも閉じたら true（何も開いていなければ false）
 func close_panels() -> bool:
 	var closed := false
-	for panel in [help_panel, log_panel, chart_panel, stats_panel, ui.save_panel]:
+	for panel in [help_panel, log_panel, chart_panel, stats_panel, ui.save_panel, ui.name_panel]:
 		if panel.visible:
 			panel.visible = false
 			closed = true
@@ -767,6 +773,14 @@ func toggle_routes() -> void:
 	show_routes = not show_routes
 	ui.update_route_button()
 	show_message("経路の表示を%sにしました（Rキーで切り替え）" % ("オン" if show_routes else "オフ"))
+
+# ビルの名前を付ける（前後の空白は除き、長すぎる分は切る。空なら DEFAULT_TOWER_NAME）
+func set_tower_name(name: String, announce := true) -> void:
+	name = name.strip_edges().left(TOWER_NAME_MAX)
+	tower_name = name if name != "" else DEFAULT_TOWER_NAME
+	get_window().title = "%s - ProjectTower" % tower_name
+	if announce:
+		show_message("ビルの名前を「%s」にしました" % tower_name)
 
 # ゲームの速度を変える（ボタンの表示も合わせる）。一時停止していたら、その速さで再開する
 func set_speed(p_speed: int) -> void:

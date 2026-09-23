@@ -66,6 +66,7 @@ func slot_info(slot: int) -> Dictionary:
 	var day := int(data.day)
 	var minute := int(data.minute)
 	return {"day": day, "funds": int(data.funds), "stars": int(data.stars), "saved_at": str(data.get("saved_at", "")),
+		"name": str(data.get("tower_name", world.DEFAULT_TOWER_NAME)),
 		"date": "%s（%s） %02d:%02d" % [world.clock.date_text(day), world.clock.WEEKDAY_NAMES[world.clock.weekday(day)], minute / 60, minute % 60]}
 
 # 今の状態をファイルに保存する。成功したらtrue（path を省くと枠1）
@@ -112,6 +113,7 @@ func collect() -> Dictionary:
 		"version": VERSION,
 		"saved_at": Time.get_datetime_string_from_system(false, true), # 保存した日時（読み込みの画面に出す）
 		"funds": world.funds,
+		"tower_name": world.tower_name,
 		"day": world.clock.day,
 		"minute": world.clock.minute,
 		"stars": world.rating_system.stars,
@@ -188,6 +190,7 @@ func apply(data: Dictionary) -> void:
 	for unit in data.units:
 		world.place_unit(Vector2i(int(unit.x), int(unit.y)), unit.type)
 	world.funds = int(data.funds)
+	world.set_tower_name(str(data.get("tower_name", "")), false) # 古いセーブデータにはない（そのときは初めの名前）
 	world.clock.day = int(data.day)
 	world.clock.minute = float(data.minute)
 	world.rating_system.stars = int(data.stars)

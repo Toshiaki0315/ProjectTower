@@ -89,6 +89,9 @@ var save_panel: Control    # セーブ・読み込みの枠を選ぶ画面（⌘
 var save_title: Label
 var save_rows: VBoxContainer
 var save_mode := "save"    # "save"（保存する枠を選ぶ）/ "load"（読み込む枠を選ぶ）
+var title_name_edit: LineEdit # タイトル画面の、ビルの名前の入力欄
+var name_panel: Control    # ビルの名前を変える画面（メニューの「ビルの名前を変える」）
+var name_edit: LineEdit
 var ransom_text: Label
 var ransom_pay_button: Button
 var ransom_refuse_button: Button
@@ -437,6 +440,7 @@ const HELP_SECTIONS := [
 		["色分け表示", "[key]V[/key] で ストレス → 騒音 → エレベーター待ち → 消す と切り替わる。どこが混んでいるか・うるさいかがひと目でわかる"],
 		["経路", "[key]R[/key] または上部バーの「経路」ボタンで、人が通る道すじを線で出す"],
 		["セーブ", "[key]⌘S[/key] で3つの枠から選んで保存、[key]⌘O[/key] で読み込み。毎日0時の決算のあとには自動でオートセーブ"],
+		["ビルの名前", "タイトル画面で付けて始める。途中で変えるときはメニューの「ゲーム > ビルの名前を変える」。屋上の看板に出る"],
 		["そのほか", "[key]⌘L[/key] メッセージの記録 / [key]⌘G[/key] 収支のグラフ / [key]M[/key] 音のオン・オフ / [key]F1[/key]・[key]H[/key] この説明 / [key]Esc[/key] 開いているパネルを閉じる"],
 	]],
 	["建物のルール", [
@@ -768,6 +772,7 @@ const MENUS := [
 	]},
 	{"name": "ゲーム", "items": [
 		{"text": "取り消し（⌘Z）", "action": "undo"},
+		{"text": "ビルの名前を変える", "action": "rename"},
 		{"text": "一時停止（スペース）", "action": "pause", "check": true},
 		{"text": "速さを切り替える", "action": "speed"},
 		{"text": "音を出す（M）", "action": "mute", "check": true},
@@ -837,12 +842,15 @@ func do_menu_action(action: String) -> void:
 		"undo":
 			if world.started:
 				world.undo()
+		"rename":
+			if world.started:
+				show_name_panel()
 		"mute": world.audio_system.toggle_mute()
 		"help": help_panel.visible = not help_panel.visible
 
 # ビルの状況（★を押すと開くパネル）の中身
 func update_stats_panel(warning_list: Array[String]) -> void:
-	var lines: Array[String] = [world.rating_system.get_status_text(), world.goal_system.get_goal_text()]
+	var lines: Array[String] = ["ビル:「%s」" % world.tower_name, world.rating_system.get_status_text(), world.goal_system.get_goal_text()]
 	lines.append("社員: 在館 %d / 全 %d人" % [world.commute_system.count_in_building(), world.commute_system.workers.size()])
 	var tenants = world.tenant_system
 	if tenants.count_rating(tenants.Rating.GOOD) + tenants.count_rating(tenants.Rating.NORMAL) \
@@ -1073,11 +1081,23 @@ func build_title() -> void:
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(subtitle)
 	
+	# ビルの名前（はじめからのとき。屋上の看板に出る）
+	var name_row = HBoxContainer.new()
+	name_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	name_row.add_theme_constant_override("separation", 8 * UI_SCALE)
+	var name_label = Label.new()
+	name_label.text = "ビルの名前:"
+	name_row.add_child(name_label)
+	title_name_edit = make_name_edit()
+	title_name_edit.text = world.tower_name
+	title_name_edit.text_submitted.connect(func(_text): start_new_game())
+	name_row.add_child(title_name_edit)
+	box.add_child(name_row)
 	var new_button = Button.new()
 	new_button.text = "はじめから"
 	new_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	new_button.custom_minimum_size.x = 320 * UI_SCALE
-	new_button.pressed.connect(func(): world.start_game())
+	new_button.pressed.connect(func(): start_new_game())
 	box.add_child(new_button)
 	var continue_button = Button.new()
 	continue_button.text = "続きから（セーブデータを読み込む）"
@@ -1094,6 +1114,63 @@ func build_title() -> void:
 	build_goal_panel(canvas, theme)
 	build_ransom_panel(canvas, theme)
 	build_save_panel(canvas, theme) # タイトル画面の「続きから」でも使うので、タイトル画面より手前に作る
+	build_name_panel(canvas, theme)
+
+# 「はじめから」: 入力したビルの名前を付けて、更地から始める
+func start_new_game() -> void:
+	world.set_tower_name(title_name_edit.text, false)
+	world.start_game()
+
+# ビルの名前の入力欄
+func make_name_edit() -> LineEdit:
+	var edit := LineEdit.new()
+	edit.max_length = world.TOWER_NAME_MAX
+	edit.custom_minimum_size.x = 320 * UI_SCALE
+	edit.placeholder_text = world.DEFAULT_TOWER_NAME
+	return edit
+
+# ビルの名前を変える画面を作る
+func build_name_panel(canvas: CanvasLayer, theme: Theme) -> void:
+	var back = ColorRect.new()
+	back.color = Color(0.06, 0.07, 0.12, 0.85)
+	back.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	back.visible = false
+	canvas.add_child(back)
+	var box = VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 10 * UI_SCALE)
+	box.theme = theme
+	back.add_child(box)
+	var title = Label.new()
+	title.text = "ビルの名前（%d文字まで。屋上の看板に出ます）" % world.TOWER_NAME_MAX
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	name_edit = make_name_edit()
+	name_edit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	name_edit.text_submitted.connect(func(_text): submit_name())
+	box.add_child(name_edit)
+	var buttons = HBoxContainer.new()
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	buttons.add_theme_constant_override("separation", 12 * UI_SCALE)
+	for item in [["決める（Enter）", submit_name], ["やめる（Esc）", func(): name_panel.visible = false]]:
+		var button = Button.new()
+		button.text = item[0]
+		button.custom_minimum_size.x = 200 * UI_SCALE
+		button.pressed.connect(item[1])
+		buttons.add_child(button)
+	box.add_child(buttons)
+	name_panel = back
+
+func show_name_panel() -> void:
+	name_edit.text = world.tower_name
+	name_panel.visible = true
+	name_edit.grab_focus()
+	name_edit.select_all()
+
+func submit_name() -> void:
+	name_panel.visible = false
+	world.set_tower_name(name_edit.text)
 
 # セーブ・読み込みの枠を選ぶ画面を作る（中身は開くたびに作り直す）
 func build_save_panel(canvas: CanvasLayer, theme: Theme) -> void:
@@ -1149,7 +1226,7 @@ func show_save_panel(mode: String) -> void:
 func slot_summary(info: Dictionary) -> String:
 	if info.is_empty():
 		return "（空き）"
-	var text := "%s・★%d・資金 %s" % [info.date, info.stars, world.money_text(info.funds)]
+	var text := "「%s」%s・★%d・資金 %s" % [info.name, info.date, info.stars, world.money_text(info.funds)]
 	if info.saved_at != "":
 		text += "（保存 %s）" % info.saved_at.substr(0, 16).replace("T", " ")
 	return text

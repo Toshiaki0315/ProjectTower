@@ -48,7 +48,7 @@ func check_day(day: int) -> void:
 		world.audio_system.play("money")
 		if current() == null:
 			cleared = true
-			world.show_goal_panel("タワー完成！", "★5のタワーができあがり、すべての目標を達成しました。おめでとうございます！\n\nここからは、好きなだけビルを大きくしてください。")
+			world.show_goal_panel("タワー完成！", "「%s」が★5のタワーになり、すべての目標を達成しました。おめでとうございます！\n\nここからは、好きなだけビルを大きくしてください。" % world.tower_name)
 		else:
 			world.show_goal_panel("目標を達成しました！", "%s\n\n次の目標: %s" % [goal.name, current().name])
 		return
