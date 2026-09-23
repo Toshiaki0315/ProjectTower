@@ -25,7 +25,7 @@ var stats_button: Button   # ★の表示（押すとくわしい状況が開く
 var stats_panel: Control   # ビルの状況（人口・社員・目標・オフィス・客室）
 var stats_label: Label     # その中身
 var speed_button: Button   # ゲームの速度（押すたびに切り替わる）
-var route_button: Button   # 動線（人の通り道）の表示の切り替え
+var route_button: Button   # 経路（人の通り道）の表示の切り替え
 var menu_bar: MenuBar      # 画面上部のメニュー（macOSでは画面最上部のメニューバーに出る）
 var mode_select: OptionButton # 建設メニュー
 var message_label: Label   # 操作結果のメッセージ（下から数行ぶん流れる）
@@ -127,7 +127,7 @@ func build_bars() -> void:
 	
 	# --- 上部バー（2段） ---
 	#   1段目: 資金 / 日付と時刻
-	#   2段目: ★（押すとくわしい状況）/ 速度 / 建設メニュー / 動線
+	#   2段目: ★（押すとくわしい状況）/ 速度 / 建設メニュー / 経路
 	var top_rows = VBoxContainer.new()
 	top_rows.add_theme_constant_override("separation", 4 * UI_SCALE)
 	layout.add_child(make_bar(top_rows))
@@ -664,7 +664,12 @@ func update_hover_label():
 	var type = world.get_building_type(cell)
 	var text = "%s: %s" % [world.get_floor_name(cell.y), world.BUILDINGS[type].name if type != "" else "空き"]
 	if world.incident_system.has_roach_at(cell):
-		text += "（ゴキブリ発生中）"
+		if world.hotel_system.is_room_type(type):
+			text += "（ゴキブリ発生中・掃除すると消える）"
+		elif world.visitor_system.SHOP_TYPES.has(type):
+			text += "（ゴキブリ発生中・客が減っている）"
+		else:
+			text += "（ゴキブリ発生中）"
 	if type in world.OFFICE_TYPES:
 		var rating: String = world.tenant_system.get_rating_text(cell)
 		text += "（%s%s）" % [world.tenant_system.get_rent_text(cell), "・" + rating if rating != "" else ""]

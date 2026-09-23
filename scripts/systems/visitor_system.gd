@@ -95,8 +95,9 @@ func plan_shop_visits(day: int, start: int, end: int) -> void:
 		var info: Dictionary = SHOP_TYPES[type]
 		for unit in world.find_units_of_type(type):
 			var seats: Array[Vector2i] = world.get_unit_cells(unit)
-			# 雨の日は減り、地下鉄駅があると増える
-			var count := int((info.holiday if holiday else info.weekday) * world.weather_system.visitor_rate() * subway_rate())
+			# 雨の日は減り、地下鉄駅があると増え、ゴキブリのいる店は減る
+			var count := int((info.holiday if holiday else info.weekday) * world.weather_system.visitor_rate() * subway_rate()
+				* world.incident_system.customer_rate(unit))
 			for i in count:
 				var seat: Vector2i = seats[i % seats.size()]
 				var entrance = world.nearest_entrance(seat)

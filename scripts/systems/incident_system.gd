@@ -34,6 +34,9 @@ extends Node
 #   毎日 ROACH_SPAWN 棟ずつテナントに広がる。
 #   ゴキブリがいるテナントは、評価にストレス ROACH_STRESS 相当が足される。
 #   ゴミの処理が追いついて悪化が0に戻ると、いなくなる。撤去・焼失したテナントのゴキブリはすぐ消える。
+#   ホテルの客室は、チェックアウトのあと ROOM_ROACH_DAYS 日たっても掃除されないと、その部屋だけに出る。
+#   ハウスキーパーがその部屋を掃除すると消える。
+#   ゴキブリのいる飲食店・ショップは、外から来る客が ROACH_CUSTOMER_RATE 倍に減り、社員も避ける。
 # ■ 埋蔵金の発見
 #   地下に建物を建てる（＝掘る）と、マスごとに TREASURE_CHANCE の確率で埋蔵金が見つかる。
 #   深いほど見つかりやすく、金額も大きい（TREASURE_PER_FLOOR × 深さ）。
@@ -70,6 +73,8 @@ const ROACH_DAYS := 2        # 続く日数
 const ROACH_SPAWN := 3       # 1日に広がるテナントの数
 const ROACH_STRESS := 15.0   # ゴキブリがいるテナントの評価に足されるストレス
 const ROACH_MINUTE := 6 * 60 # 1日の判定をする時刻
+const ROOM_ROACH_DAYS := 1   # チェックアウトしてからこの日数、掃除されない客室にゴキブリが出る
+const ROACH_CUSTOMER_RATE := 0.5 # ゴキブリのいる飲食店・ショップに外から来る客の倍率
 
 const TREASURE_CHANCE := 0.03      # 地下1階のマスを掘ったときに埋蔵金が見つかる確率
 const TREASURE_CHANCE_PER_FLOOR := 0.002 # 1階深くなるごとに上がる確率
@@ -599,13 +604,19 @@ func roach_stress(origin: Vector2i) -> float:
 # 1日1回の判定（衛生が悪い日が続くと増え、きれいになるといなくなる）
 func update_roaches(day: int) -> void:
 	remove_lost_roaches() # なくなったテナントのゴキブリは消す
+	infest_dirty_rooms(day)
 	if world.economy_system.pollution >= ROACH_POLLUTION:
 		roach_days += 1
 	else:
 		roach_days = 0
 		if world.economy_system.pollution == 0 and has_roaches():
-			roaches.clear()
-			world.show_message("ビルがきれいになり、ゴキブリはいなくなりました")
+			# ビルがきれいになったら消える（掃除されていない客室のゴキブリは、掃除されるまで残る）
+			var before := roaches.size()
+			for origin in roaches.keys():
+				if not world.hotel_system.is_dirty_room(origin):
+					roaches.erase(origin)
+			if roaches.size() < before:
+				world.show_message("ビルがきれいになり、ゴキブリはいなくなりました")
 			return
 	if roach_days < ROACH_DAYS:
 		return
@@ -617,6 +628,27 @@ func update_roaches(day: int) -> void:
 		world.show_message("ゴキブリが %d 棟のテナントに広がっています" % roaches.size())
 
 # ゴキブリをテナントに広げる（日ごとに決まった乱数で選ぶ）
+# チェックアウトのあと掃除されないまま日がたった客室に、ゴキブリが出る
+func infest_dirty_rooms(day: int) -> void:
+	var hotel = world.hotel_system
+	var found := 0
+	for origin in hotel.rooms:
+		var room: Dictionary = hotel.rooms[origin]
+		if room.state == hotel.RoomState.DIRTY and day - room.get("dirty_day", day) >= ROOM_ROACH_DAYS \
+				and not roaches.has(origin):
+			roaches[origin] = true
+			found += 1
+	if found > 0:
+		world.show_message("掃除されないまま放っておかれた客室 %d室に、ゴキブリが出ました（ハウスキーパーが掃除すると消えます）" % found)
+
+# ハウスキーパーが客室を掃除したときに呼ばれる: その部屋のゴキブリは消える
+func on_room_cleaned(origin: Vector2i) -> void:
+	roaches.erase(origin)
+
+# その店に外から来る客の倍率（ゴキブリがいると減る）
+func customer_rate(origin: Vector2i) -> float:
+	return ROACH_CUSTOMER_RATE if roaches.has(origin) else 1.0
+
 func spread_roaches(day: int) -> void:
 	var targets: Array[Vector2i] = []
 	for type in TARGET_TYPES:

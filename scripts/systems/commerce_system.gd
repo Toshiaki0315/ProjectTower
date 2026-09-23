@@ -87,15 +87,21 @@ func lunch_minute(office: Vector2i, day: int) -> int:
 	return rng.randi_range(LUNCH_START, LUNCH_END - 1)
 
 # 経路が一番短い飲食店の左端のマス（たどり着ける店がなければnull）
+# ゴキブリのいる店は、ほかに行ける店がないときだけ選ぶ
 func find_nearest_restaurant(from: Vector2i):
 	var best = null
 	var best_length := 0
+	var best_dirty := true
 	for type in RESTAURANTS:
 		for cell: Vector2i in world.find_units_of_type(type):
 			var path: Array[Vector2i] = world.find_path(from, cell)
-			if not path.is_empty() and (best == null or path.size() < best_length):
+			if path.is_empty():
+				continue
+			var dirty: bool = world.incident_system.roaches.has(cell)
+			if best == null or (best_dirty and not dirty) or (dirty == best_dirty and path.size() < best_length):
 				best = cell
 				best_length = path.size()
+				best_dirty = dirty
 	return best
 
 # 指定した飲食店で食事中の客の数（店のどのマスを指定してもよい）

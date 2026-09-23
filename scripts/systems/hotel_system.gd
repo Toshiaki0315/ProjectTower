@@ -171,6 +171,10 @@ func spawn_guest(cell: Vector2i):
 	guest.go_to(cell)
 	return guest
 
+# 掃除待ちの客室か（ゴキブリが残るかどうかの判定用）
+func is_dirty_room(origin: Vector2i) -> bool:
+	return rooms.has(origin) and rooms[origin].state == RoomState.DIRTY
+
 # チェックアウト: 宿泊料を受け取り、客を入口へ向かわせ、部屋を清掃待ちにする
 func checkout(cell: Vector2i, room: Dictionary) -> void:
 	var day: int = world.clock.day
@@ -185,6 +189,7 @@ func checkout(cell: Vector2i, room: Dictionary) -> void:
 			guest.queue_free()
 	room.guests = []
 	room.state = RoomState.DIRTY
+	room.dirty_day = day # 掃除されないまま日がたつと、ゴキブリが出る
 
 # 入口に着いた客は帰る（消える）
 func process_leaving_guests() -> void:
@@ -216,6 +221,7 @@ func process_housekeeper(keeper: Dictionary, minutes: float) -> void:
 		keeper.clean_left -= minutes
 		if keeper.clean_left <= 0.0:
 			room.state = RoomState.CLEAN
+			world.incident_system.on_room_cleaned(keeper.room) # 掃除するとゴキブリもいなくなる
 			release_room(keeper)
 	elif not resident.is_moving() and not resident.go_to(keeper.room):
 		release_room(keeper)
