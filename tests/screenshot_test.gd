@@ -3206,9 +3206,10 @@ func run_fire_scenario() -> bool:
 	await wait_frames(2)
 	check(incidents.guard_count() == 0, "警備室を撤去すると警備員もいなくなる")
 	incidents.start_fire(Vector2i(12, 17))
+	incidents.spread_fire(true) # 燃え移りは確率なので、ここでは必ず1回燃え移らせる（確率は「事件の的」のシナリオで確かめる）
 	set_speed(16.0)
 	await wait_until(func(): return incidents.fire.size() > 1, 30.0)
-	check(incidents.fire.size() > 1, "時間がたつと隣のマスへ燃え広がる")
+	check(incidents.fire.size() > 1, "隣のマスへ燃え広がる")
 	await capture("fire_02_spreading")
 	await wait_until(func(): return main.get_building_type(Vector2i(12, 17)) == "ruin", 60.0)
 	check(main.get_building_type(Vector2i(12, 17)) == "ruin", "燃え続けたテナントは焼け落ちて、焼け跡が残る")
@@ -4629,15 +4630,35 @@ func run_incident_targets_scenario() -> bool:
 	# 火はテナントにだけ燃え移る
 	incidents.start_fire(Vector2i(11, 17))
 	for i in 3:
-		incidents.spread_fire()
+		incidents.spread_fire(true) # 必ず燃え移らせて、燃え移る先の決まりを確かめる
 	check(incidents.fire.has(Vector2i(10, 17)), "同じショップの隣のマスには燃え広がる")
 	check(incidents.fire.has(Vector2i(11, 16)), "上の階のオフィスにも燃え広がる")
 	check(not incidents.fire.has(Vector2i(12, 17)) and not incidents.fire.has(Vector2i(8, 17)), "階段には燃え移らない")
 	check(not incidents.fire.has(Vector2i(11, 18)), "下の階のロビーには燃え移らない")
 	incidents.reset_incidents()
 	incidents.start_fire(Vector2i(10, 16)) # 上の階のオフィスから出火
-	incidents.spread_fire()
+	incidents.spread_fire(true)
 	check(incidents.fire.has(Vector2i(10, 17)), "下の階のテナントにも燃え広がる（上下左右）")
+	# ふつうは確率で燃え移る（左右は上下より燃え移りやすい）。同じ火事なら毎回同じ広がり方になる
+	var spread_counts := {"side": 0, "vertical": 0}
+	for i in 200:
+		incidents.reset_incidents()
+		main.clock.day = 1 + i
+		incidents.start_fire(Vector2i(10, 16))
+		incidents.spread_fire()
+		spread_counts.side += int(incidents.fire.has(Vector2i(9, 16))) + int(incidents.fire.has(Vector2i(11, 16)))
+		spread_counts.vertical += int(incidents.fire.has(Vector2i(10, 17)))
+	check(spread_counts.side > 150 and spread_counts.side < 330, "左右へは、ときどき燃え移る（400回のうち%d回）" % spread_counts.side)
+	check(spread_counts.vertical > 20 and spread_counts.vertical < 90, "上下の階へは、左右より燃え移りにくい（200回のうち%d回）" % spread_counts.vertical)
+	main.clock.day = 1
+	incidents.reset_incidents()
+	incidents.start_fire(Vector2i(10, 16))
+	incidents.spread_fire()
+	var first: Array = incidents.fire.keys()
+	incidents.reset_incidents()
+	incidents.start_fire(Vector2i(10, 16))
+	incidents.spread_fire()
+	check(incidents.fire.keys() == first, "同じ日・同じ場所の火事なら、同じように燃え広がる")
 	incidents.reset_incidents()
 
 	# 撤去して建て直したテナントに、ゴキブリは引き継がれない

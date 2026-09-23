@@ -10,10 +10,7 @@ extends SceneTree
 # 遊んでいるセーブデータには触らない（オートセーブを止めてから始める）。
 # ---------------------------------------------------
 
-const GROUND := 18
-const TOP_FLOOR := 35
-const OFFICE_FLOORS := 16
-const SHAFT_XS := [8, 9, 10]
+const TowerBuilder := preload("res://tools/tower_builder.gd")
 const MEASURE_SECONDS := 3.0
 
 var main: Node2D
@@ -30,7 +27,7 @@ func _init() -> void:
 	main.save_system.autosave_enabled = false
 	main.start_game()
 	main.tutorial_system.finished = true
-	build_tower()
+	TowerBuilder.build(main)
 	main.rating_system.stars = 5
 	# 朝の通勤の時間帯まで進めて、人をビルに入れる
 	main.clock.set_time(1, 7, 50)
@@ -86,33 +83,3 @@ func measure(label: String) -> float:
 	var ms := (Time.get_ticks_usec() - started) / 1000.0 / frames
 	print("%s: 1フレーム %.2fms（%.0ffps）・そのうち処理 %.2fms" % [label, ms, 1000.0 / ms, process_total / frames])
 	return ms
-
-# 通しプレイの終盤と同じくらいのビルを、お金をかけずに組み立てる
-func build_tower() -> void:
-	for x in range(-8, 23):
-		place("lobby" if not SHAFT_XS.has(x) else "elevator", Vector2i(x, GROUND))
-	for y in range(GROUND - 1, GROUND - TOP_FLOOR, -1):
-		for x in SHAFT_XS:
-			place("elevator", Vector2i(x, y))
-		var floor_number: int = GROUND - y + 1
-		if floor_number <= OFFICE_FLOORS:
-			for x in [-8, -4, 0, 4, 11, 15, 19]:
-				place("office", Vector2i(x, y))
-		else:
-			for x in [-8, -5, -2, 1, 4, 11, 14, 17, 20]:
-				place("housing", Vector2i(x, y))
-			place("frame", Vector2i(7, y))
-			place("frame", Vector2i(23, y))
-	for y in range(GROUND + 1, GROUND + 3): # 地下: ゴミ処理場・警備室・メディカルセンター
-		for x in SHAFT_XS:
-			place("elevator", Vector2i(x, y))
-		for x in [-8, -5, -2, 1, 4, 11, 14, 17, 20]:
-			place("recycling", Vector2i(x, y))
-	main.rebuild_systems()
-	for x in SHAFT_XS:
-		for i in 3:
-			main.elevator_system.add_car(Vector2i(x, GROUND))
-	main.funds = 100000000
-
-func place(type: String, cell: Vector2i) -> void:
-	main.place_unit(cell, type)

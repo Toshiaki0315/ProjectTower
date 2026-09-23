@@ -22,7 +22,9 @@ extends Node
 # ■ 火災
 #   ★MIN_STARS 以上のビルには、毎日 FIRE_MINUTE に fire_chance() の確率で出火する
 #   （FIRE_CHANCE から、テナントが多いほど上がる。上限 FIRE_CHANCE_MAX）。
-#   燃えているマスは SPREAD_MINUTES ごとに、上下左右のマスのテナントへ燃え広がる
+#   燃えているマスは SPREAD_MINUTES ごとに、左右のマスのテナントへ SPREAD_CHANCE_SIDE、
+#   上下の階のマスへ SPREAD_CHANCE_VERTICAL（床と天井があるので燃え移りにくい）の確率で燃え広がる
+#   （火事ごと・燃え広がる回ごとに決まった乱数なので、同じ火事なら毎回同じ広がり方になる）
 #   （エレベーター・階段・ロビー・空きフロア・焼け跡には燃え移らない）。
 #   1マスが BURN_MINUTES 燃え続けると、そのテナントは焼け落ちて焼け跡になる（建て直すには先に撤去する）。
 #   警備員が燃えているマスへ行き、EXTINGUISH_MINUTES 分かけて1マスずつ消し止める。
@@ -60,7 +62,9 @@ const FIRE_CHANCE_PER_TENANT := 0.0005 # テナント1棟ごとに上がる出�
                                        #（テナント20棟の中くらいのビルで、ちょうど2%になる）
 const FIRE_CHANCE_MAX := 0.04  # 出火の確率の上限
 const FIRE_MINUTE := 20 * 60   # 出火する時刻
-const SPREAD_MINUTES := 20.0   # 隣のマスへ燃え広がるまでの時間（分）
+const SPREAD_MINUTES := 20.0   # 隣のマスへ燃え広がるかを決める間隔（分）
+const SPREAD_CHANCE_SIDE := 0.6      # 左右のマスへ燃え移る確率（1回ごと）
+const SPREAD_CHANCE_VERTICAL := 0.25 # 上下の階のマスへ燃え移る確率（床と天井があるので低い）
 const BURN_MINUTES := 60.0     # 1マスが燃え尽きる（建物が焼け落ちる）までの時間（分）
 const EXTINGUISH_MINUTES := 10.0 # 警備員が1マスを消し止めるのにかかる時間（分）
 const HELI_MINUTES := 5.0      # 消防ヘリが1マスを消すのにかかる時間（分）
@@ -95,6 +99,8 @@ var bomb = null     # 今の爆破予告 {"cell": 仕掛けられたマス, "lef
 var bomb_day := 0   # 最後に予告の判定をした日
 var fire := {}      # 燃えているマス -> {"burn_left": 焼け落ちるまでの分, "work_left": 消火の残りの分}
 var fire_spread_left := 0.0 # 次に燃え広がるまでの分
+var fire_seed := 0          # 今の火事の乱数のもと（出火した日と場所から決める）
+var fire_spread_count := 0  # 今の火事で、燃え広がるかを決めた回数
 var heli = null     # 消防ヘリ {"pos": 今の位置, "target": 消しに行くマス, "work_left": 残りの分}
 var fire_day := 0   # 最後に出火の判定をした日
 var last_incident_day := 0 # 最後に爆破予告か火災が始まった日（連続発生を防ぐ）
@@ -447,6 +453,8 @@ func start_fire(cell) -> void:
 		return
 	last_incident_day = world.clock.day
 	fire.clear()
+	fire_seed = hash([world.clock.day, cell, "fire"])
+	fire_spread_count = 0
 	burn(cell)
 	world.audio_system.play("alert")
 	fire_spread_left = SPREAD_MINUTES
@@ -501,12 +509,19 @@ func burn_down(cell: Vector2i) -> void:
 	world.show_message("%s の%sが焼け落ちました（焼け跡は撤去してから建て直せます）" % [world.get_floor_name(cell.y), name])
 
 # 燃えているマスから、上下左右のマスへ燃え広がる
-func spread_fire() -> void:
-	for cell in fire.keys():
+# certain: true なら確率を見ずに必ず燃え移らせる（テストで、燃え移る先の決まりを確かめるため）
+func spread_fire(certain := false) -> void:
+	fire_spread_count += 1
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([fire_seed, fire_spread_count])
+	var cells: Array = fire.keys()
+	cells.sort() # 並び順を決めてから乱数を引く（同じ火事なら毎回同じ広がり方になるように）
+	for cell in cells:
 		for dir in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
 			var next: Vector2i = cell + dir
+			var chance: float = SPREAD_CHANCE_SIDE if dir.y == 0 else SPREAD_CHANCE_VERTICAL
 			# 燃え移るのはテナントだけ（エレベーター・階段・ロビー・空きフロア・焼け跡には移らない）
-			if is_target(next) and not fire.has(next):
+			if (certain or rng.randf() < chance) and is_target(next) and not fire.has(next):
 				burn(next)
 
 # 事件の的になるテナントのマスか（爆弾を仕掛けられる・燃え移る・ゴキブリが出る）
@@ -565,6 +580,12 @@ func guard_at(cell: Vector2i):
 
 # 手が空いている警備員を、まだ誰も向かっていない燃えているマスへ向かわせる
 func dispatch_guards() -> void:
+	# ほかの警備員が向かっている・消している燃えているマス（手分けして、別々のマスを消しに行く）
+	var taken := {}
+	for origin in guards:
+		var other = guards[origin].resident
+		if is_instance_valid(other) and fire.has(other.goal) and (other.is_moving() or other.cell == other.goal):
+			taken[other.goal] = true
 	for origin in guards:
 		var guard = guards[origin].resident
 		if not is_instance_valid(guard) or guard.is_moving() or fire.has(guard.cell):
@@ -573,11 +594,19 @@ func dispatch_guards() -> void:
 			continue # 爆弾の捜索・解体が先
 		var best = null
 		var best_length := 0
+		var best_taken := true
 		for cell in fire:
 			var path: Array[Vector2i] = world.find_path(guard.cell, cell, true)
-			if not path.is_empty() and (best == null or path.size() < best_length):
+			if path.is_empty():
+				continue
+			# まだ誰も向かっていないマスを先に選ぶ（どこにも向かっていなければ、一番近いマスを手伝う）
+			var is_taken: bool = taken.has(cell)
+			if best == null or (best_taken and not is_taken) or (is_taken == best_taken and path.size() < best_length):
 				best = cell
 				best_length = path.size()
+				best_taken = is_taken
+		if best != null:
+			taken[best] = true
 		if best != null:
 			guard.go_to(best)
 		elif guard.cell != guards[origin].home:
