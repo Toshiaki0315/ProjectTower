@@ -367,8 +367,25 @@ func run_ui_scenario() -> bool:
 	await press_key(KEY_F1)
 	check(main.help_panel.visible, "F1で操作説明が開く")
 	await capture("ui_02_help_open")
+	# 操作説明を開いている間は、スクロールで動くのは操作説明だけ（一番下まで行っても、後ろの画面は動かない）
+	var cam: Camera2D = main.camera
+	var help_scroll: ScrollContainer = main.help_panel.get_child(0)
+	var help_center: Vector2 = main.help_panel.get_global_rect().get_center()
+	var cam_before: Vector2 = cam.position
+	await scroll_wheel(help_center, MOUSE_BUTTON_WHEEL_DOWN, 60, false)
+	check(help_scroll.scroll_vertical > 0, "操作説明の上でホイールを回すと、操作説明がスクロールする")
+	check(cam.position == cam_before, "操作説明が一番下まで行っても、後ろの画面はスクロールしない")
+	await pan_gesture(help_center, Vector2(0, 5), 30)
+	check(cam.position == cam_before, "2本指スクロールでも、後ろの画面は動かない")
+	var world_pos := Vector2(main.get_viewport().get_visible_rect().size.x * 0.2, main.get_viewport().get_visible_rect().size.y * 0.6)
+	await scroll_wheel(world_pos, MOUSE_BUTTON_WHEEL_DOWN, 3, false)
+	await pan_gesture(world_pos, Vector2(0, 5), 3)
+	check(cam.position == cam_before, "操作説明を開いている間は、操作説明の外でスクロールしても後ろの画面は動かない")
 	await press_key(KEY_F1)
 	check(not main.help_panel.visible, "もう一度F1を押すと閉じる")
+	await scroll_wheel(world_pos, MOUSE_BUTTON_WHEEL_DOWN, 1, false)
+	check(cam.position != cam_before, "操作説明を閉じると、また画面をスクロールできる")
+	cam.position = cam_before
 	await press_key(KEY_H)
 	check(main.help_panel.visible, "Hキーでも操作説明が開く")
 	await press_key(KEY_ESCAPE)
@@ -3977,6 +3994,15 @@ func scroll_wheel(pos: Vector2, button: MouseButton, times: int, zoom := true, s
 			ev.global_position = pos
 			root.push_input(ev)
 	await wait_frames(1)
+
+# トラックパッドの2本指スクロールを times 回送る
+func pan_gesture(pos: Vector2, delta: Vector2, times: int) -> void:
+	for i in times:
+		var pan := InputEventPanGesture.new()
+		pan.position = pos
+		pan.delta = delta
+		root.push_input(pan)
+		await wait_frames(1)
 
 func middle_drag(from: Vector2, amount: Vector2) -> void:
 	for pressed in [true, false]:

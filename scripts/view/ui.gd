@@ -285,6 +285,8 @@ func build_bars() -> void:
 	help_scroll.add_child(help_label)
 	help_panel = make_bar(help_scroll)
 	help_panel.visible = false
+	# 開いている間は、スクロールで後ろの画面を動かさない（操作説明だけがスクロールする）
+	help_panel.visibility_changed.connect(func(): world.camera.scroll_locked = help_panel.visible)
 	help_row.add_child(help_panel)
 	
 	# --- ビルの状況（2段目の★を押すと開閉する） ---

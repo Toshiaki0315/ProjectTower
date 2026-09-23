@@ -17,6 +17,7 @@ const KEY_PAN_SPEED := 600.0  # キー移動の速さ（画面上のpx/秒）
 const WHEEL_SCROLL := 48.0    # ホイール1回でスクロールする量（画面上のpx）
 
 var dragging := false
+var scroll_locked := false # 操作説明を開いている間は true（スクロールで動くのは操作説明だけにする）
 
 func _ready() -> void:
 	zoom = Vector2.ONE * DEFAULT_ZOOM
@@ -29,7 +30,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		match event.button_index:
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT:
-				if event.pressed:
+				if event.pressed and not scroll_locked:
 					handle_wheel(event)
 				get_viewport().set_input_as_handled()
 			MOUSE_BUTTON_MIDDLE:
@@ -39,7 +40,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		pan_by_screen(-event.relative)
 	elif event is InputEventMagnifyGesture:
 		zoom_at(event.position, event.factor)
-	elif event is InputEventPanGesture:
+	elif event is InputEventPanGesture and not scroll_locked:
+		# 操作説明の上で一番下までスクロールした後の分も、ここに届くので止める
 		# deltaは画面上の移動量に近い値なので、見た目の速さが一定になるよう係数をかける
 		pan_by_screen(event.delta * 20.0)
 
