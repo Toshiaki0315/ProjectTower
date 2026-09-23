@@ -44,6 +44,10 @@ const ICONS := {
 		"...KbbK...", "...KbbK...", "...KbbK...", "...KbbK...", "....KK...."],
 	"route": ["..KK......", ".KggK.....", ".KggK..KK.", "..KK..KggK", "......KggK",
 		"..KK...KK.", ".KggK.....", ".KggK..KK.", "..KK..KggK", "......KggK"],
+	"pause": ["..........", ".KKK.KKK..", ".KWK.KWK..", ".KWK.KWK..", ".KWK.KWK..",
+		".KWK.KWK..", ".KWK.KWK..", ".KWK.KWK..", ".KKK.KKK..", ".........."],
+	"play": ["..K.......", "..KK......", "..KgK.....", "..KggK....", "..KgggK...",
+		"..KgggK...", "..KggK....", "..KgK.....", "..KK......", "..K......."],
 	"speed1": ["..K.......", "..KK......", "..KPK.....", "..KPPK....", "..KPPPK...",
 		"..KPPPK...", "..KPPK....", "..KPK.....", "..KK......", "..K......."],
 	"speed2": ["K....K....", "KK...KK...", "KPK..KPK..", "KPPK.KPPK.", "KPPPKKPPPK",
@@ -62,6 +66,7 @@ var stats_button: Button   # ★の表示（押すとくわしい状況が開く
 var stats_panel: Control   # ビルの状況（人口・社員・目標・オフィス・客室）
 var stats_label: Label     # その中身
 var speed_button: Button   # ゲームの速度（押すたびに切り替わる）
+var pause_button: Button   # 一時停止・再開
 var route_button: Button   # 経路（人の通り道）の表示の切り替え
 var menu_bar: MenuBar      # 画面上部のメニュー（macOSでは画面最上部のメニューバーに出る）
 var mode_select: OptionButton # 建設メニュー
@@ -95,6 +100,8 @@ func update() -> void:
 	update_scrollbar()
 	update_hover_label()
 	clock_label.text = "%s  %s" % [world.clock.get_time_text(), world.weather_system.get_weather_text()]
+	if world.paused:
+		clock_label.text += "  ⏸ 停止中"
 	var warning_list := warnings()
 	# ★の数を、塗った星と白抜きの星で見せる（例: ★3 なら ★★★☆）
 	var stars: int = world.rating_system.stars
@@ -182,7 +189,7 @@ func build_bars() -> void:
 	stats_row.add_theme_constant_override("separation", 8 * UI_SCALE)
 	top_rows.add_child(stats_row)
 	stats_button = Button.new()
-	stats_button.custom_minimum_size.x = 150 * UI_SCALE
+	stats_button.custom_minimum_size.x = 130 * UI_SCALE
 	stats_button.tooltip_text = "ビルの評価（押すと、くわしい状況が開く）"
 	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		stats_button.add_theme_color_override(state, STAR_COLOR)
@@ -192,7 +199,13 @@ func build_bars() -> void:
 	speed_button = Button.new()
 	speed_button.custom_minimum_size.x = 76 * UI_SCALE
 	speed_button.expand_icon = false
-	speed_button.pressed.connect(func(): world.set_speed(world.SPEEDS[(world.SPEEDS.find(int(Engine.time_scale)) + 1) % world.SPEEDS.size()]))
+	speed_button.pressed.connect(func(): world.set_speed(world.next_speed()))
+	# 一時停止のボタン（スペースキーでも止める・再開する）。速さのボタンの左に置く
+	pause_button = Button.new()
+	pause_button.custom_minimum_size.x = 48 * UI_SCALE
+	pause_button.tooltip_text = "一時停止・再開（スペースキー）"
+	pause_button.pressed.connect(func(): world.toggle_pause())
+	stats_row.add_child(pause_button)
 	stats_row.add_child(speed_button)
 	world.set_speed(1)
 	
@@ -208,7 +221,7 @@ func build_bars() -> void:
 	funds_change_label.add_theme_font_size_override("font_size", 15 * UI_SCALE)
 	funds_box.add_child(funds_change_label)
 	var funds_chip := make_chip(funds_box)
-	funds_chip.custom_minimum_size.x = 420 * UI_SCALE # 金額の桁が変わっても時刻の位置がずれないように
+	funds_chip.custom_minimum_size.x = 340 * UI_SCALE # 金額の桁が変わっても時刻の位置がずれないように
 	status_row.add_child(funds_chip)
 	
 	# 日付・時刻・天気の札
@@ -230,7 +243,7 @@ func build_bars() -> void:
 	build_label.text = "建設:"
 	stats_row.add_child(build_label)
 	mode_select = OptionButton.new()
-	mode_select.custom_minimum_size.x = 290 * UI_SCALE
+	mode_select.custom_minimum_size.x = 270 * UI_SCALE
 	for group in world.MODE_GROUPS:
 		mode_select.add_separator(group.name)
 		for mode in menu_modes(group):
@@ -250,6 +263,9 @@ func build_bars() -> void:
 	route_button.pressed.connect(func(): world.toggle_routes())
 	stats_row.add_child(route_button)
 	update_route_button()
+	# 上部バーのボタンは、押してもキーの入力を奪わない（スペースキーの一時停止などがボタンに取られないように）
+	for control in [stats_button, pause_button, speed_button, mode_select, route_button]:
+		control.focus_mode = Control.FOCUS_NONE
 	stats_row.add_child(make_spacer())
 	
 	# --- はじめての案内（上部バーの下。文字フォントに合わせたコンパクトなパネル） ---
@@ -337,6 +353,7 @@ func build_bars() -> void:
 		"スクロール: マウスホイールで上下、Shift+ホイールで左右、右端のスクロールバー",
 		"ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
+		"一時停止: スペースキー または 上部バーの ⏸ のボタン（止めている間も建設・撤去・カメラの移動はできる）",
 	])
 	help_label.add_theme_font_size_override("font_size", 13 * UI_SCALE) # 行数が多いので少し小さめ
 	# 長い行は折り返して、右がはみ出して読めなくならないようにする
@@ -544,6 +561,13 @@ func make_icon(name: String) -> TextureRect:
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return icon
 
+# 一時停止のボタン: 動いている間は「⏸」のアイコン、止めている間は「▶」のアイコンとオレンジの枠
+func update_pause_button() -> void:
+	if not pause_button:
+		return
+	pause_button.icon = icon_texture("play" if world.paused else "pause")
+	set_warning_outline(pause_button, world.paused)
+
 # 速さのボタンのアイコン（1x は▶1つ、4x は2つ、16x は3つ）
 func update_speed_icon(speed: int) -> void:
 	if speed_button:
@@ -669,6 +693,7 @@ const MENUS := [
 		{"text": "もとの大きさ（⌘0）", "action": "zoom_reset"},
 	]},
 	{"name": "ゲーム", "items": [
+		{"text": "一時停止（スペース）", "action": "pause", "check": true},
 		{"text": "速さを切り替える", "action": "speed"},
 		{"text": "音を出す（M）", "action": "mute", "check": true},
 	]},
@@ -707,6 +732,7 @@ func is_menu_on(action: String) -> bool:
 		"chart": return chart_panel.visible
 		"help": return help_panel.visible
 		"mute": return not world.audio_system.muted
+		"pause": return world.paused
 	return false
 
 # メニューを選んだときの処理。ショートカットと同じことをする
@@ -724,7 +750,8 @@ func do_menu_action(action: String) -> void:
 		"zoom_in": world.camera.zoom_by(world.camera.KEY_ZOOM_STEP)
 		"zoom_out": world.camera.zoom_by(1.0 / world.camera.KEY_ZOOM_STEP)
 		"zoom_reset": world.camera.reset_zoom()
-		"speed": world.set_speed(world.SPEEDS[(world.SPEEDS.find(int(Engine.time_scale)) + 1) % world.SPEEDS.size()])
+		"speed": world.set_speed(world.next_speed())
+		"pause": world.toggle_pause()
 		"mute": world.audio_system.toggle_mute()
 		"help": help_panel.visible = not help_panel.visible
 
@@ -793,7 +820,7 @@ func update_mode_select():
 func update_funds_display():
 	if not funds_label:
 		return
-	funds_label.text = "現在の資金: %s" % world.money_text(world.funds)
+	funds_label.text = "資金: %s" % world.money_text(world.funds) # 金貨のアイコンがあるので「資金」だけにして、上部バーを詰める
 	funds_label.add_theme_color_override("font_color", FUNDS_COLOR if world.funds >= 0 else LOSS_COLOR)
 	funds_change_label.text = ""
 	if world.economy_system and not world.economy_system.last_report.is_empty():

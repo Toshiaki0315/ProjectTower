@@ -17,6 +17,7 @@ const KEY_PAN_SPEED := 600.0  # キー移動の速さ（画面上のpx/秒）
 const WHEEL_SCROLL := 48.0    # ホイール1回でスクロールする量（画面上のpx）
 
 var dragging := false
+var last_ticks := 0 # 前のフレームの時刻（キーでの移動は、ゲームの速さ・一時停止に関係なく同じ速さにする）
 var scroll_locked := false # 操作説明・メッセージの記録を開いている間は true（スクロールで動くのはその欄だけにする）
 
 func _ready() -> void:
@@ -58,7 +59,11 @@ func handle_wheel(event: InputEventMouseButton) -> void:
 	else:
 		pan_by_screen(Vector2(0, -WHEEL_SCROLL if up else WHEEL_SCROLL))
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
+	# 実際に過ぎた時間で動かす（delta はゲームの速さがかかっていて、早送り中は速すぎ、一時停止中は0になる）
+	var now := Time.get_ticks_usec()
+	var delta := clampf((now - last_ticks) / 1000000.0, 0.0, 0.1) if last_ticks > 0 else 0.0
+	last_ticks = now
 	if Input.is_key_pressed(KEY_META) or Input.is_key_pressed(KEY_CTRL):
 		return # ⌘S（セーブ）などのショートカットの文字キーで、画面が動かないようにする
 	var dir := Vector2.ZERO

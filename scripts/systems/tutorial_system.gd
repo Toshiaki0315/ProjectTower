@@ -48,7 +48,7 @@ func is_step_done(index: int) -> bool:
 		2:
 			return not world.find_office_units().is_empty()
 		3:
-			return world.clock.minute_of_day() >= 9 * 60 or Engine.time_scale > 1.0
+			return world.clock.minute_of_day() >= 9 * 60 or world.speed > 1
 		4:
 			return not world.economy_system.history.is_empty()
 	return false

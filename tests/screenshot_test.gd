@@ -446,6 +446,48 @@ func run_ui_scenario() -> bool:
 	# ビルの状況（★の行）は上部バーにある
 	check(main.stats_button.text.begins_with("★"), "上部バーの2段目には★だけを出す")
 	check(main.stats_button.get_global_rect().position.y == main.mode_select.get_global_rect().position.y, "★・速さ・建設メニュー・経路は同じ行に並ぶ（上部バーは2行）")
+
+	# 一時停止（スペースキー・上部バーのボタン・メニュー）
+	check(not main.paused and main.ui.pause_button.visible and main.ui.pause_button.focus_mode == Control.FOCUS_NONE, "上部バーに一時停止のボタンがある（押してもスペースキーを奪わない）")
+	main.clock.set_process(true)
+	await press_key(KEY_SPACE)
+	check(main.paused and Engine.time_scale == 0.0, "スペースキーで一時停止する（時間が止まる）")
+	check(main.clock_label.text.ends_with("⏸ 停止中") and logged("一時停止しました"), "一時停止中だと上部バーとメッセージに出る")
+	await capture("ui_05_paused")
+	# 休日・くもり・大きな金額・前日の収支・一時停止中と、1段目が一番長くなっても画面に収まる
+	var funds_saved: int = main.funds
+	main.funds = 999999999
+	main.economy_system.last_report = {"total": -9999999}
+	main.update_funds_display()
+	var saved_day: int = main.clock.day
+	main.clock.day = 6 # 土曜日（休日）
+	await wait_frames(2)
+	check(main.clock_label.get_global_rect().end.x <= main.get_viewport_rect().size.x, "1段目が一番長くなっても、時刻の表示は画面に収まる")
+	main.clock.day = saved_day
+	main.funds = funds_saved
+	main.economy_system.last_report = {}
+	main.update_funds_display()
+	var minute_before: float = main.clock.minute
+	await wait_frames(10)
+	check(main.clock.minute == minute_before, "一時停止中は時計が進まない")
+	cam_before = cam.position
+	await hold_key(KEY_W, 0.2)
+	check(cam.position.y < cam_before.y, "一時停止中もキーで画面を動かせる")
+	main.select_mode("lobby")
+	main.build_at(Vector2i(8, 18))
+	check(main.get_building_type(Vector2i(8, 18)) == "lobby", "一時停止中も建設できる")
+	await press_key(KEY_SPACE)
+	check(not main.paused and is_equal_approx(Engine.time_scale, 1.0) and logged("再開しました"), "もう一度スペースキーで、止める前の速さ（1x）で再開する")
+	await click_button(main.ui.pause_button)
+	check(main.paused, "上部バーのボタンでも一時停止できる")
+	await click_button(main.speed_button)
+	check(not main.paused and is_equal_approx(Engine.time_scale, 4.0) and main.speed_button.text == "4x", "一時停止中に速さのボタンを押すと、その速さで再開する")
+	main.ui.do_menu_action("pause")
+	check(main.paused and main.ui.is_menu_on("pause"), "メニューからも一時停止できる（チェックが付く）")
+	main.ui.do_menu_action("pause")
+	check(not main.paused and is_equal_approx(Engine.time_scale, 4.0), "メニューで再開すると、止める前の速さ（4x）に戻る")
+	main.set_speed(1)
+	main.clock.set_process(false)
 	return true
 
 # ---------------------------------------------------
@@ -757,7 +799,7 @@ func run_economy_scenario() -> bool:
 	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
 	await click_cell(Vector2i(-8, 19), MOUSE_BUTTON_LEFT) # ロビーの真下（B1階）の孤立したオフィス（賃料は入らない）
-	check(main.funds_label.text.contains("現在の資金: 8,720,000Cr"), "資金の表示もカンマ区切りになる")
+	check(main.funds_label.text == "資金: 8,720,000Cr", "資金の表示もカンマ区切りになる")
 	
 	# 1日目の朝に全員出勤させてから、夜中まで時計を進める
 	main.clock.set_time(1, 7, 59)
@@ -4068,7 +4110,7 @@ func hold_key(keycode: Key, seconds: float, meta := false) -> void:
 	var keys: Array = [KEY_META, keycode] if meta else [keycode]
 	for key in keys:
 		send_key(key, true, meta)
-	await create_timer(seconds).timeout
+	await create_timer(seconds, true, false, true).timeout # 一時停止中（時間の速さ0）でも進むタイマー
 	keys.reverse()
 	for key in keys:
 		send_key(key, false, meta and key != KEY_META)

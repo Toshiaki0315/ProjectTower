@@ -116,6 +116,8 @@ var v_scroll: VScrollBar:
 # ゲームの中身（仕組み・状態）
 const GROUND_FLOOR_Y := 18
 const SPEEDS := [1, 4, 16]    # ゲームの速度（押すたびにこの順に切り替わる）
+var speed := 1      # 選んでいるゲームの速度（一時停止している間も覚えておく）
+var paused := false # 一時停止しているか（時間が止まる。建設・撤去・カメラの移動はできる）
 const MEDICAL_RECOVER_BONUS := 0.5 # メディカルセンター1施設で、ストレスの回復が何割速くなるか
 const GARDEN_RECOVER_BONUS := 0.3  # 屋上庭園1つで、ストレスの回復が何割速くなるか
 const MEDICAL_RECOVER_MAX := 2.5   # 回復の速さの上限（何倍まで）
@@ -679,7 +681,7 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 		build_at(map_pos)
 
 # ショートカット。受け付けたら true
-#   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / R: 経路の表示 / Esc: 開いているパネルを閉じる
+#   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / R: 経路の表示 / Space: 一時停止・再開 / Esc: 開いているパネルを閉じる
 #   ⌘L: メッセージの記録の開閉 / ⌘G: 収支のグラフの開閉
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
 #   ⌘S: セーブ / ⌘O: セーブデータの読み込み
@@ -692,6 +694,10 @@ func handle_shortcut(event: InputEventKey) -> bool:
 				help_panel.visible = not help_panel.visible
 			KEY_M:
 				audio_system.toggle_mute()
+			KEY_SPACE:
+				if not started:
+					return false # タイトル画面の間は時間を止めない
+				toggle_pause()
 			KEY_R:
 				toggle_routes()
 			KEY_ESCAPE:
@@ -735,12 +741,30 @@ func toggle_routes() -> void:
 	ui.update_route_button()
 	show_message("経路の表示を%sにしました（Rキーで切り替え）" % ("オン" if show_routes else "オフ"))
 
-# ゲームの速度を変える（ボタンの表示も合わせる）
-func set_speed(speed: int) -> void:
-	Engine.time_scale = speed
+# ゲームの速度を変える（ボタンの表示も合わせる）。一時停止していたら、その速さで再開する
+func set_speed(p_speed: int) -> void:
+	speed = p_speed
+	paused = false
+	apply_time_scale()
 	if speed_button:
 		speed_button.text = "%dx" % speed
 		ui.update_speed_icon(speed)
+
+# 速さのボタンを押したときの、次の速さ（1x → 4x → 16x → 1x）
+func next_speed() -> int:
+	return SPEEDS[(SPEEDS.find(speed) + 1) % SPEEDS.size()]
+
+# 一時停止する・再開する（スペースキー・上部バーのボタン・メニュー）
+func toggle_pause() -> void:
+	paused = not paused
+	apply_time_scale()
+	show_message("一時停止しました（スペースキーで再開。止めている間も建設・撤去はできます）" if paused else "再開しました")
+
+# ゲームの時間の進み方（一時停止中は0。人・エレベーター・時計が止まる）
+func apply_time_scale() -> void:
+	Engine.time_scale = 0.0 if paused else float(speed)
+	if ui:
+		ui.update_pause_button()
 
 # カゴ追加モードでシャフトのマスをクリックしたとき、その階にカゴを1台追加する
 func add_elevator_car(cell: Vector2i):
