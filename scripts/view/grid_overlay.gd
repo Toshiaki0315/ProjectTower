@@ -153,7 +153,7 @@ func get_visible_rect() -> Rect2:
 
 # 背景：地上は時刻で色が変わる空（夜は星が出る）、1階の床より下は土。タイルより奥に描く
 # 建物より手前に描く印
-#   入口:   ロビー（地下鉄駅）の左隣に、マスの半分の幅のアイコン
+#   入口:   ロビーの左隣と右隣・地下鉄駅の左隣に、マスの半分の幅のアイコン
 #   待機階: エレベーターが、呼び出しのないときに戻る階
 class HomeMarkers extends Node2D:
 	var overlay # grid_overlay.gd
@@ -161,10 +161,15 @@ class HomeMarkers extends Node2D:
 	func _draw() -> void:
 		var world = overlay.world
 		var tile_size := Vector2(world.tile_map.tile_set.tile_size)
-		# 入口のアイコン（建物の左隣に、マスの半分の幅で描く）
-		for entrance in world.get_entrances():
-			var entrance_color: Color = overlay.ENTRANCE_COLOR if entrance == world.get_entrance() else overlay.SUBWAY_ENTRANCE_COLOR
-			draw_entrance(Vector2(entrance) * tile_size - Vector2(tile_size.x / 2.0, 0), entrance_color)
+		# 入口のアイコン（マスの半分の幅）。1階の左の出入り口と地下鉄駅は建物の左隣、右の出入り口は右隣に描く
+		#（地下駐車場は、車で来た人が駐車場のマスに現れるので、アイコンは描かない）
+		var ground: Array[Vector2i] = world.get_ground_entrances()
+		for entrance in ground:
+			var right_side: bool = ground.size() > 1 and entrance == ground[-1]
+			var x: float = (entrance.x + 1) * tile_size.x if right_side else entrance.x * tile_size.x - tile_size.x / 2.0
+			draw_entrance(Vector2(x, entrance.y * tile_size.y), overlay.ENTRANCE_COLOR)
+		for station in world.find_units_of_type("subway"):
+			draw_entrance(Vector2(station) * tile_size - Vector2(tile_size.x / 2.0, 0), overlay.SUBWAY_ENTRANCE_COLOR)
 		# ゴキブリがいるテナント（床に小さな虫を描く）
 		for origin in world.incident_system.roaches:
 			if not world.building_grid.has(origin):

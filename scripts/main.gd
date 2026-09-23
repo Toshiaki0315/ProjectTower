@@ -528,21 +528,39 @@ func spawn_resident(cell: Vector2i):
 	residents.append(resident)
 	return resident
 
-# 1階の入口のマス：1階メインロビーの左端（ロビーがなければnull）
+# 1階の左の出入り口のマス：1階メインロビーの左端（ロビーがなければnull）
 func get_entrance():
-	var entrance = null
-	for cell: Vector2i in building_grid:
-		if cell.y == ground_y and is_lobby_type(building_grid[cell].type) and (entrance == null or cell.x < entrance.x):
-			entrance = cell
-	return entrance
+	var ground := get_ground_entrances()
+	return ground[0] if not ground.is_empty() else null
 
-# 入口の一覧：1階の入口と、地下鉄駅（左端のマス）。人はビルの外からここに現れ、ここから帰る
+# 1階の右の出入り口のマス：1階メインロビーの右端（ロビーがなければnull。1マスだけなら左と同じ）
+func get_right_entrance():
+	var ground := get_ground_entrances()
+	return ground[-1] if not ground.is_empty() else null
+
+# 1階の出入り口（ロビーの左端と右端。ロビーが1マスだけなら1つ）
+func get_ground_entrances() -> Array[Vector2i]:
+	var left = null
+	var right = null
+	for cell: Vector2i in building_grid:
+		if cell.y == ground_y and is_lobby_type(building_grid[cell].type):
+			if left == null or cell.x < left.x:
+				left = cell
+			if right == null or cell.x > right.x:
+				right = cell
+	var result: Array[Vector2i] = []
+	if left != null:
+		result.append(left)
+		if right != left:
+			result.append(right)
+	return result
+
+# 入口の一覧。人はビルの外からここに現れ、ここから帰る（一番近い入口を使う）
+#   1階の左右の出入り口・地下鉄駅（左端のマス）・地下駐車場（車で下りてこられるもの。左端のマス）の4種類
 func get_entrances() -> Array[Vector2i]:
-	var entrances: Array[Vector2i] = []
-	var main_entrance = get_entrance()
-	if main_entrance != null:
-		entrances.append(main_entrance)
+	var entrances: Array[Vector2i] = get_ground_entrances()
 	entrances.append_array(find_units_of_type("subway"))
+	entrances.append_array(parking_system.usable_units)
 	return entrances
 
 func is_entrance(cell: Vector2i) -> bool:

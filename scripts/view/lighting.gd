@@ -9,7 +9,7 @@ extends Node2D
 #     飲食店・会場      … 客がいる間、建物の全マス
 #     階段・エレベーター・設備 … いつも（一晩中灯っている）
 #   街灯: ビルの外の地面（1階の高さの空きマス）に LAMP_SPACING マスおきに立ち、夜に灯る
-#   入口の照明: 1階の入口・地下鉄駅の扉の周りが、夜に光る
+#   入口の照明: 1階の左右の出入り口・地下鉄駅の扉の周りが、夜に光る
 # 明かりは加算合成で重ねるので、暗くしたタイルの上で暖かい色に光って見える。
 # TileMapLayerの子として追加するので、座標はタイルマップ座標系。
 # ---------------------------------------------------
@@ -85,12 +85,18 @@ func get_street_lamps(visible_rect: Rect2) -> Array[Vector2]:
 		lamps.append(Vector2((x + 0.5) * tile_size.x, floor_y - LAMP_HEIGHT))
 	return lamps
 
-# 入口の照明の位置の一覧（扉のある左端の、少し上）
+# 入口の照明の位置の一覧（扉の少し上。1階の右の出入り口は右端、ほかは左端。地下駐車場には扉がないので付けない）
 func get_entrance_lights() -> Array[Vector2]:
 	var lights: Array[Vector2] = []
 	var tile_size := Vector2(world.tile_map.tile_set.tile_size)
-	for entrance in world.get_entrances():
-		lights.append(Vector2(entrance) * tile_size + Vector2(3, 4))
+	var ground: Array[Vector2i] = world.get_ground_entrances()
+	for entrance in ground:
+		if ground.size() > 1 and entrance == ground[-1]:
+			lights.append(Vector2(entrance + Vector2i.RIGHT) * tile_size + Vector2(-3, 4))
+		else:
+			lights.append(Vector2(entrance) * tile_size + Vector2(3, 4))
+	for station in world.find_units_of_type("subway"):
+		lights.append(Vector2(station) * tile_size + Vector2(3, 4))
 	return lights
 
 func is_present(resident, cell: Vector2i) -> bool:

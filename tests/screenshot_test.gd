@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -1325,7 +1325,7 @@ func run_subway_scenario() -> bool:
 	await click_cell(station, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(station) == "subway", "地下5階(y=23)には地下鉄駅を建てられる")
 	check(main.get_entrance() == Vector2i(-8, 18), "地下に建物ができても、1階の入口は変わらない")
-	check(main.get_entrances() == [Vector2i(-8, 18), station], "入口は1階の入口と地下鉄駅の2つ")
+	check(main.get_entrances() == [Vector2i(-8, 18), Vector2i(12, 18), station], "入口は1階の左右の出入り口と地下鉄駅")
 	check(main.nearest_entrance(Vector2i(6, 13)) == station, "上の階のオフィスからは地下鉄駅の方が近い")
 	check(main.nearest_entrance(Vector2i(-6, 17)) == Vector2i(-8, 18), "左寄りのオフィスからは、階段で上がれる1階の入口の方が近い")
 	await capture("subway_01_built")
@@ -2019,7 +2019,7 @@ func run_sky_lobby_scenario() -> bool:
 	check(main.find_cells_of_type("sky_lobby").size() == 5, "15階にはスカイロビーを1マスずつ横に伸ばせる")
 	check(main.funds == 10000000 - 5 * 50000, "スカイロビーは1マス5万Cr")
 	check(main.is_walkable(Vector2i(2, 4)) and main.can_move(Vector2i(1, 4), Vector2i(2, 4)), "スカイロビーは歩いて移動できる")
-	check(main.get_entrances() == [Vector2i(-8, 18)], "スカイロビーは入口にはならない")
+	check(main.get_entrances() == [Vector2i(-8, 18), Vector2i(7, 18)], "スカイロビーは入口にはならない（入口は1階の左右の出入り口だけ）")
 	await hover_cell(Vector2i(2, 4))
 	check(main.hover_label.text.begins_with("15階: スカイロビー"), "吹き出しの先頭に何階かが出る")
 	await capture("sky_lobby_01")
@@ -4935,4 +4935,46 @@ func run_review_fixes_scenario() -> bool:
 	check(hotel.rooms[suite].get("dirty_day", -1) == 3, "客室が汚れた日はセーブに残る")
 	incidents.infest_dirty_rooms(5)
 	check(incidents.roaches.has(suite), "読み込んだ後も、掃除されないまま日がたった客室にはゴキブリが出る")
+	return true
+
+# シナリオ76: ビルの入口（1階の左右の出入り口・地下鉄駅・地下駐車場の4種類）
+#   共通のビル（1階のロビー x=-8〜7）の右隣 x=8 にエレベーターを通し、
+#   地下1階（y=19）にスロープ(0〜1)・駐車場(2〜5)・空きフロア(6〜7)を置く。
+# ---------------------------------------------------
+func run_entrances_scenario() -> bool:
+	print("[シナリオ] ビルの入口")
+	main.funds = 10000000
+	check(main.get_ground_entrances() == [Vector2i(-8, 18), Vector2i(7, 18)], "1階のロビーの左端と右端が出入り口になる")
+	check(main.get_entrance() == Vector2i(-8, 18) and main.get_right_entrance() == Vector2i(7, 18), "左の出入り口と右の出入り口")
+	check(main.is_entrance(Vector2i(7, 18)), "右端から人が出入りできる")
+	main.select_mode("elevator")
+	for y in range(19, 14, -1):
+		main.build_at(Vector2i(8, y))
+	check(main.get_right_entrance() == Vector2i(7, 18), "ロビーの右にエレベーターを建てても、右の出入り口はロビーの右端")
+	check(main.nearest_entrance(Vector2i(5, 17)) == Vector2i(7, 18), "右寄りのオフィスの社員は、近い右の出入り口を使う")
+	var lights: Array[Vector2] = main.lighting.get_entrance_lights()
+	check(lights.size() == 2 and lights[1].x > lights[0].x, "夜は左右の出入り口に照明が灯る")
+	focus_camera(Vector2i(4, 17))
+	await wait_frames(2)
+	await capture("entrances_01_right")
+
+	# 地下駐車場も入口になる（車で下りてこられる駐車場だけ）
+	main.select_mode("ramp")
+	main.build_at(Vector2i(0, 19))
+	main.select_mode("parking")
+	main.build_at(Vector2i(2, 19))
+	build_support(cells_row(19, 6, 7), "frame")
+	check(main.parking_system.usable_units == [Vector2i(2, 19)], "スロープにつながった駐車場は使える")
+	check(main.get_entrances() == [Vector2i(-8, 18), Vector2i(7, 18), Vector2i(2, 19)], "入口は1階の左右の出入り口と地下駐車場")
+	check(main.nearest_entrance(Vector2i(4, 19)) == Vector2i(2, 19), "駐車場の近くからは、駐車場が一番近い入口")
+	check(main.lighting.get_entrance_lights().size() == 2, "駐車場には扉がないので、入口の照明は付けない")
+	main.demolish_at(Vector2i(0, 19))
+	check(main.parking_system.usable_units.is_empty() and not main.get_entrances().has(Vector2i(2, 19)), "スロープがないと車が来られないので、駐車場は入口にならない")
+
+	# ロビーが1マスだけなら、出入り口は1つ
+	main.clear_world()
+	main.select_mode("lobby")
+	main.build_at(Vector2i(0, 18))
+	check(main.get_ground_entrances() == [Vector2i(0, 18)], "ロビーが1マスだけなら、出入り口は1つ")
+	check(main.lighting.get_entrance_lights().size() == 1, "照明も1つ")
 	return true
