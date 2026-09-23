@@ -125,7 +125,7 @@ var selected_resident = null       # 行き先の指示を待っている住人
 var started := false               # ゲームが始まっているか（タイトル画面の間は false）
 var drag_button := 0               # 押したままなぞっているマウスのボタン（0なら押していない）
 var drag_last_cell := Vector2i.ZERO # なぞっている間に、最後に処理したマス
-var show_routes := false           # 動線（人の通り道）を線で表示するか
+var show_routes := false           # 経路（人の通り道）を線で表示するか
 var message_log: Array[String] = [] # ゲーム開始からのメッセージ（時刻つき）
 var last_message := ""             # 一番新しいメッセージ（時刻なし）
 
@@ -647,7 +647,7 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 		build_at(map_pos)
 
 # ショートカット。受け付けたら true
-#   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / R: 動線の表示 / Esc: 開いているパネルを閉じる
+#   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / R: 経路の表示 / Esc: 開いているパネルを閉じる
 #   ⌘L: メッセージの記録の開閉 / ⌘G: 収支のグラフの開閉
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
 #   ⌘S: セーブ / ⌘O: セーブデータの読み込み
