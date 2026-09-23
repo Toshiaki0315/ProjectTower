@@ -64,7 +64,7 @@ const MODE_GROUPS := [
 ]
 const SCROLL_MARGIN_ROWS := 10 # スクロールできる範囲の、建物の上下に足す余白（行数）
 
-var funds: int = 2000000
+var funds: int = 3000000
 const DEFAULT_TOWER_NAME := "わたしのタワー"
 const TOWER_NAME_MAX := 16 # ビルの名前の長さの上限（文字）
 var tower_name := DEFAULT_TOWER_NAME # ビルの名前（タイトル画面やメニューで付ける。屋上の看板・ウィンドウのタイトルに出る）

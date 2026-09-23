@@ -120,7 +120,7 @@ func build_standard_block() -> void:
 func run_empty_start_scenario() -> bool:
 	print("[シナリオ] 更地スタートと1階のルール")
 	check(main.building_grid.is_empty(), "ゲームは更地（建物なし）から始まる")
-	check(main.funds == 2000000, "最初の資金は200万Cr")
+	check(main.funds == 3000000, "最初の資金は300万Cr")
 	check(main.ground_y == main.GROUND_FLOOR_Y, "1階の高さは決まっている（y=%d）" % main.GROUND_FLOOR_Y)
 	check(main.get_entrance() == null, "ロビーがないうちは入口もない")
 	check(main.current_mode == "lobby" and main.mode_select.text.begins_with("ロビー") and main.mode_select.text.ends_with("15,000Cr"), "最初は建設メニューでロビーが選ばれている")
@@ -146,7 +146,7 @@ func run_empty_start_scenario() -> bool:
 	for x in range(-3, 4):
 		await click_cell(Vector2i(x, 18), MOUSE_BUTTON_LEFT)
 	check(main.find_cells_of_type("lobby").size() == 7, "ロビーは1マスずつ横に伸ばせる（7マス）")
-	check(main.funds == 2000000 - 7 * 15000, "ロビーは1マス1.5万Cr")
+	check(main.funds == 3000000 - 7 * 15000, "ロビーは1マス1.5万Cr")
 	check(main.get_entrance() == Vector2i(-3, 18), "ロビーの左端が入口になる")
 	
 	# 1階に置けるのはロビーのほか、階段・エレベーター
@@ -3756,7 +3756,7 @@ func run_title_scenario() -> bool:
 	await click_button(buttons["はじめから"])
 	check(main.started and not main.title_panel.visible, "「はじめから」でタイトル画面が閉じる")
 	check(main.clock.is_processing(), "ゲームが始まると時間が動きだす")
-	check(main.building_grid.is_empty() and main.funds == 2000000, "更地・資金200万Crから始まる")
+	check(main.building_grid.is_empty() and main.funds == 3000000, "更地・資金300万Crから始まる")
 	await click_cell(Vector2i(0, 18), MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(Vector2i(0, 18)) == "lobby", "始まった後はマップを操作できる")
 	return true

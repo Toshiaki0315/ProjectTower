@@ -6,7 +6,7 @@ extends SceneTree
 # 最後に、★が上がった日と、180日目までに★5に届いたかをまとめて出す。難しさ（お金・人口・エレベーター）の見直しに使う。
 #
 # 実行方法（ウィンドウ付きで起動する。画面の更新が要るため --headless では不可）:
-#   godot --path . -s res://tools/playthrough_check.gd -- [日数（省略すると180）]
+#   godot --path . -s res://tools/playthrough_check.gd -- [日数（省略すると180）] [最初の資金（省略するとゲームのまま）]
 # 遊んでいるセーブデータには触らない（オートセーブを止めてから始める）。
 #
 # ビルの形（1階は y=18。左右とも同じ列に建て増す）:
@@ -37,6 +37,7 @@ const UNHAPPY_LIMIT := 0.08 # 不満なテナントがこの割合を超えた�
 
 var main: Node2D
 var days := 180
+var start_funds := -1 # 最初の資金（2つ目の引数。-1ならゲームのまま）
 var star_days := {}        # ★ -> 上がった日
 var basement_slots: Array = [] # 地下に設備を置ける場所 [y, 左端のx, 横幅] の残り
 
@@ -44,6 +45,8 @@ func _init() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		days = int(args[0])
+	if args.size() > 1:
+		start_funds = int(args[1])
 	root.mouse_passthrough = true
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -56,6 +59,8 @@ func _init() -> void:
 	main.save_system.autosave_enabled = false # 遊んでいるオートセーブを上書きしない
 	main.start_game()
 	main.tutorial_system.finished = true
+	if start_funds >= 0:
+		main.funds = start_funds
 	build_start()
 
 	print("日付\t資金\t人口\t★\t収支\t退去間近\t空室\t不満\tゴミ/処理能力\t目標")
@@ -163,8 +168,8 @@ func grow_once() -> bool:
 		return true
 	if main.rating_system.population() >= 40 and widen_lobby():
 		return true
-	# 不満なテナントが増えてきたら、建て増しを止めて落ち着くのを待つ（★4・★5には満足度も要るため）
-	if main.rating_system.unhappy_rate() > UNHAPPY_LIMIT:
+	# 次の★に満足度が要るとき（★4・★5）は、不満なテナントが増えてきたら、建て増しを止めて落ち着くのを待つ
+	if main.rating_system.REQUIREMENTS.get(stars + 1, {}).has("unhappy") and main.rating_system.unhappy_rate() > UNHAPPY_LIMIT:
 		return add_any_car()
 	return build_next_unit()
 
