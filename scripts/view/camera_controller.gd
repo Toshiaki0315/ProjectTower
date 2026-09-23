@@ -5,6 +5,7 @@ extends Camera2D
 # - スクロール: マウスホイールで上下、Shift+ホイール（または横ホイール）で左右
 # - ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ（カーソル位置を中心に拡大縮小）
 # - 移動:   トラックパッドの2本指スクロール / マウス中ボタンドラッグ / WASD・矢印キー
+#           （⌘・Ctrlを押している間はキーでは動かさない。⌘Sのセーブで画面が動かないように）
 # ---------------------------------------------------
 
 const DEFAULT_ZOOM := 3.0
@@ -56,6 +57,8 @@ func handle_wheel(event: InputEventMouseButton) -> void:
 		pan_by_screen(Vector2(0, -WHEEL_SCROLL if up else WHEEL_SCROLL))
 
 func _process(delta: float) -> void:
+	if Input.is_key_pressed(KEY_META) or Input.is_key_pressed(KEY_CTRL):
+		return # ⌘S（セーブ）などのショートカットの文字キーで、画面が動かないようにする
 	var dir := Vector2.ZERO
 	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
 		dir.x -= 1

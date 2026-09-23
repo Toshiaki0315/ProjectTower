@@ -311,6 +311,9 @@ func run_camera_scenario() -> bool:
 	pos_before = cam.position
 	await hold_key(KEY_W, 0.2)
 	check(cam.position.y < pos_before.y, "Wキーで上に移動する")
+	pos_before = cam.position
+	await hold_key(KEY_W, 0.2, true)
+	check(cam.position == pos_before, "⌘を押しながらのキー（⌘Sのセーブなど）では、画面は動かない")
 	await capture("camera_03_moved")
 	return true
 
@@ -3993,16 +3996,24 @@ func middle_drag(from: Vector2, amount: Vector2) -> void:
 		root.push_input(ev)
 		await wait_frames(1)
 
-func hold_key(keycode: Key, seconds: float) -> void:
-	for pressed in [true, false]:
-		var ev := InputEventKey.new()
-		ev.keycode = keycode
-		ev.physical_keycode = keycode
-		ev.pressed = pressed
-		Input.parse_input_event(ev)
-		if pressed:
-			await create_timer(seconds).timeout
+# キーを押したままにする（meta なら⌘も一緒に押す。⌘を先に押して、後で離す）
+func hold_key(keycode: Key, seconds: float, meta := false) -> void:
+	var keys: Array = [KEY_META, keycode] if meta else [keycode]
+	for key in keys:
+		send_key(key, true, meta)
+	await create_timer(seconds).timeout
+	keys.reverse()
+	for key in keys:
+		send_key(key, false, meta and key != KEY_META)
 	await wait_frames(1)
+
+func send_key(keycode: Key, pressed: bool, meta: bool) -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = keycode
+	ev.physical_keycode = keycode
+	ev.pressed = pressed
+	ev.meta_pressed = meta
+	Input.parse_input_event(ev)
 
 func capture(name: String) -> void:
 	await RenderingServer.frame_post_draw
