@@ -12,7 +12,7 @@ const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
 
 const UI_SCALE := 2      # 画面表示（文字・ボタン・余白）の大きさの倍率
 const PANEL_WIDTH := 1400 # メッセージの記録などのパネルの横幅（画面幅1600に収まる大きさ）
-const HELP_PANEL_WIDTH := 880 # 操作説明パネルの横幅（文字フォントに合わせて読みやすい幅にする）
+const HELP_PANEL_WIDTH := 1000 # 操作説明パネルの横幅（文字フォントに合わせて読みやすい幅にする）
 const BASE_FONT_SIZE := 16 # 倍率をかける前の文字の大きさ
 const MESSAGE_LINES := 3 # 下部バーに出しておくメッセージの行数
 
@@ -157,16 +157,7 @@ func build_bars() -> void:
 	# 余白や幅の指定にも同じ倍率をかける）
 	var theme := Theme.new()
 	theme.default_font_size = BASE_FONT_SIZE * UI_SCALE
-	var tooltip_style := StyleBoxFlat.new()
-	tooltip_style.bg_color = Color(0.1, 0.1, 0.13, 0.92)
-	tooltip_style.set_content_margin_all(4 * UI_SCALE)
-	tooltip_style.content_margin_left = 8 * UI_SCALE
-	tooltip_style.content_margin_right = 8 * UI_SCALE
-	tooltip_style.corner_radius_top_left = 4 * UI_SCALE
-	tooltip_style.corner_radius_top_right = 4 * UI_SCALE
-	tooltip_style.corner_radius_bottom_left = 4 * UI_SCALE
-	tooltip_style.corner_radius_bottom_right = 4 * UI_SCALE
-	theme.set_stylebox("panel", "TooltipPanel", tooltip_style)
+	theme.set_stylebox("panel", "TooltipPanel", tooltip_style())
 	theme.set_font_size("font_size", "TooltipLabel", 12 * UI_SCALE)
 	layout.theme = theme
 	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -316,79 +307,22 @@ func build_bars() -> void:
 	help_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layout.add_child(help_row)
 	help_row.add_child(make_spacer())
-	var help_label = Label.new()
-	help_label.text = "\n".join([
-		"建設: 上の「建設」メニューで選び、マップを左クリック（建てる大きさはカーソルの枠でわかる。くわしい説明はメニューにカーソルを合わせると出る） / 右クリック: 撤去（撤去費用がかかる。建設費の1割・最低2,000Cr。建設費は戻らない）",
-		"建て替え: 建物の上に直接ほかの建物は建てられない。先に撤去してから建てる（空きフロアの上には、そのまま建てられる）",
-		"焼け跡: 火災で焼け落ちたり爆破で吹き飛んだりした部屋は、黒焦げの焼け跡になる。上の階は支えたままだが、建て直すには先に撤去が必要",
-		"お金: 単位は Cr（クレジット）。建設費・賃料・売上・撤去費用はすべて Cr で数える",
-		"更地から始まる。1階はロビー専用（ロビー・階段・エレベーターだけ）。人はロビーの左端（入口）から出入りする",
-		"吹き抜けロビー: 2階分・3階分の高さのロビー。上の階には床がないので、人は1階だけを歩く",
-		"スカイロビー: 15階・30階・45階…にだけ建てられる乗り換え専用のフロア（何階かはカーソル下の情報に出る）",
-		"大型エレベーター（横2マス）: 全部の階に停まり、定員16人・速さ1.5倍。人の多いビルの渋滞をさばく",
-		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
-		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3,000Cr/日）。カゴの定員は8人",
-		"社員: オフィスは横4マスで、1マスに1人（計4人）。8〜9時に入口から出勤し、17〜18時に帰る",
-		"オフィスの大きさ: 小さいオフィス（横2マス・2人・賃料11,000Cr/マス）と大きいオフィス（横6マス・6人・9,000Cr/マス）もある",
-		"空きフロア: 骨組みだけのフロア（10,000Cr）。メニューから建ててすき間を埋められるほか、上の階に建物が残っているマスを撤去したときにも残る（上の部屋が浮かないように）。通り抜けでき、その上から建て直せる",
-		"建設: クリックしたマスを左端に、建物の横幅ぶんのマスを使う。撤去はどのマスを右クリックしても建物ごと",
-		"入口: 1階の左端と地下鉄駅（地下5階より深いところにだけ建てられる）。人は近い方の入口から出入りする",
-		"　地下鉄駅があると、店や映画館へ来る外からのお客さんが1駅につき5割増える（最大2倍）",
-		"速度: 上部バーの速度ボタンを押すたびに 1x → 4x → 16x → 1x と切り替わる",
-		"経路: 上部バーの「経路」ボタン（Rキー）で、人が通る道すじを線で表示する（人が多いと線だらけになるので既定はオフ）",
-		"ビルの状況: 上部バーの★を押すと、人口・目標・社員・オフィス・客室のくわしい様子が出る（気をつけることがあるときは★の横に⚠と件数）",
-		"ショートカット: F1・H（この説明の開閉） / Esc（開いているパネルを閉じる） / ⌘L（メッセージの記録） / ⌘+・⌘-（画面の拡大・縮小） / ⌘0（拡大率をもとに戻す）",
-		"収支のグラフ: ⌘G で、最近60日ぶんの決算の合計を棒グラフで見られる",
-		"音: M キーで音のオン・オフ（効果音とBGMは、波形からゲームの中で作っている）",
-		"撤去: 建設メニューの「撤去」を選ぶと左クリックで撤去できる（右クリックはいつでも撤去）。ドラッグで続けて建設・撤去できる",
-		"セーブ: ⌘S で保存、⌘O で読み込み（ビル・資金・日付・評価・各設備の状態が戻る）",
-		"天気: 日ごとに晴れ・くもり・雨が決まる（6月は梅雨）。雨の日は入口から来る店の客が半分（車で来る客は減らない）",
-		"日付: 1日目は4月1日（月）。1年は365日で、12月24日・25日の夜にはサンタクロースのソリが空を横切る",
-		"駐車場: 地下の何階にでも作れる。使うには地下1階から目的の階まで、階ごとにスロープを建ててつなぐ（車は階段では下りられない）",
-		"曜日: 1日目は月曜日。土日は休日でオフィスは休み（賃料は入る）、住宅の入居者は遅めに出かける",
-		"結婚式場（横6マス）: 休日の10〜11時に12人が来て13時まで（1人10,000Cr）",
-		"イベントホール（横6マス）: 休日の13〜14時に15人が来て17時まで（1人3,000Cr）",
-		"ホテル: 17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料を払って帰る。清掃が済むまで次の客は泊まれない",
-		"　シングル（横2マス）: 1人・20,000Cr・清掃20分 / ツイン（横3マス）: 2人・35,000Cr・清掃30分 / スイート（横4マス）: 2人・80,000Cr・清掃45分",
-		"ハウスキーパー室（横2マス）: 清掃員が2人。清掃待ちの部屋を近い順に掃除する",
-		"飲食店（横3マス）: 12〜13時に社員が一番近い店へ昼食に来る（30分、1人1,000Crの売上）",
-		"ファストフード（横2マス）: 飲食店の小さくて速い版。食事は10分で、1人600Crの売上",
-		"住宅（横3マス・3人家族）: 17〜20時に入居者が来て入居（販売収入700,000Cr、1回だけ）。毎朝7〜9時に出かけ、17〜20時に帰る",
-		"ゴミ処理場（横3マス）: 1施設で1日20のゴミを処理。処理しきれないゴミは外部委託で1につき1,000Crかかる",
-		"　処理が足りない日が続くとビルが汚れ（衛生の悪化）、レベル1につきストレス5ぶん全テナントの評価が下がる",
-		"メディカルセンター（横3マス）: ビル全体のストレスの回復が速くなる（1施設で1.5倍・最大2.5倍）",
-		"埋蔵金: 地下に建てるとマスごとに見つかることがある（深いほど確率も金額も上がる。同じマスは一度きり）",
-		"ゴキブリ: 衛生の悪化が続くと大繁殖し、いるテナントの評価がストレス15ぶん悪くなる（悪化が0に戻ると消える）",
-		"ヘリポート（横4マス）: 屋上にだけ建てられる。火事のとき消防ヘリが飛んできて、上の階の火から消す",
-		"火災: ★2以上のビルでときどき出火（大きなビルほど出やすい）。20分ごとに上下左右のテナントへ燃え広がり、60分燃えると焼け落ちる（警備員が消火する）",
-		"爆破予告: ★3以上で資金500万Cr以上のビルにときどき届く。身代金を払うか、警備員に探させる。120分以内に見つけて解体できないと、まわりの階ごと吹き飛ぶ",
-		"家賃: 「家賃」を選んでオフィスをクリックすると 普通 → 高い（賃料1.4倍・不満+15・入居しにくい） → 安い（0.7倍・不満-10・すぐ入居） と切り替わる",
-		"VIP専用: エレベーターのシャフトをクリックして設定。VIPがスイートへ向かう間は、VIPだけが乗れる（待機階を1階にしておくと待たせずに乗せられる）",
-		"VIP: ★4の条件がそろうと朝9時に予告、16時に来館してスイートに一泊。翌朝のチェックアウトまでのストレスが30以下なら合格（不合格なら翌日また来る）",
-		"評価（★）: 決算時に条件を満たすと昇格。★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場",
-		"　★が1つ上がるごとに、賃料と宿泊料に25%の評価ボーナスが付く（人口 = 通勤できる社員 + 客室の定員 + 入居者）",
-		"オフィスの評価: 毎日の決算で、社員のその日の最大ストレスの平均から 良い（緑）・普通（黄）・悪い（赤）を付ける",
-		"　悪い日が3日続くとテナントが退去して空室（賃料なし）。2日後に新しいテナントが入居する",
-		"　退去まであと1日のテナントは、評価のマークが点滅して知らせる（上部バーにも件数が出る）",
-		"激怒: ストレスが95以上になると人の顔が赤く点滅する（上部バーに人数が出る）",
-		"ホテル・住宅の評価: 客室は泊まった客のストレスで決まり、悪いと客が来にくい。住宅は悪い日が3日続くと家族が退去（販売収入を返金）",
-		"収支: 毎日0時に決算。賃料・宿泊料・飲食の売上 − 維持費 − ゴミの外部委託費",
-		"スクロール: マウスホイールで上下、Shift+ホイールで左右、右端のスクロールバー",
-		"ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ",
-		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
-		"一時停止: スペースキー または 上部バーの ⏸ のボタン（止めている間も建設・撤去・カメラの移動はできる）",
-		"色分け表示: V で ストレス → 騒音 → エレベーター待ち → 消す と切り替え（どこが混んでいるか・うるさいかがひと目でわかる）",
-		"取り消し: ⌘Z で直前の建設・撤去を1つずつ戻す（払ったお金も戻る。その日の決算までの操作だけ）",
-	])
-	help_label.add_theme_font_size_override("font_size", 13 * UI_SCALE) # 行数が多いので少し小さめ
-	# 長い行は折り返して、右がはみ出して読めなくならないようにする
+	var help_label = RichTextLabel.new()
+	help_label.bbcode_enabled = true
+	help_label.fit_content = true
+	help_label.scroll_active = false # スクロールは外側の ScrollContainer に任せる
 	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help_label.custom_minimum_size = Vector2(HELP_PANEL_WIDTH, 0)
+	help_label.add_theme_font_size_override("normal_font_size", 13 * UI_SCALE)
+	help_label.add_theme_font_size_override("bold_font_size", 13 * UI_SCALE)
+	help_label.add_theme_constant_override("line_separation", 4 * UI_SCALE) # 行の間を少しあけて読みやすくする
+	help_label.text = help_text()
 	var help_scroll = ScrollContainer.new()
-	help_scroll.custom_minimum_size = Vector2(HELP_PANEL_WIDTH, 480) # 画面に収まる高さ。はみ出す分は上下にスクロールする
+	help_scroll.custom_minimum_size = Vector2(HELP_PANEL_WIDTH, 560) # 画面に収まる高さ。はみ出す分は上下にスクロールする
 	help_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	help_scroll.add_child(help_label)
 	help_panel = make_bar(help_scroll)
+	make_opaque(help_panel) # 後ろのビルが透けて文字が読みにくくならないように
 	help_panel.visible = false
 	help_panel.visibility_changed.connect(update_scroll_lock)
 	help_row.add_child(help_panel)
@@ -419,6 +353,7 @@ func build_bars() -> void:
 	log_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	log_scroll.add_child(log_label)
 	log_panel = make_bar(log_scroll)
+	make_opaque(log_panel)
 	log_panel.visible = false
 	log_panel.visibility_changed.connect(update_scroll_lock)
 	log_row.add_child(log_panel)
@@ -452,7 +387,7 @@ func build_bars() -> void:
 	#   2段目: カーソル下のマスの情報
 	var bottom_rows = VBoxContainer.new()
 	bottom_rows.add_theme_constant_override("separation", 2 * UI_SCALE)
-	layout.add_child(make_bar(bottom_rows))
+	layout.add_child(make_bar(bottom_rows, false))
 	
 	message_label = Label.new()
 	message_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
@@ -476,19 +411,97 @@ func build_bars() -> void:
 	
 	update_mode_select()
 
+# ---------------------------------------------------
+# 操作説明（F1・H）の中身。見出しごとに分け、項目名は太字、押すキーは色を付けて見つけやすくする
+# ---------------------------------------------------
+const HELP_HEADING_COLOR := "#ffd966" # 見出し（金色）
+const HELP_KEY_COLOR := "#9fd8ff"     # 押すキー・ボタン（水色）
+const HELP_SECTIONS := [
+	["はじめに", [
+		["ゲームの目的", "更地にロビーを建てて、オフィスや店を入れ、エレベーターを工夫してビルの評価（★）を上げる。最後は★5の「タワー完成」をめざす"],
+		["1階", "ロビー専用（ロビー・階段・エレベーターだけ建てられる）。まずロビーを建てないと、誰もビルに来ない"],
+		["入口", "1階のフロアの左端と右端・地下鉄駅・地下駐車場の4種類。人は一番近い入口から出入りする"],
+		["お金", "単位は Cr（クレジット）。毎日0時に決算して、収入から維持費を引いた分が資金に入る"],
+	]],
+	["操作", [
+		["建てる", "上の「建設」メニューで選び、マップを[key]左クリック[/key]。建てる大きさはカーソルの枠でわかる。[key]ドラッグ[/key]で続けて建てられる"],
+		["撤去", "[key]右クリック[/key]（またはメニューの「撤去」で左クリック）。建物のどのマスでも建物ごと撤去。撤去費用がかかる（建設費の1割・最低2,000Cr）"],
+		["取り消し", "[key]⌘Z[/key] で直前の建設・撤去を1つずつ戻す（払ったお金も戻る。その日の決算までの操作だけ）"],
+		["一時停止", "[key]スペース[/key] または上部バーの ⏸ ボタン。止めている間も建設・撤去・カメラの移動はできる"],
+		["速さ", "上部バーの速さのボタンで 1x → 4x → 16x と切り替わる"],
+		["カメラ", "[key]マウスホイール[/key]で上下、[key]Shift＋ホイール[/key]で左右、[key]2本指スクロール[/key]・[key]中ボタンドラッグ[/key]・[key]WASD[/key]・[key]矢印キー[/key]でも動く"],
+		["ズーム", "[key]⌘＋ホイール[/key]・[key]ピンチ[/key]・[key]⌘+[/key] / [key]⌘-[/key]（[key]⌘0[/key] でもとの大きさ）"],
+	]],
+	["画面とショートカット", [
+		["ビルの状況", "上部バーの★を押すと、人口・次の★の条件・目標・テナントの様子が出る。気をつけることがあると★の横に ⚠ と件数"],
+		["色分け表示", "[key]V[/key] で ストレス → 騒音 → エレベーター待ち → 消す と切り替わる。どこが混んでいるか・うるさいかがひと目でわかる"],
+		["経路", "[key]R[/key] または上部バーの「経路」ボタンで、人が通る道すじを線で出す"],
+		["セーブ", "[key]⌘S[/key] で3つの枠から選んで保存、[key]⌘O[/key] で読み込み。毎日0時の決算のあとには自動でオートセーブ"],
+		["そのほか", "[key]⌘L[/key] メッセージの記録 / [key]⌘G[/key] 収支のグラフ / [key]M[/key] 音のオン・オフ / [key]F1[/key]・[key]H[/key] この説明 / [key]Esc[/key] 開いているパネルを閉じる"],
+	]],
+	["建物のルール", [
+		["建てる場所", "クリックしたマスを左端に、建物の横幅ぶんを使う。下の階に建物がないと建てられない（地下は上の階から掘り進める）"],
+		["建て替え", "建物の上に直接ほかの建物は建てられない。先に撤去する（空きフロアの上には、そのまま建てられる）"],
+		["空きフロア", "骨組みだけのフロア（10,000Cr）。すき間を埋められ、人は通り抜けられる。上の階が残っているマスを撤去したときにも残る"],
+		["焼け跡", "火災や爆発で壊れた部屋。上の階は支えたままだが、建て直すには先に撤去する"],
+		["特別な階", "スカイロビーは15階・30階・45階…だけ、地下鉄駅は地下5階より深いところだけ、展望台・ヘリポート・屋上庭園は屋上だけ"],
+	]],
+	["エレベーターと移動", [
+		["エレベーター", "縦に並べるとシャフトになる。カゴの定員は8人。シャフトをクリックするとその階にカゴを呼ぶ"],
+		["カゴ追加", "シャフトをクリックして、その階にカゴを1台足す（1本に4台まで・維持費3,000Cr/日）"],
+		["種類", "急行（1階とスカイロビーだけに停まる）・大型（横2マス・定員16人・速さ1.5倍）・サービス（清掃員と警備員だけ）"],
+		["設定", "「待機階を設定」「稼働時間帯」「VIP専用」を選んでシャフトをクリック（どれも無料）"],
+		["階段・エスカレーター", "近い階の移動に。エスカレーターは待ち時間がなく、階段より楽"],
+	]],
+	["テナントと人", [
+		["オフィス", "平日8〜9時に社員が出勤し、17〜18時に帰る（1マスに1人）。「家賃」で 普通 → 高い → 安い と切り替えられる"],
+		["ホテル", "17〜21時に客が来て泊まり、翌朝7〜10時に宿泊料を払って帰る。ハウスキーパー室の清掃員が掃除するまで次の客は泊まれない"],
+		["店と映画館", "飲食店は社員の昼食と外の客、ショップ・ファストフード・展望台は外の客、映画館は上映時刻に客が一斉に来る"],
+		["住宅", "入居すると販売収入が入る（1回だけ）。騒音にとても敏感で、評価が悪い日が続くと退去して返金になる"],
+		["ストレス", "エレベーターを待つとたまり、顔が ピンク → 赤 → 赤く点滅（激怒）と変わる。テナントの評価が悪い日が3日続くと退去する"],
+		["騒音", "飲食店・映画館・ロビーなどのまわりに広がり、住宅と客室の評価を下げる"],
+	]],
+	["お金と評価", [
+		["収入と支出", "賃料・宿泊料・売上・入場料 − 維持費 − ゴミの外部委託費。★が1つ上がるごとに賃料と宿泊料が25%増える"],
+		["★の条件", "★2: 人口50・警備室 / ★3: 人口120・メディカルセンター・ゴミ処理場 / ★4: 人口250・地下鉄駅・VIPの宿泊 / ★5: 人口500・展望台・結婚式場"],
+		["人口", "通勤できる社員 ＋ 客室の定員 ＋ 住宅の入居者"],
+		["ゴミと衛生", "ゴミ処理場が足りないとビルが汚れ、全テナントの評価が下がる。続くとゴキブリが出る"],
+	]],
+	["事件とイベント", [
+		["火災", "★2以上でときどき出火し、上下左右のテナントへ燃え広がる。警備員とヘリポートの消防ヘリが消す"],
+		["爆破予告", "★3以上で資金の多いビルに届く。身代金を払うか、警備員に探させる（見つからないと、まわりの階ごと吹き飛ぶ）"],
+		["VIP", "★4の条件がそろうと来館し、スイートに一泊。ストレス30以下で帰れば合格"],
+		["そのほか", "地下を掘ると埋蔵金が見つかることがある。天気（6月は梅雨）や曜日（土日は休日）でお客さんの数が変わる"],
+	]],
+]
+
+# 見出しごとに、左の列に項目名・右の列に説明を並べた表にする（説明が折り返しても、項目名の列にはみ出さない）
+func help_text() -> String:
+	var parts: Array[String] = []
+	for section in HELP_SECTIONS:
+		parts.append("[font_size=%d][color=%s][b]■ %s[/b][/color][/font_size]" % [15 * UI_SCALE, HELP_HEADING_COLOR, section[0]])
+		var table := "[table=2]"
+		for item in section[1]:
+			var body: String = item[1].replace("[key]", "[color=%s]" % HELP_KEY_COLOR).replace("[/key]", "[/color]")
+			table += "[cell padding=%d,%d,%d,%d][b]%s[/b][/cell]" % [12 * UI_SCALE, 2 * UI_SCALE, 12 * UI_SCALE, 2 * UI_SCALE, item[0]]
+			table += "[cell expand=1 padding=0,%d,0,%d]%s[/cell]" % [2 * UI_SCALE, 2 * UI_SCALE, body]
+		parts.append(table + "[/table]")
+	return "\n".join(parts)
+
+# 吹き出し（Tips）の見た目: 角の丸い濃い色の板（建設メニューなどにカーソルを合わせたときの説明にも使う）
+func tooltip_style() -> StyleBoxFlat:
+	var style := rounded_style(Color(0.1, 0.1, 0.13, 0.94), 6)
+	style.set_content_margin_all(5 * UI_SCALE)
+	style.content_margin_left = 10 * UI_SCALE
+	style.content_margin_right = 10 * UI_SCALE
+	style.border_color = Color(1, 1, 1, 0.12)
+	style.set_border_width_all(UI_SCALE)
+	return style
+
 # 吹き出し（Tips）用の文字フォントに合わせた背景矩形を作る
 func make_tooltip_bar(content: Control) -> PanelContainer:
 	var panel = PanelContainer.new()
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.1, 0.1, 0.13, 0.92)
-	style.set_content_margin_all(4 * UI_SCALE)
-	style.content_margin_left = 8 * UI_SCALE
-	style.content_margin_right = 8 * UI_SCALE
-	style.corner_radius_top_left = 4 * UI_SCALE
-	style.corner_radius_top_right = 4 * UI_SCALE
-	style.corner_radius_bottom_left = 4 * UI_SCALE
-	style.corner_radius_bottom_right = 4 * UI_SCALE
-	panel.add_theme_stylebox_override("panel", style)
+	panel.add_theme_stylebox_override("panel", tooltip_style())
 	panel.add_child(content)
 	return panel
 
@@ -528,6 +541,9 @@ func button_theme() -> Theme:
 			style.content_margin_right = 10 * UI_SCALE
 			theme.set_stylebox(state, type, style)
 		theme.set_constant("h_separation", type, 6 * UI_SCALE)
+	# 上部バーのボタンにカーソルを合わせたときの説明（Tips）も、角の丸い板にする（このテーマが外側のテーマより優先されるため）
+	theme.set_stylebox("panel", "TooltipPanel", tooltip_style())
+	theme.set_font_size("font_size", "TooltipLabel", 12 * UI_SCALE)
 	return theme
 
 func rounded_style(color: Color, radius: int) -> StyleBoxFlat:
@@ -617,10 +633,18 @@ func update_speed_icon(speed: int) -> void:
 	if speed_button:
 		speed_button.icon = icon_texture("speed%d" % clampi(world.SPEEDS.find(speed) + 1, 1, 3))
 
-func make_bar(content: Control) -> PanelContainer:
+# 文字をたくさん読むパネルは、背景をほぼ不透明にする
+func make_opaque(panel: PanelContainer) -> void:
+	var style := panel.get_theme_stylebox("panel").duplicate() as StyleBoxFlat
+	style.bg_color = Color(0.08, 0.09, 0.12)
+	style.border_color = Color(1, 1, 1, 0.1)
+	style.set_border_width_all(UI_SCALE)
+	panel.add_theme_stylebox_override("panel", style)
+
+# rounded: 角を丸めるか（画面の端から端までの下部バーは丸めない）
+func make_bar(content: Control, rounded := true) -> PanelContainer:
 	var panel = PanelContainer.new()
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.1, 0.1, 0.13, 0.9)
+	var style = rounded_style(Color(0.1, 0.1, 0.13, 0.9), 8 if rounded else 0)
 	style.set_content_margin_all(6 * UI_SCALE)
 	style.content_margin_left = 12 * UI_SCALE
 	style.content_margin_right = 12 * UI_SCALE
