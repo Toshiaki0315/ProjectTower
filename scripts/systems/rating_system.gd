@@ -48,8 +48,10 @@ func missing_for_next() -> Array[String]:
 	for type in req.buildings:
 		if world.find_cells_of_type(type).is_empty():
 			missing.append(world.BUILDINGS[type].name)
-	if req.has("unhappy") and unhappy_rate() > req.unhappy:
-		missing.append("不満なテナント%d割以下（今%d%%）" % [int(req.unhappy * 10), int(round(unhappy_rate() * 100))])
+	if req.has("unhappy"):
+		var rate := unhappy_rate() # 全部のテナントを調べるので1回だけ（ビルの状況の表示で毎フレーム呼ばれるため）
+		if rate > req.unhappy:
+			missing.append("不満なテナント%d割以下（今%d%%）" % [int(req.unhappy * 10), int(round(rate * 100))])
 	if req.get("vip", false) and not world.vip_system.passed:
 		missing.append("VIPの宿泊")
 	return missing

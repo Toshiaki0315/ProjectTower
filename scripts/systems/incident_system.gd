@@ -607,7 +607,6 @@ func dispatch_guards() -> void:
 				best_taken = is_taken
 		if best != null:
 			taken[best] = true
-		if best != null:
 			guard.go_to(best)
 		elif guard.cell != guards[origin].home:
 			guard.go_to(guards[origin].home) # 行ける火がなければ警備室で待つ

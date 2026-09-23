@@ -382,9 +382,9 @@ func load_grid_from_tilemap():
 			if cell.x - left_origin.x < get_width(type):
 				origin = left_origin
 		building_grid[cell] = {"type": type, "origin": origin}
-		invalidate_units()
 		# ユニットの何マス目かに合わせて、ドット絵の区画を置き直す
 		tile_map.set_cell(cell, BUILDINGS[type].source_id, Vector2i(cell.x - origin.x, 0))
+	invalidate_units()
 
 # タイルのカスタムデータ「type」から建物の種類を取得する（空マスなら ""）
 func get_type_from_tile(cell: Vector2i) -> String:

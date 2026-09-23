@@ -131,7 +131,7 @@ func add_shaft_if_needed() -> bool:
 				bottom = maxi(bottom, cell.y)
 		extend_shafts(top)
 		extend_shafts(bottom)
-		return true
+		return not main.is_cell_empty(Vector2i(x, GROUND)) # 建てられなかったら、ほかの建て増しに進む
 	return false
 
 # 毎日の決算のあとに、お金の範囲で建て増す（1日に何回でも）
