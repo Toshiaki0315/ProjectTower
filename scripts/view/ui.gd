@@ -16,10 +16,47 @@ const HELP_PANEL_WIDTH := 880 # 操作説明パネルの横幅（文字フォン
 const BASE_FONT_SIZE := 16 # 倍率をかける前の文字の大きさ
 const MESSAGE_LINES := 3 # 下部バーに出しておくメッセージの行数
 
+# 上部バーの色
+const BAR_COLOR := Color(0.09, 0.1, 0.15, 0.96)     # バーの地の色
+const BAR_ACCENT := Color(0.9, 0.7, 0.3)             # バーの下の縁取り（金色）
+const CHIP_COLOR := Color(1, 1, 1, 0.06)             # 資金・日付を囲む札の色
+const BUTTON_COLOR := Color(0.17, 0.19, 0.27)        # ボタンの色
+const BUTTON_HOVER_COLOR := Color(0.23, 0.26, 0.37)  # カーソルを合わせたときのボタンの色
+const BUTTON_PRESSED_COLOR := Color(0.12, 0.13, 0.19)
+const FUNDS_COLOR := Color(1.0, 0.9, 0.55)           # 資金の文字（金色）
+const GAIN_COLOR := Color(0.45, 0.9, 0.5)            # 前日の収支（黒字）
+const LOSS_COLOR := Color(1.0, 0.45, 0.45)           # 前日の収支（赤字）・資金がマイナスのとき
+const STAR_COLOR := Color(1.0, 0.82, 0.3)            # ★の文字
+const WARNING_COLOR := Color(1.0, 0.6, 0.25)         # 気をつけることがあるときの★のボタンの縁
+const ICON_DOT := 4                                  # アイコンの1ドットの大きさ（画面上のpx）
+# 上部バーのアイコン（10×10ドット。文字1つが1ドットの色。"." は透明）
+const ICON_COLORS := {
+	"K": Color("#1b1b24"), "y": Color("#e0a526"), "Y": Color("#ffd966"), "W": Color("#f4f1ea"),
+	"R": Color("#d94a4a"), "k": Color("#4a4a58"), "G": Color("#aab2c0"), "b": Color("#8a5a30"),
+	"g": Color("#6fd08a"), "P": Color("#9fd8ff"),
+}
+const ICONS := {
+	"coin": ["...KKKK...", ".KKyyyyKK.", ".KyYYYYyK.", "KyYyKKyYyK", "KyYKyyyYyK",
+		"KyYKyyyYyK", "KyYyKKyYyK", ".KyYYYYyK.", ".KKyyyyKK.", "...KKKK..."],
+	"calendar": ["..K....K..", "KKKKKKKKKK", "KRRRRRRRRK", "KRRRRRRRRK", "KWWWWWWWWK",
+		"KWkWkWkWWK", "KWWWWWWWWK", "KWkWkWkWWK", "KWWWWWWWWK", "KKKKKKKKKK"],
+	"hammer": [".KKKKKKK..", "KGGGGGGGK.", "KGWGGGGGK.", "KGGGGGGGK.", ".KKKbbKK..",
+		"...KbbK...", "...KbbK...", "...KbbK...", "...KbbK...", "....KK...."],
+	"route": ["..KK......", ".KggK.....", ".KggK..KK.", "..KK..KggK", "......KggK",
+		"..KK...KK.", ".KggK.....", ".KggK..KK.", "..KK..KggK", "......KggK"],
+	"speed1": ["..K.......", "..KK......", "..KPK.....", "..KPPK....", "..KPPPK...",
+		"..KPPPK...", "..KPPK....", "..KPK.....", "..KK......", "..K......."],
+	"speed2": ["K....K....", "KK...KK...", "KPK..KPK..", "KPPK.KPPK.", "KPPPKKPPPK",
+		"KPPPKKPPPK", "KPPK.KPPK.", "KPK..KPK..", "KK...KK...", "K....K...."],
+	"speed3": ["K..K..K...", "KK.KK.KK..", "KPKKPKKPK.", "KPPKPPKPPK", "KPPKPPKPPK",
+		"KPPKPPKPPK", "KPPKPPKPPK", "KPKKPKKPK.", "KK.KK.KK..", "K..K..K..."],
+}
+
 var world: Node2D # main.gd
 
 # 画面の部品
 var funds_label: Label     # 資金
+var funds_change_label: Label # 前日の収支（黒字は緑・赤字は赤）
 var clock_label: Label     # 日付・時刻・天気
 var stats_button: Button   # ★の表示（押すとくわしい状況が開く）
 var stats_panel: Control   # ビルの状況（人口・社員・目標・オフィス・客室）
@@ -59,9 +96,12 @@ func update() -> void:
 	update_hover_label()
 	clock_label.text = "%s  %s" % [world.clock.get_time_text(), world.weather_system.get_weather_text()]
 	var warning_list := warnings()
-	stats_button.text = "★%d" % world.rating_system.stars
+	# ★の数を、塗った星と白抜きの星で見せる（例: ★3 なら ★★★☆）
+	var stars: int = world.rating_system.stars
+	stats_button.text = "★".repeat(stars) + "☆".repeat(maxi(world.rating_system.MAX_STARS - stars, 0))
 	if not warning_list.is_empty():
 		stats_button.text += " ⚠%d" % warning_list.size() # 気をつけることがあるときは★の横に出す
+	set_warning_outline(stats_button, not warning_list.is_empty())
 	update_stats_panel(warning_list)
 	tutorial_label.text = world.tutorial_system.current_text()
 	tutorial_panel.visible = tutorial_label.text != ""
@@ -130,7 +170,10 @@ func build_bars() -> void:
 	#   2段目: ★（押すとくわしい状況）/ 速度 / 建設メニュー / 経路
 	var top_rows = VBoxContainer.new()
 	top_rows.add_theme_constant_override("separation", 4 * UI_SCALE)
-	layout.add_child(make_bar(top_rows))
+	var top_bar := make_bar(top_rows)
+	top_bar.add_theme_stylebox_override("panel", top_bar_style())
+	top_bar.theme = button_theme() # 上部バーのボタン・建設メニューは、角の丸い濃い色のボタンにする
+	layout.add_child(top_bar)
 	var status_row = HBoxContainer.new()
 	status_row.add_theme_constant_override("separation", 8 * UI_SCALE)
 	top_rows.add_child(status_row)
@@ -139,30 +182,50 @@ func build_bars() -> void:
 	stats_row.add_theme_constant_override("separation", 8 * UI_SCALE)
 	top_rows.add_child(stats_row)
 	stats_button = Button.new()
-	stats_button.custom_minimum_size.x = 120 * UI_SCALE
+	stats_button.custom_minimum_size.x = 150 * UI_SCALE
+	stats_button.tooltip_text = "ビルの評価（押すと、くわしい状況が開く）"
+	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		stats_button.add_theme_color_override(state, STAR_COLOR)
 	stats_button.pressed.connect(func(): toggle_stats_panel())
 	stats_row.add_child(stats_button)
 	# ゲームの速度（押すたびに 1x → 4x → 16x → 1x と切り替わり、今の速度だけを表示する）
 	speed_button = Button.new()
-	speed_button.custom_minimum_size.x = 60 * UI_SCALE
+	speed_button.custom_minimum_size.x = 76 * UI_SCALE
+	speed_button.expand_icon = false
 	speed_button.pressed.connect(func(): world.set_speed(world.SPEEDS[(world.SPEEDS.find(int(Engine.time_scale)) + 1) % world.SPEEDS.size()]))
 	stats_row.add_child(speed_button)
 	world.set_speed(1)
 	
+	# 資金の札: 金貨のアイコン・資金（金色）・前日の収支（黒字は緑、赤字は赤）
+	var funds_box := HBoxContainer.new()
+	funds_box.add_theme_constant_override("separation", 6 * UI_SCALE)
+	funds_box.add_child(make_icon("coin"))
 	funds_label = Label.new()
 	funds_label.add_theme_font_size_override("font_size", 20 * UI_SCALE)
-	funds_label.custom_minimum_size.x = 420 * UI_SCALE # 金額の桁が変わっても時刻の位置がずれないように
-	status_row.add_child(funds_label)
+	funds_label.add_theme_color_override("font_color", FUNDS_COLOR)
+	funds_box.add_child(funds_label)
+	funds_change_label = Label.new()
+	funds_change_label.add_theme_font_size_override("font_size", 15 * UI_SCALE)
+	funds_box.add_child(funds_change_label)
+	var funds_chip := make_chip(funds_box)
+	funds_chip.custom_minimum_size.x = 420 * UI_SCALE # 金額の桁が変わっても時刻の位置がずれないように
+	status_row.add_child(funds_chip)
 	
+	# 日付・時刻・天気の札
+	var clock_box := HBoxContainer.new()
+	clock_box.add_theme_constant_override("separation", 6 * UI_SCALE)
+	clock_box.add_child(make_icon("calendar"))
 	clock_label = Label.new()
 	clock_label.add_theme_font_size_override("font_size", 20 * UI_SCALE)
-	status_row.add_child(clock_label)
+	clock_box.add_child(clock_label)
+	status_row.add_child(make_chip(clock_box))
 	
 	status_row.add_child(make_spacer())
 	
 	# 操作説明（F1・H）とメッセージの記録（⌘L）は、ボタンではなくショートカットで開く
 	
 	# 建設メニュー: リストから選んで、マップをクリックして建てる（見出しごとにまとめる）
+	stats_row.add_child(make_icon("hammer"))
 	var build_label = Label.new()
 	build_label.text = "建設:"
 	stats_row.add_child(build_label)
@@ -183,6 +246,7 @@ func build_bars() -> void:
 	# 経路（人の通り道）の表示。人が増えると線だらけになるので、既定はオフ
 	route_button = Button.new()
 	route_button.custom_minimum_size.x = 100 * UI_SCALE
+	route_button.icon = icon_texture("route")
 	route_button.pressed.connect(func(): world.toggle_routes())
 	stats_row.add_child(route_button)
 	update_route_button()
@@ -391,6 +455,99 @@ func make_tooltip_bar(content: Control) -> PanelContainer:
 #（スクロールで動くのは開いている欄だけ。一番下まで行った後の2本指スクロールが後ろに届かないように）
 func update_scroll_lock() -> void:
 	world.camera.scroll_locked = help_panel.visible or log_panel.visible
+
+# 上部バーの地: 濃い紺に、下の縁だけ金色の線を引いて影を落とす
+func top_bar_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = BAR_COLOR
+	style.border_width_bottom = 2 * UI_SCALE
+	style.border_color = BAR_ACCENT
+	style.shadow_color = Color(0, 0, 0, 0.35)
+	style.shadow_size = 3 * UI_SCALE
+	style.set_content_margin_all(5 * UI_SCALE)
+	style.content_margin_left = 12 * UI_SCALE
+	style.content_margin_right = 12 * UI_SCALE
+	return style
+
+# 上部バーのボタンと建設メニューの見た目（角の丸い濃い色。カーソルを合わせると明るくなる）
+func button_theme() -> Theme:
+	var theme := Theme.new()
+	var states := {"normal": BUTTON_COLOR, "hover": BUTTON_HOVER_COLOR, "pressed": BUTTON_PRESSED_COLOR,
+		"focus": Color(0, 0, 0, 0), "disabled": BUTTON_PRESSED_COLOR}
+	for type in ["Button", "OptionButton"]:
+		for state in states:
+			var style := rounded_style(states[state], 5)
+			if state == "focus":
+				style.draw_center = false
+			else:
+				style.border_width_bottom = 2 * UI_SCALE # 下の縁を少し暗くして、押せるボタンに見せる
+				style.border_color = states[state].darkened(0.35)
+			style.content_margin_left = 10 * UI_SCALE
+			style.content_margin_right = 10 * UI_SCALE
+			theme.set_stylebox(state, type, style)
+		theme.set_constant("h_separation", type, 6 * UI_SCALE)
+	return theme
+
+func rounded_style(color: Color, radius: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.corner_radius_top_left = radius * UI_SCALE
+	style.corner_radius_top_right = radius * UI_SCALE
+	style.corner_radius_bottom_left = radius * UI_SCALE
+	style.corner_radius_bottom_right = radius * UI_SCALE
+	style.set_content_margin_all(3 * UI_SCALE)
+	return style
+
+# 資金・日付を囲む、うっすら明るい角丸の札
+func make_chip(content: Control) -> PanelContainer:
+	var chip := PanelContainer.new()
+	var style := rounded_style(CHIP_COLOR, 6)
+	style.content_margin_left = 10 * UI_SCALE
+	style.content_margin_right = 12 * UI_SCALE
+	chip.add_theme_stylebox_override("panel", style)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE # 札の上のクリックはバーが受け止める
+	chip.add_child(content)
+	return chip
+
+# 気をつけることがあるときは、★のボタンをオレンジの縁で囲む
+func set_warning_outline(button: Button, on: bool) -> void:
+	if not on:
+		for state in ["normal", "hover", "pressed"]:
+			button.remove_theme_stylebox_override(state)
+		return
+	for state in ["normal", "hover", "pressed"]:
+		var style := rounded_style(BUTTON_HOVER_COLOR if state == "hover" else BUTTON_COLOR, 5)
+		style.set_border_width_all(2 * UI_SCALE)
+		style.border_color = WARNING_COLOR
+		button.add_theme_stylebox_override(state, style)
+
+# ドット絵のアイコン（ICONS の絵を ICON_DOT 倍に拡大した画像）
+var icon_cache := {}
+func icon_texture(name: String) -> ImageTexture:
+	if icon_cache.has(name):
+		return icon_cache[name]
+	var rows: Array = ICONS[name]
+	var image := Image.create(rows[0].length() * ICON_DOT, rows.size() * ICON_DOT, false, Image.FORMAT_RGBA8)
+	for y in rows.size():
+		for x in rows[y].length():
+			var ch: String = rows[y][x]
+			if ch != ".":
+				image.fill_rect(Rect2i(x * ICON_DOT, y * ICON_DOT, ICON_DOT, ICON_DOT), ICON_COLORS[ch])
+	icon_cache[name] = ImageTexture.create_from_image(image)
+	return icon_cache[name]
+
+func make_icon(name: String) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = icon_texture(name)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return icon
+
+# 速さのボタンのアイコン（1x は▶1つ、4x は2つ、16x は3つ）
+func update_speed_icon(speed: int) -> void:
+	if speed_button:
+		speed_button.icon = icon_texture("speed%d" % clampi(world.SPEEDS.find(speed) + 1, 1, 3))
 
 func make_bar(content: Control) -> PanelContainer:
 	var panel = PanelContainer.new()
@@ -637,8 +794,12 @@ func update_funds_display():
 	if not funds_label:
 		return
 	funds_label.text = "現在の資金: %s" % world.money_text(world.funds)
+	funds_label.add_theme_color_override("font_color", FUNDS_COLOR if world.funds >= 0 else LOSS_COLOR)
+	funds_change_label.text = ""
 	if world.economy_system and not world.economy_system.last_report.is_empty():
-		funds_label.text += "（前日 %s）" % world.money_text(world.economy_system.last_report.total, true)
+		var total: int = world.economy_system.last_report.total
+		funds_change_label.text = "（前日 %s）" % world.money_text(total, true)
+		funds_change_label.add_theme_color_override("font_color", GAIN_COLOR if total >= 0 else LOSS_COLOR)
 
 func update_scrollbar():
 	var tile_h: float = world.tile_map.tile_set.tile_size.y

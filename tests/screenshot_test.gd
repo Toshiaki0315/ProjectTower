@@ -775,7 +775,7 @@ func run_economy_scenario() -> bool:
 	check(report.get("maintenance") == 12000, "エレベーター6マス分の維持費1.2万Crがかかる")
 	check(report.get("garbage") == 52 and report.get("garbage_cost") == 52000, "ゴミ処理場がないとゴミ52を外部委託して5.2万Crかかる")
 	check(main.funds == funds_before + 456000, "資金が差し引き45.6万Cr増える")
-	check(main.funds_label.text.contains("（前日 +456,000Cr）"), "資金の横に前日の収支が出る")
+	check(main.ui.funds_change_label.text == "（前日 +456,000Cr）" and main.ui.funds_change_label.get_theme_color("font_color") == main.ui.GAIN_COLOR, "資金の横に前日の収支が出る（黒字は緑）")
 	check(main.last_message.contains("4月1日（1日目）の決算"), "決算の内容が日付つきでメッセージに出る")
 	await capture("economy_01_settled")
 	

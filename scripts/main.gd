@@ -733,6 +733,7 @@ func set_speed(speed: int) -> void:
 	Engine.time_scale = speed
 	if speed_button:
 		speed_button.text = "%dx" % speed
+		ui.update_speed_icon(speed)
 
 # カゴ追加モードでシャフトのマスをクリックしたとき、その階にカゴを1台追加する
 func add_elevator_car(cell: Vector2i):
