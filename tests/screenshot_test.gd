@@ -3685,17 +3685,37 @@ func run_audio_scenario() -> bool:
 	await press_key(KEY_M)
 	check(not audio.muted and audio.bgm_player.playing, "もう一度Mキーで音が戻る")
 	
-	# 夜になるとBGMが夜の和音に変わる
+	# 時間帯（朝・昼・夕方・夜）でBGMが変わる
+	check(audio.period_for(7 * 60) == "morning" and audio.period_for(12 * 60) == "day" and audio.period_for(18 * 60) == "evening"
+		and audio.period_for(23 * 60) == "night" and audio.period_for(3 * 60) == "night", "時間帯は 朝5時・昼10時・夕方17時・夜20時 から")
 	main.clock.set_time(1, 12, 0)
-	await wait_frames(2)
-	check(not audio.bgm_night, "昼は昼のBGM")
+	await wait_until(func(): return audio.bgm_key == ["day", 1], 5.0) # まだ作っていない曲は、裏で作ってから切り替える
+	check(audio.bgm_key == ["day", 1], "昼は昼のBGM")
 	var day_stream = audio.bgm_player.stream
 	main.clock.set_time(1, 23, 0)
-	await wait_frames(2)
-	check(audio.bgm_night and audio.bgm_player.stream != day_stream, "夜になると夜のBGMに変わる")
+	await wait_until(func(): return audio.bgm_key == ["night", 1], 5.0)
+	check(audio.bgm_key == ["night", 1] and audio.bgm_player.stream != day_stream, "夜になると夜のBGMに変わる")
+	main.clock.set_time(1, 18, 0)
+	await wait_until(func(): return audio.bgm_key == ["evening", 1], 5.0)
+	check(audio.bgm_key == ["evening", 1], "夕方は夕方のBGM")
 	main.clock.set_time(1, 7, 30)
+	await wait_until(func(): return audio.bgm_key == ["morning", 1], 5.0)
+	check(audio.bgm_key == ["morning", 1], "朝は朝のBGM")
+
+	# ★が上がると音が重なって豪華になる（同じ時間帯でも曲が変わる）
+	var plain = audio.bgm_player.stream
+	main.rating_system.stars = 3
+	await wait_until(func(): return audio.bgm_key == ["morning", 3], 5.0)
+	check(audio.bgm_key == ["morning", 3] and audio.bgm_player.stream != plain, "★が上がるとBGMが変わる")
+	var started := Time.get_ticks_msec()
+	main.rating_system.stars = 1
 	await wait_frames(2)
-	check(not audio.bgm_night, "朝になると昼のBGMに戻る")
+	check(audio.bgm_player.stream == plain and Time.get_ticks_msec() - started < 500, "一度作った曲は覚えておいて、すぐに切り替える")
+	var loudest := 0.0
+	var rich: AudioStreamWAV = audio.make_bgm(audio.PERIODS.day, 5)
+	for i in range(0, rich.data.size(), 2):
+		loudest = maxf(loudest, absf(rich.data.decode_s16(i)))
+	check(loudest < 32767.0, "音を重ねても、音が割れない")
 	return true
 
 # ---------------------------------------------------
