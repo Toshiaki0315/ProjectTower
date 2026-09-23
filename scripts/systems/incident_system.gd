@@ -107,7 +107,6 @@ var treasure_total := 0 # これまでに見つけた埋蔵金の合計
 func setup(p_world: Node2D) -> void:
 	world = p_world
 
-# 警備室の数に合わせて、警備員を増やしたり減らしたりする
 # 進行中の事件（爆破予告・火災・消防ヘリ）をなかったことにする。
 # セーブデータを読み込むときに呼ぶ（前の続きの火事が、読み込んだビルを燃やさないように）
 func reset_incidents() -> void:
@@ -123,19 +122,18 @@ func reset_incidents() -> void:
 	roach_days = 0
 	last_incident_day = 0
 
+# 警備室の数に合わせて、警備員を増やしたり減らしたりする
 func rebuild() -> void:
 	var rooms: Array[Vector2i] = world.find_units_of_type("security")
 	for origin in rooms:
-		if not guards.has(origin) or not is_instance_valid(guards[origin].resident):
-			var guard = world.spawn_resident(origin)
-			guard.base_color = GUARD_COLOR
-			guard.staff = true # 裏方（サービスエレベーターに乗れる）
-			guards[origin] = {"home": origin, "resident": guard}
+		if not guards.has(origin):
+			guards[origin] = {"home": origin, "resident": spawn_guard(origin)}
 	for origin in guards.keys():
 		if not rooms.has(origin):
 			if is_instance_valid(guards[origin].resident):
 				guards[origin].resident.queue_free()
 			guards.erase(origin)
+	replace_lost_guards()
 	remove_lost_roaches()
 
 # 撤去・焼失してなくなったテナントのゴキブリを消す。撤去すると空きフロアや焼け跡が残って
@@ -145,6 +143,18 @@ func remove_lost_roaches() -> void:
 	for origin in roaches.keys():
 		if not is_target(origin) or world.building_grid[origin].origin != origin:
 			roaches.erase(origin)
+
+# 警備員がいなくなっていたら（乗っていたエレベーターが撤去されたなど）、代わりが警備室に来る
+func replace_lost_guards() -> void:
+	for origin in guards:
+		if not is_instance_valid(guards[origin].resident):
+			guards[origin].resident = spawn_guard(origin)
+
+func spawn_guard(home: Vector2i):
+	var guard = world.spawn_resident(home)
+	guard.base_color = GUARD_COLOR
+	guard.staff = true # 裏方（サービスエレベーターに乗れる）
+	return guard
 
 func guard_count() -> int:
 	return guards.size()
@@ -161,6 +171,7 @@ func _process(_delta: float) -> void:
 	var day: int = world.clock.day
 	var now: int = world.clock.minute_of_day()
 	var minutes: float = world.clock.last_advance # このフレームで進んだゲーム内の分数
+	replace_lost_guards()
 	if not is_incident_on_cooldown(day) and bomb_day != day and now >= BOMB_MINUTE:
 		bomb_day = day
 		if not has_bomb() and roll_bomb(day):
@@ -173,7 +184,11 @@ func _process(_delta: float) -> void:
 			start_fire(pick_target(day))
 	if has_fire():
 		process_fire(minutes)
-	process_heli(minutes) # 火が消えたらヘリは帰る
+		process_heli(minutes)
+		if not has_fire():
+			fire_out() # 警備員もヘリも、最後の火を消したら帰る
+	else:
+		heli = null
 	if roach_day != day and now >= ROACH_MINUTE:
 		roach_day = day
 		update_roaches(day)
@@ -318,8 +333,13 @@ func search_bomb(minutes: float) -> void:
 				bomb.search[origin] = job
 				guard.go_to(job.target)
 			continue
-		if guard.cell != job.target or guard.is_moving():
+		if guard.is_moving():
 			continue # まだ向かっている途中
+		if guard.cell != job.target:
+			# 途中で経路が途切れて立ち止まった: 行き直す。行けなければ、その棟は後回しにして次を探す
+			if not guard.go_to(job.target):
+				bomb.search.erase(origin)
+			continue
 		job.work += minutes
 		if job.work < SEARCH_MINUTES:
 			continue # 調べている途中
@@ -437,9 +457,10 @@ func burn(cell: Vector2i) -> void:
 	fire[cell] = {"burn_left": BURN_MINUTES, "work_left": EXTINGUISH_MINUTES}
 
 func process_fire(minutes: float) -> void:
-	# 燃えているマスの建物がなくなったら、その火は消える
+	# 燃えているマスのテナントがなくなったら、その火は消える
+	#（撤去して空きフロアが残ったときや、爆発で焼け跡になったときも。空きフロアや焼け跡は燃えない）
 	for cell in fire.keys():
-		if world.is_cell_empty(cell):
+		if not is_target(cell):
 			fire.erase(cell)
 	# 警備員を、担当がいない燃えているマスへ向かわせる
 	dispatch_guards()
@@ -457,13 +478,19 @@ func process_fire(minutes: float) -> void:
 		flame.burn_left -= minutes
 		if flame.burn_left <= 0.0:
 			burn_down(cell)
-	# 延焼: 決まった時間ごとに、隣（左右）と上のマスへ広がる
+	# 延焼: 決まった時間ごとに、上下左右のマスへ広がる
 	fire_spread_left -= minutes
 	if fire_spread_left <= 0.0:
 		fire_spread_left = SPREAD_MINUTES
 		spread_fire()
-	if not has_fire():
-		world.show_message("火は収まりました")
+
+# 鎮火: 消火に出ていた警備員を警備室へ帰す（爆弾の捜索・解体に当たっている警備員はそのまま）
+func fire_out() -> void:
+	heli = null
+	for origin in guards:
+		if not is_on_bomb_duty(origin):
+			send_guards_home(guards[origin].resident)
+	world.show_message("火は収まりました")
 
 # 燃え尽きたマスのテナントが焼け落ちる
 func burn_down(cell: Vector2i) -> void:
@@ -473,7 +500,7 @@ func burn_down(cell: Vector2i) -> void:
 	world.destroy_unit(cell)
 	world.show_message("%s の%sが焼け落ちました（焼け跡は撤去してから建て直せます）" % [world.get_floor_name(cell.y), name])
 
-# 燃えているマスから、隣（左右）と上のマスへ燃え広がる
+# 燃えているマスから、上下左右のマスへ燃え広がる
 func spread_fire() -> void:
 	for cell in fire.keys():
 		for dir in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
@@ -553,8 +580,8 @@ func dispatch_guards() -> void:
 				best_length = path.size()
 		if best != null:
 			guard.go_to(best)
-		else:
-			send_guards_home(guard)
+		elif guard.cell != guards[origin].home:
+			guard.go_to(guards[origin].home) # 行ける火がなければ警備室で待つ
 
 # ---------------------------------------------------
 # 埋蔵金の発見

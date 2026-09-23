@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -4744,4 +4744,94 @@ func run_roach_rooms_scenario() -> bool:
 	check(main.commerce_system.find_nearest_restaurant(Vector2i(9, 17)) == Vector2i(14, 17), "ゴキブリのいる飲食店Aは避けて、飲食店Bへ行く")
 	incidents.roaches[Vector2i(14, 17)] = true
 	check(main.commerce_system.find_nearest_restaurant(Vector2i(9, 17)) == near, "どの店にもいるなら、しかたなく一番近い店へ行く")
+	return true
+
+# シナリオ75: コードレビューで直した不具合
+#   2階: 警備室(10〜11) ハウスキーパー室(12〜13) スイート(14〜17) ショップ(18〜20、上に空きフロア)
+# ---------------------------------------------------
+func run_review_fixes_scenario() -> bool:
+	print("[シナリオ] コードレビューで直した不具合")
+	main.clear_world()
+	main.funds = 10000000
+	main.rating_system.stars = 1 # 火災・爆破予告が勝手に起きないように
+	main.economy_system.pollution = 0
+	main.clock.set_time(1, 12, 0)
+	var incidents = main.incident_system
+	var hotel = main.hotel_system
+	var vips = main.vip_system
+	var tenants = main.tenant_system
+	build_support([Vector2i(8, 18)] + cells_row(18, 10, 20), "lobby")
+	build_support([Vector2i(9, 18)]) # 2階へ上がる階段
+	main.select_mode("security")
+	main.build_at(Vector2i(10, 17))
+	main.select_mode("housekeeping")
+	main.build_at(Vector2i(12, 17))
+	main.select_mode("hotel_suite")
+	main.build_at(Vector2i(14, 17))
+	main.select_mode("shop")
+	main.build_at(Vector2i(18, 17))
+	build_support([Vector2i(18, 16)], "frame") # ショップの上に空きフロア（撤去すると空きフロアが残る）
+	focus_camera(Vector2i(14, 17))
+	await wait_frames(2)
+
+	# 常駐の警備員・清掃員がいなくなっても（乗っていたエレベーターの撤去など）、代わりが来る
+	var home := Vector2i(10, 17)
+	var guard = incidents.guards[home].resident
+	var keeper = hotel.housekeepers[Vector2i(12, 17)].resident
+	guard.queue_free()
+	keeper.queue_free()
+	await wait_frames(2)
+	check(is_instance_valid(incidents.guards[home].resident) and incidents.guards[home].resident != guard, "いなくなった警備員の代わりが警備室に来る")
+	check(is_instance_valid(hotel.housekeepers[Vector2i(12, 17)].resident) and hotel.housekeepers[Vector2i(12, 17)].resident != keeper, "いなくなった清掃員の代わりがハウスキーパー室に来る")
+
+	# 燃えているテナントを撤去して空きフロアが残っても、空きフロアは燃えない
+	incidents.start_fire(Vector2i(19, 17))
+	main.demolish_at(Vector2i(18, 17))
+	check(main.get_building_type(Vector2i(19, 17)) == "frame", "燃えているショップを撤去すると空きフロアが残る")
+	await wait_frames(2)
+	check(not incidents.has_fire() and logged("火は収まりました"), "空きフロアに火は残らず、鎮火する")
+	check(main.get_building_type(Vector2i(19, 17)) == "frame", "空きフロアは焼け跡にならない")
+	main.select_mode("shop")
+	main.build_at(Vector2i(18, 17))
+
+	# 火を消し止めた警備員は、警備室へ戻る
+	main.clock.set_process(true)
+	incidents.start_fire(Vector2i(18, 17))
+	set_speed(16.0)
+	await wait_until(func(): return not incidents.has_fire(), 60.0)
+	check(logged("火を消し止めました"), "警備員が火を消し止める")
+	guard = incidents.guards[home].resident
+	await wait_until(func(): return guard.cell == home and not guard.is_moving(), 30.0)
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	check(guard.cell == home, "鎮火すると、警備員は警備室へ戻る")
+
+	# VIPの宿泊中にスイートがなくなっても、合格にはならない
+	var suite := Vector2i(14, 17)
+	vips.passed = false
+	vips.vip = main.spawn_resident(suite)
+	vips.room_origin = suite
+	vips.state = vips.State.STAYING
+	hotel.rooms[suite].state = hotel.RoomState.OCCUPIED
+	hotel.rooms[suite].guests = [vips.vip]
+	tenants.rooms[suite] = {"rating": tenants.Rating.BAD, "average": 80.0}
+	main.demolish_at(suite)
+	await wait_frames(2)
+	check(vips.state == vips.State.NONE and not vips.passed, "宿泊中のスイートを撤去すると、VIPは合格にならずに帰る")
+	check(logged("泊まっていたスイートがなくなり"), "スイートがなくなって帰ったことがメッセージで出る")
+	check(not tenants.rooms.has(suite), "撤去した客室の評価は消える（跡地や建て直した部屋に残らない）")
+
+	# 掃除されていない客室が、いつから汚れているかはセーブに残る（読み込んだ後もゴキブリが出る）
+	main.select_mode("hotel")
+	main.build_at(suite)
+	main.clock.set_time(5, 12, 0)
+	hotel.rooms[suite].state = hotel.RoomState.DIRTY
+	hotel.rooms[suite].dirty_day = 3
+	var save_path := "user://test_review_fixes.json"
+	main.save_system.save_game(save_path)
+	main.save_system.load_game(save_path)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
+	check(hotel.rooms[suite].get("dirty_day", -1) == 3, "客室が汚れた日はセーブに残る")
+	incidents.infest_dirty_rooms(5)
+	check(incidents.roaches.has(suite), "読み込んだ後も、掃除されないまま日がたった客室にはゴキブリが出る")
 	return true

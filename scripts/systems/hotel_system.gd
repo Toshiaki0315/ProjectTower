@@ -79,10 +79,7 @@ func rebuild() -> void:
 	var home_cells: Array[Vector2i] = world.find_cells_of_type("housekeeping")
 	for cell in home_cells:
 		if not housekeepers.has(cell):
-			var resident = world.spawn_resident(cell)
-			resident.base_color = HOUSEKEEPER_COLOR
-			resident.staff = true # 清掃員はサービスエレベーターに乗れる
-			housekeepers[cell] = {"home": cell, "resident": resident, "room": null, "clean_left": 0.0}
+			housekeepers[cell] = {"home": cell, "resident": spawn_housekeeper(cell), "room": null, "clean_left": 0.0}
 	for cell in housekeepers.keys():
 		if not home_cells.has(cell):
 			var keeper = housekeepers[cell]
@@ -90,6 +87,12 @@ func rebuild() -> void:
 			if is_instance_valid(keeper.resident):
 				keeper.resident.queue_free()
 			housekeepers.erase(cell)
+
+func spawn_housekeeper(home: Vector2i):
+	var resident = world.spawn_resident(home)
+	resident.base_color = HOUSEKEEPER_COLOR
+	resident.staff = true # 清掃員はサービスエレベーターに乗れる
+	return resident
 
 # ---------------------------------------------------
 # 毎フレームの処理
@@ -205,7 +208,9 @@ func process_leaving_guests() -> void:
 func process_housekeeper(keeper: Dictionary, minutes: float) -> void:
 	var resident = keeper.resident
 	if not is_instance_valid(resident):
+		# 乗っていたエレベーターが撤去されたなどで退場した: 代わりの清掃員がハウスキーパー室に来る
 		release_room(keeper)
+		keeper.resident = spawn_housekeeper(keeper.home)
 		return
 	if keeper.room == null:
 		# 次の部屋を探す。なければハウスキーパー室に戻る

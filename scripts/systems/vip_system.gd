@@ -130,6 +130,10 @@ func process_staying() -> void:
 	var room: Dictionary = world.hotel_system.rooms.get(room_origin, {})
 	if not room.is_empty() and is_instance_valid(vip) and room.guests.has(vip):
 		return # まだ泊まっている
+	if room.is_empty():
+		# チェックアウトの前にスイートがなくなった（撤去・焼失）: 評価できないので、合格にはしない
+		leave("泊まっていたスイートがなくなり、VIPは帰ってしまいました（明日もう一度来ます）")
+		return
 	state = State.NONE
 	var peak: float = room.get("stay_peak", 0.0)
 	vip = null # チェックアウトしたVIPは、普通の宿泊客と同じように入口から帰る

@@ -120,7 +120,7 @@ func collect_hotel_rooms() -> Array:
 	var list := []
 	for cell in world.hotel_system.rooms:
 		var room: Dictionary = world.hotel_system.rooms[cell]
-		list.append({"x": cell.x, "y": cell.y, "state": room.state})
+		list.append({"x": cell.x, "y": cell.y, "state": room.state, "dirty_day": room.get("dirty_day", 0)})
 	return list
 
 # ---------------------------------------------------
@@ -196,7 +196,11 @@ func apply_tenants(data: Dictionary) -> void:
 	for record in data.hotel_rooms:
 		var cell := Vector2i(int(record.x), int(record.y))
 		if world.hotel_system.rooms.has(cell):
-			world.hotel_system.rooms[cell].state = int(record.state)
+			var room: Dictionary = world.hotel_system.rooms[cell]
+			room.state = int(record.state)
+			if room.state == world.hotel_system.RoomState.DIRTY:
+				# 掃除されないまま日がたつとゴキブリが出るので、いつから汚れているかも戻す（古いセーブデータは読み込んだ日から）
+				room.dirty_day = int(record.get("dirty_day", world.clock.day))
 	for record in data.moved_in_homes:
 		var cell := Vector2i(int(record.x), int(record.y))
 		if world.housing_system.homes.has(cell):

@@ -299,11 +299,18 @@ func roll_move_in(origin: Vector2i, day: int) -> bool:
 	rng.seed = hash([origin, day, "move_in"])
 	return rng.randf() < move_in_chance(origin)
 
-# なくなったオフィスの家賃の設定を消す（同じ場所に建て直したオフィスに引き継がないように）
-func remove_lost_rents() -> void:
-	for origin in rent_levels.keys():
-		if not world.OFFICE_TYPES.has(world.get_building_type(origin)) or world.building_grid[origin].origin != origin:
-			rent_levels.erase(origin)
+# なくなったテナントの家賃の設定と評価を消す（撤去すると空きフロアや焼け跡が残るので、
+# 跡地に評価のマークを描かないように。同じ場所に建て直したテナントにも引き継がないように）
+func remove_lost_records() -> void:
+	for records in [rent_levels, offices]:
+		remove_lost(records, func(type): return world.OFFICE_TYPES.has(type))
+	remove_lost(homes, func(type): return type == "housing")
+	remove_lost(rooms, func(type): return world.hotel_system.is_room_type(type))
+
+func remove_lost(records: Dictionary, is_kept: Callable) -> void:
+	for origin in records.keys():
+		if not is_kept.call(world.get_building_type(origin)) or world.building_grid[origin].origin != origin:
+			records.erase(origin)
 
 func count_rating(rating: Rating) -> int:
 	var n := 0

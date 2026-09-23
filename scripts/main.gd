@@ -728,7 +728,7 @@ func call_elevator(cell: Vector2i):
 
 # 建物が増減したときに、建物に対応する仕組み（エレベーター・社員・客室・住宅・会場）を更新する
 func rebuild_systems():
-	tenant_system.remove_lost_rents()
+	tenant_system.remove_lost_records()
 	elevator_system.rebuild()
 	incident_system.rebuild()
 	noise_system.rebuild()
