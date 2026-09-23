@@ -14,6 +14,7 @@ const GOALS := [
 	{"name": "45日目までに★3（人口120・メディカルセンター・ゴミ処理場）", "stars": 3, "day": 45},
 	{"name": "90日目までに★4（人口250・地下鉄駅・VIPの宿泊）", "stars": 4, "day": 90},
 	{"name": "120日目までに資金5,000万Crをためよう", "funds": 50000000, "day": 120},
+	{"name": "180日目までに★5（人口500・展望台・結婚式場）でタワー完成", "stars": 5, "day": 180},
 ]
 
 var world: Node2D # main.gd
@@ -47,7 +48,7 @@ func check_day(day: int) -> void:
 		world.audio_system.play("money")
 		if current() == null:
 			cleared = true
-			world.show_goal_panel("すべての目標を達成しました！", "おめでとうございます。ここからは、好きなだけビルを大きくしてください。")
+			world.show_goal_panel("タワー完成！", "★5のタワーができあがり、すべての目標を達成しました。おめでとうございます！\n\nここからは、好きなだけビルを大きくしてください。")
 		else:
 			world.show_goal_panel("目標を達成しました！", "%s\n\n次の目標: %s" % [goal.name, current().name])
 		return

@@ -30,6 +30,7 @@ const TABLE := {
 	"event_hall": {"name": "イベントホール", "cost": 800000, "source_id": 13, "width": 6},
 	"subway": {"name": "地下鉄駅", "cost": 1000000, "source_id": 14, "width": 4, "floors": "deep_basement"},
 	"garden": {"name": "屋上庭園", "cost": 400000, "source_id": 27, "width": 4, "floors": "rooftop"},
+	"observatory": {"name": "展望台", "cost": 3000000, "source_id": 34, "width": 6, "floors": "rooftop"}, # ★5に必要な屋上のランドマーク
 	"helipad": {"name": "ヘリポート", "cost": 800000, "source_id": 26, "width": 4, "floors": "rooftop"},
 	"parking": {"name": "地下駐車場", "cost": 300000, "source_id": 22, "width": 4, "floors": "basement"},
 	"ramp": {"name": "スロープ", "cost": 200000, "source_id": 23, "width": 2, "floors": "basement"},

@@ -55,7 +55,7 @@ const MODE_DEMOLISH := "demolish" # 左クリックで撤去するモード（�
 
 # 建設メニューの並び（見出しごとにまとめる）。BUILDINGS に建物を足したら、ここにも入れる
 const MODE_GROUPS := [
-	{"name": "テナント", "modes": ["small_office", "office", "large_office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "fastfood", "shop", "cinema", "housing", "wedding", "event_hall"]},
+	{"name": "テナント", "modes": ["small_office", "office", "large_office", "hotel", "hotel_twin", "hotel_suite", "restaurant", "fastfood", "shop", "cinema", "observatory", "housing", "wedding", "event_hall"]},
 	{"name": "ロビー・移動", "modes": ["lobby", "lobby2", "lobby3", "sky_lobby", "frame", "stairs", "escalator", "elevator", "express_elevator", "large_elevator", "service_elevator", "add_car", "set_home", "service", "vip_only"]},
 	{"name": "設備", "modes": ["housekeeping", "recycling", "security", "medical", "subway", "ramp", "parking", "helipad", "garden"]},
 	{"name": "その他", "modes": ["rent", "demolish", "resident"]},

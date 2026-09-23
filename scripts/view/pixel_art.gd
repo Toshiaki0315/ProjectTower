@@ -56,6 +56,7 @@ const PALETTE := {
 	"J": Color("#d8c08a"), # スイートの壁
 	"j": Color("#8a2a3a"), # スイートの掛け布団・イベントホールの壁
 	"I": Color("#f7a8c0"), # 結婚式場の花・バージンロード
+	"b": Color("#9fd4f5"), # 展望台の大きなガラス窓
 }
 
 # 入口の印（ロビー・地下鉄駅の横に、マスの半分（8ドット）の幅で描く小さな絵）。
@@ -375,6 +376,24 @@ const TILES := {
 		"ppzppzppzppzppzppzhheehheezppzppzppzppzpeehheehhppzppzppzppzppzp",
 		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
 		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+	],
+	"observatory": [
+		"............................................KKKRRKKK............................................",
+		"..........................................KKbbbbbvbbKK..........................................",
+		"........................................KKbbbbbvbbbbbbKK........................................",
+		"......................................KKbbbbbvbbbbbbbbbbKK......................................",
+		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+		"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+		"BbbbbbbbbvbbBbbbbbbbbvbbBbbbbbbbbvbbBbbbbbbbbvbbBbbbbbbbbvbbBbbbbbbbbvbbBbbbbbbbbvbbBbbbbbbbbvbB",
+		"BbbbbbbbvbbbBbbbbbbbvbbbBbbbbbbbvbbbBbbbbbbbvbbbBbbbbbbbvbbbBbbbbbbbvbbbBbbbbbbbvbbbBbbbbbbbvbbB",
+		"BbbbbbbvbbbbBbbbbbbvbbbbBbbbbbbvbbbbBbbbbbbvbbbbBbbbbbbvbbbbBbbbbbbvbbbbBbbbbbbvbbbbBbbbbbbvbbbB",
+		"BbbbbbbbbbbbBbbbbbbbbbbbBbbbbbbbbbbbBbbbbbbbbbbbBbbbbbbbbbbbBbbbbbbbbbbbBbbbbbbbbbbbBbbbbbbbbbbB",
+		"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+		"ggggggggggggggggMMMmggggggggggggggggggggMMMmggggggggggggggggggggMMMmggggggggggggggggggggMMMmgggg",
+		"gggggggggggggggggGgggggggggggggggggggggggGgggggggggggggggggggggggGgggggggggggggggggggggggGgggggg",
+		"RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
 	],
 	"helipad": [
 		"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",

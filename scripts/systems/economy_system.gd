@@ -45,6 +45,7 @@ const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーター�
 	"subway": 10000,
 	"helipad": 10000,
 	"garden": 5000,
+	"observatory": 15000,
 	"parking": 5000,
 	"ramp": 2000,
 }
@@ -100,6 +101,7 @@ func settle(day: int) -> void:
 	var event: int = world.event_system.revenue_by_day.get(day, 0)
 	var shop: int = world.visitor_system.revenue_by_day.get(day, 0)
 	var cinema: int = world.visitor_system.cinema_revenue_by_day.get(day, 0)
+	var observatory: int = world.visitor_system.observatory_revenue_by_day.get(day, 0)
 	var shop_customers: int = world.visitor_system.customers_by_day.get(day, 0)
 	var event_visitors: int = world.event_system.visitors_by_day.get(day, 0)
 	var garbage: int = active_offices + checkouts + meals / MEALS_PER_GARBAGE + world.housing_system.count_moved_in() \
@@ -117,8 +119,8 @@ func settle(day: int) -> void:
 	# テナントの評価（人のストレスから）と、オフィス・住宅の退去・入居。住宅の退去では販売収入を返金する
 	var tenants: Dictionary = world.tenant_system.evaluate_day(day)
 	var refund: int = tenants.refund
-	var total := rent + hotel + food + shop + cinema + housing + event + bonus - maintenance - garbage_cost - refund
-	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "shop": shop, "cinema": cinema, "housing": housing, "event": event, "bonus": bonus, "maintenance": maintenance,
+	var total := rent + hotel + food + shop + cinema + observatory + housing + event + bonus - maintenance - garbage_cost - refund
+	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "shop": shop, "cinema": cinema, "observatory": observatory, "housing": housing, "event": event, "bonus": bonus, "maintenance": maintenance,
 		"garbage": garbage, "garbage_cost": garbage_cost, "unclean": unclean, "pollution": pollution, "refund": refund, "total": total}
 	history.append(last_report)
 	if history.size() > HISTORY_MAX:
@@ -127,7 +129,7 @@ func settle(day: int) -> void:
 	world.update_funds_display() # last_reportを更新してから表示する（前日の収支も表示されるため）
 	# 0の項目は省いて短くする
 	var items: Array[String] = []
-	for item in [["賃料", rent], ["宿泊料", hotel], ["飲食", food], ["ショップ", shop], ["映画館", cinema], ["住宅販売", housing], ["イベント", event], ["評価ボーナス", bonus]]:
+	for item in [["賃料", rent], ["宿泊料", hotel], ["飲食", food], ["ショップ", shop], ["映画館", cinema], ["展望台", observatory], ["住宅販売", housing], ["イベント", event], ["評価ボーナス", bonus]]:
 		if item[1] > 0:
 			items.append("%s +%s" % [item[0], world.money_text(item[1])])
 	if maintenance > 0:

@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -3770,8 +3770,11 @@ func run_goal_scenario() -> bool:
 	goals.check_day(48)
 	main.funds = 50000000
 	goals.check_day(49)
+	check(goals.index == 4 and not goals.cleared, "資金の目標のあとに、最後の目標（★5）が残っている")
+	main.rating_system.stars = 5
+	goals.check_day(50)
 	check(goals.cleared and goals.current() == null, "すべての目標を達成した")
-	check(main.goal_title.text.contains("すべての目標を達成") and main.goal_panel.visible, "クリアの画面が出る")
+	check(main.goal_title.text == "タワー完成！" and main.goal_text.text.contains("すべての目標を達成") and main.goal_panel.visible, "クリアの画面（タワー完成）が出る")
 	await wait_frames(2) # 上部バーの表示は次のフレームで更新される
 	check(main.stats_label.text.contains("すべて達成"), "ビルの状況もクリアの表示になる")
 	await capture("goal_02_cleared")
@@ -5205,4 +5208,63 @@ func run_undo_scenario() -> bool:
 	main.economy_system.settle(main.clock.day)
 	await press_shortcut(KEY_Z)
 	check(main.is_cell_empty(Vector2i(8, 18)) and main.undo_history.is_empty(), "決算の後は、前の日の建設・撤去は取り消せない")
+	return true
+
+# シナリオ80: 展望台（屋上のランドマーク。観光客が来て入場料が入る）と★5・最終目標（タワー完成）
+#   共通のビル（2〜4階にオフィス。4階が一番上）の屋上 y=14 に展望台（x=2〜7）を建て、x=8 のエレベーターで上がる
+# ---------------------------------------------------
+func run_observatory_scenario() -> bool:
+	print("[シナリオ] 展望台と★5")
+	main.funds = 10000000
+	var visitors = main.visitor_system
+	main.select_mode("elevator")
+	for y in range(18, 13, -1):
+		main.build_at(Vector2i(8, y))
+	await choose_mode("observatory")
+	check(main.mode_select.text.begins_with("展望台") and main.mode_select.text.ends_with("3,000,000Cr"), "建設メニューに展望台（300万Cr）がある")
+	main.funds = 10000000
+	main.build_at(Vector2i(2, 16))
+	check(main.get_building_type(Vector2i(2, 16)) == "office", "屋上でないところ（オフィスのある3階）には建てられない")
+	var deck := Vector2i(2, 14)
+	main.build_at(deck)
+	check(main.get_building_type(deck) == "observatory" and main.get_unit_cells(deck).size() == 6, "屋上に横6マスの展望台を建てられる")
+	check(main.funds == 10000000 - 3000000, "建設費300万Crがかかる")
+	focus_camera(Vector2i(4, 14))
+	await wait_frames(2)
+	await capture("observatory_01_built")
+
+	# 観光客が入口から屋上まで上がってきて、入場料を払う（入場料は決算の「展望台」に入る）
+	main.clock.set_time(1, 10, 59)
+	main.clock.set_process(true)
+	set_speed(8.0)
+	await wait_until(func(): return visitors.plan_day == 1, 10.0)
+	var tourists: Array = visitors.visits.filter(func(v): return v.type == "observatory")
+	check(tourists.size() > 0 and tourists[0].color == visitors.SHOP_TYPES.observatory.color, "展望台に観光客（水色）が来る予定が立つ（%d人）" % tourists.size())
+	await wait_until(func(): return visitors.observatory_revenue_by_day.get(1, 0) > 0, 60.0)
+	check(visitors.observatory_revenue_by_day.get(1, 0) % visitors.SHOP_TYPES.observatory.price == 0 and visitors.observatory_revenue_by_day.get(1, 0) > 0, "観光客が入場料（1人%s）を払う" % main.money_text(visitors.SHOP_TYPES.observatory.price))
+	await hover_cell(deck + Vector2i(2, 0))
+	check(main.hover_label.text.contains("展望台（観光客"), "カーソルを合わせると観光客の数と入場料が出る")
+	Engine.time_scale = 1.0
+	main.clock.set_process(false)
+	main.economy_system.settle(1)
+	check(main.economy_system.last_report.observatory > 0 and logged("展望台 +"), "決算に展望台の入場料が入る")
+
+	# ★5の条件: 人口500・展望台・結婚式場
+	var rating = main.rating_system
+	check(rating.MAX_STARS == 5, "★は5つまで")
+	rating.stars = 4
+	var missing: Array[String] = rating.missing_for_next()
+	check(missing.has("人口500") and missing.has("結婚式場") and not missing.has("展望台"), "★5には人口500・展望台・結婚式場が必要（展望台はもうある）")
+	await wait_frames(2)
+	check(main.stats_button.text.begins_with("★★★★☆"), "★は5つの星で見せる（★4なら ★★★★☆）")
+
+	# 最後の目標（180日目までに★5）を達成すると、タワー完成
+	var goals = main.goal_system
+	goals.index = goals.GOALS.size() - 1
+	check(goals.current().stars == 5 and goals.current().day == 180, "最後の目標は180日目までに★5")
+	rating.stars = 5
+	goals.check_day(main.clock.day)
+	check(goals.cleared and main.goal_panel.visible and main.goal_title.text == "タワー完成！", "★5になると「タワー完成！」の画面が出る")
+	await capture("observatory_02_complete")
+	main.goal_panel.visible = false
 	return true

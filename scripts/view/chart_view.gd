@@ -57,7 +57,7 @@ func _draw() -> void:
 # いちばん新しい決算の内わけ
 func summary(report: Dictionary) -> String:
 	var items: Array[String] = []
-	for item in [["賃料", "rent"], ["宿泊", "hotel"], ["飲食", "food"], ["ショップ", "shop"], ["映画館", "cinema"],
+	for item in [["賃料", "rent"], ["宿泊", "hotel"], ["飲食", "food"], ["ショップ", "shop"], ["映画館", "cinema"], ["展望台", "observatory"],
 			["住宅", "housing"], ["イベント", "event"], ["ボーナス", "bonus"]]:
 		if report.get(item[1], 0) > 0:
 			items.append("%s +%s" % [item[0], world.format_money(report[item[1]])])

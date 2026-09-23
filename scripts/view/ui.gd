@@ -886,6 +886,8 @@ func update_hover_label():
 		text += "（客 %d人）" % (world.commerce_system.count_eating_at(cell) + world.visitor_system.count_at_shop(cell))
 	elif type == "shop":
 		text += "（客 %d人）" % world.visitor_system.count_at_shop(cell)
+	elif type == "observatory":
+		text += "（観光客 %d人・入場料 %s）" % [world.visitor_system.count_at_shop(cell), world.money_text(world.visitor_system.SHOP_TYPES.observatory.price)]
 	elif type == "cinema":
 		text += "（%s）" % world.visitor_system.get_cinema_text(cell)
 	elif world.event_system.is_hall_type(type):

@@ -15,8 +15,9 @@ const REQUIREMENTS := {
 	2: {"population": 50, "buildings": ["security"]},
 	3: {"population": 120, "buildings": ["medical", "recycling"]},
 	4: {"population": 250, "buildings": ["subway"], "vip": true},
+	5: {"population": 500, "buildings": ["observatory", "wedding"]}, # 最高評価。屋上の展望台と結婚式場のある、名所のタワー
 }
-const MAX_STARS := 4
+const MAX_STARS := 5
 const BONUS_PER_STAR := 0.25
 
 var world: Node2D # main.gd

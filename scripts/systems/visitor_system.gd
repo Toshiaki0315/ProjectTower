@@ -6,7 +6,7 @@ extends Node
 #   stay 分そこで過ごして代金を払い、出発のマスに戻って帰る（そこで消える）。
 #   席まで行けないお客さんは来ない。
 #
-# 店の客: 店（飲食店・ショップ）ごとに、平日と休日で決まった人数が入口から来る。
+# 店の客: 店（飲食店・ショップ・展望台）ごとに、平日と休日で決まった人数が入口から来る。
 #   雨の日は人数が減り（weather_system.visitor_rate）、地下鉄駅があると増える（subway_rate）。
 #   平日は昼（社員の昼食に外からの客が加わる）、休日は昼から夕方まで。
 # 車で来た客: parking_system が駐車場のマスを出発にして add_visit() で足す。
@@ -17,7 +17,7 @@ extends Node
 # 店の種類ごとの設定
 #   price:   1人が払う代金   stay: 店にいる時間（分）
 #   weekday/holiday: 店1軒あたりの、その日に外から来る客の数
-#   revenue: 売上をどの項目に入れるか（"food" = 飲食 / "shop" = ショップ）
+#   revenue: 売上をどの項目に入れるか（"food" = 飲食 / "shop" = ショップ / "observatory" = 展望台の入場料）
 const SHOP_TYPES := {
 	"restaurant": {"price": 1000, "stay": 30.0, "weekday": 2, "holiday": 8, "revenue": "food",
 		"color": Color(1.0, 0.8, 0.5)},  # 飲食店の外からの客（うすいオレンジ）
@@ -25,6 +25,8 @@ const SHOP_TYPES := {
 		"color": Color(1.0, 0.75, 0.45)}, # ファストフードの客（オレンジ）
 	"shop": {"price": 1500, "stay": 20.0, "weekday": 3, "holiday": 10, "revenue": "shop",
 		"color": Color(0.95, 0.65, 0.85)}, # ショップの客（ピンク）
+	"observatory": {"price": 2000, "stay": 40.0, "weekday": 6, "holiday": 18, "revenue": "observatory",
+		"color": Color(0.55, 0.85, 1.0)}, # 展望台の観光客（水色）。屋上まで上がってくるので、エレベーターが大変になる
 }
 # 映画館: 上映時刻に客が一斉に来て、上映が終わると一斉に帰る
 #   shows/shows_holiday: 上映の開始時刻   length: 上映時間（分）
@@ -55,6 +57,7 @@ var plan_day := 0            # 最後に店の客の予定を立てた日
 var revenue_by_day := {}     # 日 -> その日のショップの売上（飲食店の売上は commerce_system に入れる）
 var cinema_revenue_by_day := {} # 日 -> その日の映画館の売上
 var cinema_audience_by_day := {} # 日 -> その日に映画を見た客の数
+var observatory_revenue_by_day := {} # 日 -> その日の展望台の入場料
 var customers_by_day := {}   # 日 -> その日に店で過ごした外からの客の数
 
 func setup(p_world: Node2D) -> void:
@@ -196,6 +199,8 @@ func pay(v: Dictionary, info: Dictionary, day: int) -> void:
 		"food":
 			world.commerce_system.revenue_by_day[day] = world.commerce_system.revenue_by_day.get(day, 0) + info.price
 			world.commerce_system.meals_by_day[day] = world.commerce_system.meals_by_day.get(day, 0) + 1
+		"observatory":
+			observatory_revenue_by_day[day] = observatory_revenue_by_day.get(day, 0) + info.price
 		"cinema":
 			cinema_revenue_by_day[day] = cinema_revenue_by_day.get(day, 0) + info.price
 			cinema_audience_by_day[day] = cinema_audience_by_day.get(day, 0) + 1
