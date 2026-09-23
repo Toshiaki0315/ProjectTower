@@ -68,6 +68,19 @@ const BODY_COLORS := {
 }
 const BODY_ORIGIN := Vector2(-4, -5) # マスの中心から見た、ドット絵の左上（足元が床の上に来る位置）
 
+# 気持ちの吹き出し（頭の上のアイコン。5×5ドット、"x" はアイコンの色・"K" は縁）
+#   angry … 激怒しているとき（怒りのマーク・赤）
+#   sweat … エレベーターを待っていて、ストレスが STRESS_RED 以上のとき（汗・水色）
+#   note  … ストレスの低い人が行き先に着いたとき、NOTE_SECONDS 秒だけ（音符・金色）
+const MOOD_ICONS := {
+	"angry": [".x.x.", "xx.xx", ".....", "xx.xx", ".x.x."],
+	"sweat": ["..x..", ".xKx.", ".xxx.", "xxxxx", ".xxx."],
+	"note": ["..xx.", "..x.x", "..x..", "xxx..", "xx..."],
+}
+const MOOD_COLORS := {"angry": Color(1.0, 0.25, 0.2), "sweat": Color(0.55, 0.85, 1.0), "note": Color(1.0, 0.85, 0.3)}
+const MOOD_ICON_POS := Vector2(-2, -14) # アイコンの左上（マスの中心から。頭の上の「…」のさらに上）
+const NOTE_SECONDS := 2.0
+
 var world: Node2D              # main.gd（グリッド情報と経路探索を持つ）
 var cell: Vector2i             # 現在いるマス（乗車中は乗ったマス）
 var goal: Vector2i             # 目的地のマス
@@ -77,6 +90,7 @@ var car = null                 # 乗っているカゴ
 var ride_dir := 0              # 乗りたい方向（カゴのDirection.UP / DOWN）
 var stress := 0.0
 var walked := 0.0 # 歩いた距離（px。足の動かし方を決めるのに使う）
+var arrived_ticks := -100000 # 行き先に着いたときの時刻（ミリ秒。音符のアイコンを少しのあいだ出すのに使う）
 var wait_started := 0.0 # 乗り場で待ち始めた時刻（ゲーム内の、1日目の0時からの分。エレベーターの成績に使う）
 var base_color := Color.WHITE  # 平常時の体の色（社員: 白 / 宿泊客: 薄紫 / 清掃員: 水色）
 var staff := false             # 裏方（清掃員など）。サービスエレベーターに乗れる
@@ -164,6 +178,8 @@ func process_walking(delta: float) -> void:
 			time_left -= distance / speed
 			cell = next
 			path.pop_front()
+			if path.is_empty():
+				arrived_ticks = Time.get_ticks_msec() # 行き先に着いた（気持ちの吹き出しに使う）
 		else:
 			position = position.move_toward(target_pos, speed * time_left)
 			time_left = 0.0
@@ -240,6 +256,17 @@ func body_sprite() -> Array:
 		sprite[sprite.size() - 1] = WALK_LEGS[frame][1]
 	return sprite
 
+# 頭の上に出す気持ちのアイコン（MOOD_ICONS のキー。出さなければ ""）
+func mood() -> String:
+	if is_angry():
+		return "angry"
+	if state == State.WAITING and stress >= STRESS_RED:
+		return "sweat"
+	if state == State.WALKING and path.is_empty() and stress < STRESS_PINK \
+			and Time.get_ticks_msec() - arrived_ticks < NOTE_SECONDS * 1000.0:
+		return "note"
+	return ""
+
 # 我慢の限界（激怒）か。顔が赤く点滅して、放っておくと評価が下がっていく
 func is_angry() -> bool:
 	return stress >= STRESS_ANGRY
@@ -276,6 +303,19 @@ func _draw() -> void:
 				continue
 			var color: Color = clothes if ch == "c" else (face if ch == "s" else BODY_COLORS[ch])
 			draw_rect(Rect2(BODY_ORIGIN + sprite_offset + Vector2(x, y), Vector2.ONE), color)
+
+	# 気持ちの吹き出し（怒り・汗・音符）
+	var feeling := mood()
+	if feeling != "":
+		# 上の階の絵に重なっても見えるよう、暗い下地を敷く
+		draw_rect(Rect2(MOOD_ICON_POS + sprite_offset - Vector2.ONE, Vector2(7, 7)), Color(0.05, 0.05, 0.1, 0.75))
+		var rows: Array = MOOD_ICONS[feeling]
+		for y in rows.size():
+			for x in rows[y].length():
+				var ch: String = rows[y][x]
+				if ch != ".":
+					draw_rect(Rect2(MOOD_ICON_POS + sprite_offset + Vector2(x, y), Vector2.ONE),
+						MOOD_COLORS[feeling] if ch == "x" else Color(0.1, 0.1, 0.15))
 
 	# カゴを待っている間は頭の上に「…」を出す
 	if state == State.WAITING:

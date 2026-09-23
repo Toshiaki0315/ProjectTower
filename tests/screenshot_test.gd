@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario, run_elevator_stats_scenario, run_tower_name_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario, run_elevator_stats_scenario, run_tower_name_scenario, run_mood_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -5545,4 +5545,49 @@ func run_tower_name_scenario() -> bool:
 	main.save_system.load_slot(1)
 	check(main.tower_name == "ProjectTowerビル", "読み込むと名前も戻る")
 	remove_test_save(main.save_system.slot_path(1))
+	return true
+
+# シナリオ86: 人の気持ちの吹き出し（激怒は怒りのマーク・待ちでストレスが高いと汗・着いたときに音符）
+# ---------------------------------------------------
+func run_mood_scenario() -> bool:
+	print("[シナリオ] 気持ちの吹き出し")
+	var r = main.spawn_resident(Vector2i(0, 18))
+	check(r.mood() == "", "ふだんは何も出さない")
+	r.stress = 96.0
+	check(r.mood() == "angry", "激怒している人には怒りのマーク")
+	r.stress = 75.0
+	r.state = r.State.WAITING
+	check(r.mood() == "sweat", "エレベーターを待っていてストレスが高い人には汗")
+	r.stress = 50.0
+	check(r.mood() == "", "待っていても、ストレスがそれほど高くなければ出さない")
+	r.state = r.State.WALKING
+	r.stress = 10.0
+	r.go_to(Vector2i(3, 18))
+	await wait_until(func(): return not r.is_moving(), 10.0)
+	check(r.mood() == "note", "ストレスの低い人が行き先に着くと、音符が出る")
+	r.arrived_ticks -= int(r.NOTE_SECONDS * 1000.0) + 1
+	check(r.mood() == "", "音符は少しのあいだだけ")
+	r.arrived_ticks = Time.get_ticks_msec()
+	r.stress = 45.0
+	check(r.mood() == "", "ストレスが高めなら、着いても音符は出ない")
+	# 見た目を撮っておく（怒り・汗・音符を並べる）
+	var faces: Array = []
+	for i in 3:
+		faces.append(main.spawn_resident(Vector2i(-3 + i * 2, 18)))
+	faces[0].stress = 99.0
+	faces[1].stress = 80.0
+	faces[1].state = faces[1].State.WAITING
+	faces[1].path = [Vector2i(-1, 17)] as Array[Vector2i] # 待っている人には行き先がいる
+	faces[2].stress = 5.0
+	faces[2].arrived_ticks = Time.get_ticks_msec()
+	check(faces.map(func(f): return f.mood()) == ["angry", "sweat", "note"], "3人に、それぞれの気持ちのアイコンが出る")
+	focus_camera(Vector2i(-1, 17))
+	main.camera.zoom = Vector2(6, 6)
+	faces[1].set_process(false) # 撮るまで「待っている」ままにしておく（乗り場ではないので、動かすと待つのをやめてしまう）
+	await capture("mood_01_icons")
+	for f in faces:
+		f.state = f.State.WALKING
+		f.path.clear()
+		f.queue_free()
+	r.queue_free()
 	return true
