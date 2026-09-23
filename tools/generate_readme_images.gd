@@ -11,7 +11,7 @@ extends SceneTree
 #   people/<名前>.png      … 人のドット絵（種類ごと・ストレスの段階ごと、8倍）
 #   elevator/<名前>.png    … エレベーターのカゴ（8倍）
 #   screenshots/*.png      … サンプルのビルのゲーム画面（昼・夜・ビルの状況）と、急行エレベーターの乗り換え
-#   events/*.png           … イベント（火災・爆破予告・ゴキブリ・衛生の悪化・VIP）の場面
+#   events/*.png           … イベント（火災・爆破予告・ゴキブリ・衛生の悪化・VIP・埋蔵金）の場面
 # ---------------------------------------------------
 
 const PixelArt := preload("res://scripts/view/pixel_art.gd")
@@ -373,3 +373,27 @@ func save_event_screenshots() -> void:
 	m.show_routes = true
 	focus(m, Vector2i(10, 16))
 	await shoot(m, "events/vip.png")
+
+	# 埋蔵金: 地下を掘ると、宝箱と金塊が飛び出す
+	m = await new_world()
+	build(m, "lobby", range(4, 16).map(func(x): return Vector2i(x, 18)))
+	var incidents = m.incident_system
+	# 見えるところで掘り当てるマスを探す（ほかのマスでは見つからないよう、先に掘ったことにしておく）
+	var lucky := Vector2i.ZERO
+	for y in range(19, 30):
+		for x in range(4, 16):
+			var cell := Vector2i(x, y)
+			var rng := RandomNumberGenerator.new()
+			rng.seed = hash([cell, "treasure"])
+			if lucky == Vector2i.ZERO and y >= 22 and rng.randf() < incidents.treasure_chance(y - m.ground_y):
+				lucky = cell
+			else:
+				incidents.dug[cell] = true
+	for y in range(19, lucky.y):
+		build(m, "frame", range(4, 16).map(func(x): return Vector2i(x, y)))
+	quiet(m)
+	build(m, "frame", [lucky]) # ここで掘り当てる
+	for i in 6:
+		await process_frame
+	focus(m, lucky + Vector2i(0, -2))
+	await shoot(m, "events/treasure.png")

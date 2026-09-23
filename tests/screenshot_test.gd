@@ -3183,6 +3183,9 @@ func run_treasure_scenario() -> bool:
 	check(incidents.treasure_total > 0, "地下を掘ると埋蔵金が見つかる（合計 %sCr）" % main.format_money(incidents.treasure_total))
 	check(logged("埋蔵金を発見！"), "発見がメッセージで知らされる")
 	check(main.funds > 100000000, "見つけた埋蔵金は資金に入る")
+	var chests: Array = main.effects.effects.filter(func(e): return e.type == "treasure")
+	check(not chests.is_empty(), "掘り当てたマスから、宝箱と金塊が飛び出す")
+	check(chests[0].text.begins_with("+") and chests[0].text.ends_with("Cr"), "宝箱の上に、見つけた金額が出る")
 	
 	# 同じマスからは二度は出ない
 	var total_before: int = incidents.treasure_total
@@ -3200,6 +3203,24 @@ func run_treasure_scenario() -> bool:
 	check(main.get_building_type(Vector2i(0, 19)) == "office", "地下にオフィスを建てられる")
 	check(incidents.dug.has(Vector2i(0, 19)) and incidents.dug.has(Vector2i(3, 19)), "建てたマスは掘ったことになる")
 	check(main.funds == funds_before - 400000 + (incidents.treasure_total - total_before), "建設費と、見つかった埋蔵金が資金に反映される")
+	# 見えるところで掘り当てて、宝箱の絵を確かめる
+	main.effects.clear()
+	incidents.dug.erase(Vector2i(0, 19))
+	var lucky := Vector2i(0, 19)
+	for y in range(19, 60): # 掘り当てるマスを探す（まだ掘っていないマス）
+		for x in range(-20, 20):
+			var cell := Vector2i(x, y)
+			if not incidents.dug.has(cell):
+				var rng := RandomNumberGenerator.new()
+				rng.seed = hash([cell, "treasure"])
+				if rng.randf() < incidents.treasure_chance(cell.y - main.ground_y):
+					lucky = cell
+					break
+		if lucky != Vector2i(0, 19):
+			break
+	incidents.dig(lucky)
+	focus_camera(lucky)
+	await wait_frames(8)
 	await capture("treasure_01")
 	return true
 
