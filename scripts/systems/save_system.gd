@@ -201,6 +201,7 @@ func apply(data: Dictionary) -> void:
 	world.incident_system.treasure_total = int(data.treasure_total)
 	world.incident_system.reset_incidents() # 前の続きの火災・爆破予告を持ち込まない
 	world.vip_system.reset_visit() # 来館・宿泊の途中も持ち込まない
+	world.request_system.reset() # テナントからの頼みごとも取り下げる
 	world.rebuild_systems()
 	apply_elevators(data)
 	apply_tenants(data)

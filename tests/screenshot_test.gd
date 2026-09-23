@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -5344,4 +5344,67 @@ func run_overlay_scenario() -> bool:
 	check(main.overlay == "noise" and main.ui.is_menu_on("overlay_noise"), "メニューからも騒音の色分けを出せる（チェックが付く）")
 	main.ui.do_menu_action("overlay_noise")
 	check(main.overlay == "", "出している色分けをもう一度選ぶと消える")
+	return true
+
+# シナリオ82: テナントからの頼みごと（3日以内にかなえるとお礼、かなえられないと評価の悪い日が増える）
+#   共通のビル（2〜4階にオフィス）に x=8 のエレベーターを通して試す
+# ---------------------------------------------------
+func run_request_scenario() -> bool:
+	print("[シナリオ] テナントからの頼みごと")
+	main.funds = 10000000
+	var requests = main.request_system
+	var tenants = main.tenant_system
+	main.select_mode("elevator")
+	for y in range(18, 14, -1):
+		main.build_at(Vector2i(8, y))
+	var office := Vector2i(4, 16) # 3階のオフィス
+	for origin in main.find_office_units():
+		tenants.offices[origin] = tenants.new_tenant()
+	tenants.offices[office].rating = tenants.Rating.NORMAL
+
+	# 困りごとから頼みの候補を選ぶ（評価が良くないオフィス・近くに飲食店がないオフィス）
+	var candidates: Array = requests.candidates()
+	check(candidates.has(["rating", office, "offices"]), "評価が「良い」でないオフィスは、評価を良くしてほしいと頼める")
+	check(candidates.any(func(c): return c[0] == "restaurant"), "近くに飲食店がないオフィスは、飲食店がほしいと頼める")
+	check(not candidates.any(func(c): return c[0] == "garden"), "★1のうちは、屋上庭園の頼みは出ない")
+	var days := 0
+	for day in range(2, 102):
+		if requests.roll(day):
+			days += 1
+	check(days > 15 and days < 55, "頼みごとはときどき届く（100日のうち%d日）" % days)
+
+	# 飲食店の頼み: 近くに飲食店を建てれば、次の決算でお礼が入る
+	main.clock.set_time(3, 9, 0)
+	requests.start("restaurant", office, "offices", 3)
+	check(logged("3階のオフィスから頼みごと") and requests.days_left() == 3, "頼みごとがメッセージで届く（3日以内）")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("頼みごと: 3階のオフィス「近くに飲食店がほしい」（あと3日"), "ビルの状況に頼みごとが出る")
+	check(main.stats_button.text.contains("⚠"), "頼みごとがあると★の横に⚠が付く")
+	focus_camera(Vector2i(4, 16))
+	await wait_frames(1)
+	await hover_cell(office + Vector2i(1, 0))
+	check(main.hover_label.text.contains("頼みごと:「近くに飲食店がほしい」あと3日"), "頼んでいるテナントにカーソルを合わせると頼みごとが出る")
+	await capture("request_01_bubble")
+	build_support(cells_row(18, 9, 12), "lobby")
+	main.select_mode("restaurant")
+	main.build_at(Vector2i(9, 17)) # 2階の飲食店（3階から1階下）
+	var funds_before: int = main.funds
+	requests.check_day(3)
+	check(requests.request == null and main.funds == funds_before + requests.KINDS.restaurant.reward, "かなえると、お礼（%s）が入る" % main.money_text(requests.KINDS.restaurant.reward))
+	check(logged("頼みごとをかなえました！"), "かなえたことがメッセージで出る")
+
+	# 評価の頼み: 3日以内に「良い」にならなければ、評価の悪い日が1日増える
+	requests.start("rating", office, "offices", 4)
+	requests.check_day(4)
+	requests.check_day(5)
+	check(requests.request != null, "期限までは待ってくれる")
+	requests.check_day(6)
+	check(requests.request == null and tenants.offices[office].bad_days == 1, "3日以内にかなえられないと、評価の悪い日が1日増える")
+	check(logged("がっかりしています"), "かなえられなかったことがメッセージで出る")
+
+	# 頼んだテナントがいなくなったら、頼みは取り下げられる
+	requests.start("rating", office, "offices", 7)
+	main.demolish_at(office)
+	requests.check_day(7)
+	check(requests.request == null and logged("頼みごと「評価を良くしてほしい」は取り下げられました"), "頼んだテナントを撤去すると、頼みは取り下げられる")
 	return true

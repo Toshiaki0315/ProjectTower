@@ -29,6 +29,7 @@ const EventSystem := preload("res://scripts/systems/event_system.gd")
 const Lighting := preload("res://scripts/view/lighting.gd")
 const CinemaScreen := preload("res://scripts/view/cinema_screen.gd")
 const SkyEvents := preload("res://scripts/view/sky_events.gd")
+const RequestSystem := preload("res://scripts/systems/request_system.gd")
 const TenantSystem := preload("res://scripts/systems/tenant_system.gd")
 
 @onready var tile_map = $TileMapLayer
@@ -173,6 +174,7 @@ var rating_system   # ビルの評価（★）
 var housing_system  # 住宅と入居者
 var event_system    # 結婚式場・イベントホール（休日の来客）
 var tenant_system   # テナント（オフィス）の評価
+var request_system  # テナントからの頼みごと
 
 var ground_y := GROUND_FLOOR_Y
 
@@ -196,6 +198,7 @@ const PARTS := [
 	{"name": "rating_system", "script": RatingSystem},
 	{"name": "economy_system", "script": EconomySystem},
 	{"name": "tenant_system", "script": TenantSystem, "parent": "map"},
+	{"name": "request_system", "script": RequestSystem, "parent": "map"},
 	{"name": "vip_system", "script": VipSystem},
 	{"name": "incident_system", "script": IncidentSystem},
 	{"name": "weather_system", "script": WeatherSystem},

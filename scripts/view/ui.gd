@@ -471,6 +471,7 @@ const HELP_SECTIONS := [
 		["火災", "★2以上でときどき出火し、上下左右のテナントへ燃え広がる。警備員とヘリポートの消防ヘリが消す"],
 		["爆破予告", "★3以上で資金の多いビルに届く。身代金を払うか、警備員に探させる（見つからないと、まわりの階ごと吹き飛ぶ）"],
 		["VIP", "★4の条件がそろうと来館し、スイートに一泊。ストレス30以下で帰れば合格"],
+		["頼みごと", "ときどきテナントが困りごとを頼んでくる（部屋の上に「!」）。3日以内にかなえるとお礼、かなえないと評価が下がる"],
 		["そのほか", "地下を掘ると埋蔵金が見つかることがある。天気（6月は梅雨）や曜日（土日は休日）でお客さんの数が変わる"],
 	]],
 ]
@@ -854,6 +855,9 @@ func update_stats_panel(warning_list: Array[String]) -> void:
 			hotel.count_rooms(hotel.RoomState.CLEAN)])
 	if world.vip_system.is_visiting():
 		lines.append(world.vip_system.get_status_text())
+	var request_text: String = world.request_system.get_status_text()
+	if request_text != "":
+		lines.append(request_text)
 	for w in warning_list:
 		lines.append("⚠ " + w)
 	stats_label.text = "\n".join(lines)
@@ -884,6 +888,8 @@ func warnings() -> Array[String]:
 		list.append(world.incident_system.get_fire_text())
 	if world.incident_system.has_bomb():
 		list.append(world.incident_system.get_bomb_text())
+	if world.request_system.request != null:
+		list.append("頼みごと あと%d日" % world.request_system.days_left())
 	return list
 
 # 経路の表示ボタンの見た目を、今の設定に合わせる
@@ -996,6 +1002,9 @@ func update_hover_label():
 		text += "（ビル全体のストレスの回復 %.1f倍）" % world.stress_recover_rate()
 	elif type == "recycling":
 		text += "（ビル全体の処理能力 %d/日）" % world.economy_system.recycling_capacity()
+	var request_text: String = world.request_system.get_cell_text(cell)
+	if request_text != "":
+		text += "（%s）" % request_text # このテナントが頼みごとをしている
 	var resident = world.get_resident_at(cell)
 	if resident:
 		text += " / 住人のストレス: %d" % int(resident.stress)
