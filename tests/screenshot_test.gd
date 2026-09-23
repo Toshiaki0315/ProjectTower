@@ -797,8 +797,8 @@ func run_commute_scenario() -> bool:
 # ---------------------------------------------------
 # シナリオ10: 毎日の決算（賃料収入と維持費）
 # シナリオ9と同じ建物で1日目を過ごし、0:00の決算を確かめる。
-# 出勤できるオフィス52マス × 1万Cr − エレベーター6マス × 2千Cr
-#   − ゴミ52の外部委託（ゴミ処理場なし）× 1千Cr = +456,000Cr
+# 出勤できるオフィス52マス（2〜4階の48マス × 1万Cr ＋ 6階の4マス × 1.1万Cr）− エレベーター6マス × 2千Cr
+#   − ゴミ52の外部委託（ゴミ処理場なし）× 1千Cr = +460,000Cr
 # ---------------------------------------------------
 func run_economy_scenario() -> bool:
 	print("[シナリオ] 決算")
@@ -828,12 +828,20 @@ func run_economy_scenario() -> bool:
 	main.clock.set_process(false)
 	var report = main.economy_system.last_report
 	check(report.get("day") == 1, "日付が変わると1日目の決算をする")
-	check(report.get("rent") == 520000, "出勤したオフィス52マス分の賃料52万Crが入る（孤立したオフィスは0）")
+	check(report.get("rent") == 48 * 10000 + 4 * 11000, "出勤したオフィス52マス分の賃料52.4万Crが入る（6階は高い階なので1.1倍。孤立したオフィスは0）")
+	# 高い階ほど賃料が高い（5階ごとに1割。最大2倍）。地下は安い
+	var economy = main.economy_system
+	check(economy.floor_rent_rate(17) == 1.0 and economy.floor_rent_rate(14) == 1.0, "2〜5階の賃料は1倍")
+	check(is_equal_approx(economy.floor_rent_rate(13), 1.1) and is_equal_approx(economy.floor_rent_rate(8), 1.2), "6〜10階は1.1倍、11〜15階は1.2倍")
+	check(economy.floor_rent_rate(-200) == economy.FLOOR_RENT_MAX and economy.floor_rent_rate(19) == economy.BASEMENT_RENT_RATE, "とても高い階でも2倍まで。地下は0.8倍")
+	check(economy.office_rent(Vector2i(4, 13)) == 11000 and economy.office_rent(Vector2i(-8, 19)) == 8000, "6階のオフィスは1マス1.1万Cr、地下のオフィスは0.8万Cr")
+	await hover_cell(Vector2i(5, 13))
+	check(main.hover_label.text.contains("家賃 普通・11,000Cr/マス・高い階で1.1倍"), "カーソルを合わせると、高い階の倍率も出る")
 	check(report.get("maintenance") == 12000, "エレベーター6マス分の維持費1.2万Crがかかる")
 	check(report.get("garbage") == 52 and report.get("garbage_cost") == 52000, "ゴミ処理場がないとゴミ52を外部委託して5.2万Crかかる")
-	check(main.funds == funds_before + 456000, "資金が差し引き45.6万Cr増える")
-	check(main.ui.funds_change_label.text == "（前日 +456,000Cr）" and main.ui.funds_change_label.get_theme_color("font_color") == main.ui.GAIN_COLOR, "資金の横に前日の収支が出る（黒字は緑）")
-	check(main.last_message.contains("4月1日（1日目）の決算"), "決算の内容が日付つきでメッセージに出る")
+	check(main.funds == funds_before + 460000, "資金が差し引き46万Cr増える")
+	check(main.ui.funds_change_label.text == "（前日 +460,000Cr）" and main.ui.funds_change_label.get_theme_color("font_color") == main.ui.GAIN_COLOR, "資金の横に前日の収支が出る（黒字は緑）")
+	check(logged("4月1日（1日目）の決算"), "決算の内容が日付つきでメッセージに出る")
 	await capture("economy_01_settled")
 	
 	# 収支のグラフ（⌘G）に、決算の記録がたまっていく
@@ -1027,7 +1035,7 @@ func run_recycling_scenario() -> bool:
 	check(report.get("garbage") == 52, "出勤したオフィス52マスからゴミ52が出る")
 	check(report.get("garbage_cost") == 12000, "処理しきれない12を外部委託して1.2万Crかかる")
 	check(report.get("maintenance") == 22000, "維持費はエレベーター1.2万Cr＋ゴミ処理場1万Cr")
-	check(report.get("total") == 520000 - 22000 - 12000, "合計は+48.6万Cr（ゴミ処理場なしより3万Cr得）")
+	check(report.get("total") == 524000 - 22000 - 12000, "合計は+49万Cr（ゴミ処理場なしより3万Cr得）")
 	check(main.last_message.contains("ゴミ処理 -12,000Cr（ゴミ52・処理能力40）"), "決算のメッセージにゴミの量と処理能力が出る")
 	return true
 
@@ -1066,11 +1074,11 @@ func run_rating_scenario() -> bool:
 	check(report.get("maintenance") == 12000 + 5000, "警備室の維持費5千Crがかかる")
 	await capture("rating_01_star2")
 	
-	# 2日目: 賃料52万Crの25% = 13万Crのボーナス
+	# 2日目: 賃料52.4万Crの25% = 13.1万Crのボーナス
 	await run_day(2)
 	report = main.economy_system.last_report
-	check(report.get("bonus") == 130000, "★2では賃料に25%（13万Cr）の評価ボーナスが付く")
-	check(main.last_message.contains("評価ボーナス +130,000Cr"), "決算のメッセージに評価ボーナスが出る")
+	check(report.get("bonus") == 131000, "★2では賃料に25%（13.1万Cr）の評価ボーナスが付く")
+	check(main.last_message.contains("評価ボーナス +131,000Cr"), "決算のメッセージに評価ボーナスが出る")
 	
 	# ★3の条件
 	check(rating.missing_for_next() == ["人口120", "メディカルセンター", "ゴミ処理場"], "★3には人口120・メディカルセンター・ゴミ処理場が必要")
@@ -1264,7 +1272,7 @@ func run_weekday_scenario() -> bool:
 	clock.set_time(6, 23, 58)
 	await wait_until(func(): return main.economy_system.last_report.get("day") == 6, 10.0)
 	var report = main.economy_system.last_report
-	check(report.get("rent") == 520000, "休日もたどり着けるオフィス52マスの賃料は入る")
+	check(report.get("rent") == 524000, "休日もたどり着けるオフィス52マスの賃料は入る（6階は1.1倍）")
 	check(report.get("garbage") == 1, "休日はオフィスからゴミが出ない（住宅の1だけ）")
 	
 	# 8日目（月）: また出勤する

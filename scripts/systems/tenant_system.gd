@@ -277,14 +277,18 @@ func cycle_rent(cell: Vector2i) -> String:
 		rent_levels.erase(origin)
 	else:
 		rent_levels[origin] = next
-	var per_cell := int(world.economy_system.OFFICE_RENTS[world.get_building_type(cell)] * RENT_LEVELS[next].rate)
+	var per_cell: int = world.economy_system.office_rent(cell) # 切り替えた後の家賃（何階かの倍率も入る）
 	return "このオフィスの家賃を「%s」（1マス1日 %s）にしました" % [RENT_LEVELS[next].name, world.money_text(per_cell)]
 
 # 家賃の表示（カーソルの説明用）
 func get_rent_text(cell: Vector2i) -> String:
 	var origin: Vector2i = world.building_grid[cell].origin
-	var per_cell := int(world.economy_system.OFFICE_RENTS[world.get_building_type(cell)] * rent_info(origin).rate)
-	return "家賃 %s・%s/マス" % [rent_info(origin).name, world.money_text(per_cell)]
+	var per_cell: int = world.economy_system.office_rent(cell)
+	var text := "家賃 %s・%s/マス" % [rent_info(origin).name, world.money_text(per_cell)]
+	var floor_rate: float = world.economy_system.floor_rent_rate(cell.y)
+	if not is_equal_approx(floor_rate, 1.0):
+		text += "・%sで%.1f倍" % ["地下" if cell.y > world.ground_y else "高い階", floor_rate]
+	return text
 
 # 空室に入居者が決まる、1日あたりの確率（家賃・衛生の悪化・ゴキブリで変わる）
 func move_in_chance(origin: Vector2i) -> float:

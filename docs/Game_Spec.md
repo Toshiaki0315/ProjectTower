@@ -110,6 +110,10 @@
 - `icon.svg` はビルの絵。`project.godot` に説明とバージョンを入れてある。
 - 書き出しにはエクスポートテンプレート（Godot エディタからダウンロード）が必要。
 
+### 高い階ほど家賃が高い ✅
+- `economy_system.floor_rent_rate()`: オフィスの賃料に、何階かの倍率をかける。2〜5階は1倍、6階から5階ごとに1割ずつ上がり（`FLOOR_RENT_STEP`・`FLOOR_RENT_BONUS`）、最大2倍（`FLOOR_RENT_MAX`）。地下は0.8倍（`BASEMENT_RENT_RATE`）。
+- 高い階ほど稼げるが、社員がエレベーターで上がる手間も増える、という悩みどころを作る。カーソルの説明に「高い階で1.1倍」のように出る。
+
 ### 展望台と★5 ✅
 - 屋上に建てる `observatory`（展望台。横6マス・300万Cr・維持費1.5万Cr/日）。`visitor_system.SHOP_TYPES` の1つで、観光客が平日6人・休日18人来て、入場料2,000Crを払う（決算の「展望台」。`observatory_revenue_by_day`）。屋上まで上がってくるので、エレベーターの輸送力が試される。
 - ★5（`rating_system.MAX_STARS`）の条件は、人口500・展望台・結婚式場。

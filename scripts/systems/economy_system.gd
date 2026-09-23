@@ -2,7 +2,7 @@ extends Node
 
 # ---------------------------------------------------
 # 収支：毎日0:00に前日分の決算をして、資金に反映する。
-#   賃料収入: その日に社員が出勤したオフィス1マスにつき OFFICE_RENTS（オフィスの種類で変わる）
+#   賃料収入: その日に社員が出勤したオフィス1マスにつき OFFICE_RENTS（オフィスの種類・家賃の設定・何階かで変わる）
 #             （社員が通勤できない空きオフィスからは入らない）
 #             休日はオフィスが休みだが、入口からたどり着けるオフィスからは契約どおり入る
 #             空室のオフィス（テナントが退去した）からは入らない
@@ -29,6 +29,12 @@ const OFFICE_RENTS := {
 	"office": 10000,
 	"large_office": 9000,
 }
+# 高い階ほど賃料が高い（眺めがよい）: FLOOR_RENT_STEP 階ごとに FLOOR_RENT_BONUS ずつ上がる（上限 FLOOR_RENT_MAX 倍）。
+# 2〜5階は1倍、6〜10階は1.1倍、11〜15階は1.2倍…。地下は日が当たらないので BASEMENT_RENT_RATE 倍
+const FLOOR_RENT_STEP := 5
+const FLOOR_RENT_BONUS := 0.1
+const FLOOR_RENT_MAX := 2.0
+const BASEMENT_RENT_RATE := 0.8
 const MAINTENANCE := {     # 建物1つの1日の維持費（エレベーターは1マスが1つ）
 	"elevator": 2000,
 	"express_elevator": 3000,
@@ -161,7 +167,15 @@ func settle(day: int) -> void:
 
 # オフィスの1マスの1日の賃料（オフィスの種類で変わる）
 func office_rent(cell: Vector2i) -> int:
-	return int(OFFICE_RENTS.get(world.get_building_type(cell), 0) * world.tenant_system.rent_rate(cell)) # 家賃の設定で変わる
+	# 家賃の設定と、何階か（高い階ほど高い）で変わる
+	return int(OFFICE_RENTS.get(world.get_building_type(cell), 0) * world.tenant_system.rent_rate(cell) * floor_rent_rate(cell.y))
+
+# その階の賃料の倍率（高い階ほど高い。地下は安い）
+func floor_rent_rate(y: int) -> float:
+	if y > world.ground_y:
+		return BASEMENT_RENT_RATE
+	var floor_number: int = world.ground_y - y + 1 # 1階 = 1
+	return minf(1.0 + FLOOR_RENT_BONUS * ((floor_number - 1) / FLOOR_RENT_STEP), FLOOR_RENT_MAX)
 
 # 入口からたどり着けるオフィスの賃料の合計（休日の計算用）
 func holiday_rent() -> int:
