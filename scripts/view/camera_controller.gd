@@ -66,8 +66,9 @@ func _process(_delta: float) -> void:
 	last_ticks = now
 	if Input.is_key_pressed(KEY_META) or Input.is_key_pressed(KEY_CTRL):
 		return # ⌘S（セーブ）などのショートカットの文字キーで、画面が動かないようにする
-	if get_viewport().gui_get_focus_owner() is LineEdit:
-		return # ビルの名前などを打っている間は、WASDで画面を動かさない
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused is LineEdit and focused.is_visible_in_tree():
+		return # ビルの名前などを打っている間は、WASDで画面を動かさない（隠れた入力欄に残ったキーは見ない）
 	var dir := Vector2.ZERO
 	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
 		dir.x -= 1

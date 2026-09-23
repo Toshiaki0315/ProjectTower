@@ -160,6 +160,11 @@ func check_day(day: int) -> void:
 			% [KINDS[request.kind].short, REQUEST_DAYS, name])
 		request = null
 
+# 頼んだテナントが、今もその場所にいるか（撤去して別の建物を建て直していたら、決算で取り下げるまで吹き出しを出さない）
+func is_requester_here() -> bool:
+	return request != null and world.building_grid.has(request.origin) \
+		and world.building_grid[request.origin].origin == request.origin and world.get_building_type(request.origin) == request.type
+
 # 頼んだテナントの呼び名（例: 3階のオフィス）
 func tenant_name() -> String:
 	return "%sの%s" % [world.get_floor_name(request.origin.y), world.BUILDINGS[request.type].name]
@@ -182,13 +187,13 @@ func get_status_text() -> String:
 
 # カーソルの説明に出す文（そのマスのテナントが頼んでいなければ ""）
 func get_cell_text(cell: Vector2i) -> String:
-	if request == null or not world.building_grid.has(cell) or world.building_grid[cell].origin != request.origin:
+	if not is_requester_here() or not world.building_grid.has(cell) or world.building_grid[cell].origin != request.origin:
 		return ""
 	return "頼みごと:「%s」あと%d日" % [KINDS[request.kind].short, days_left()]
 
 # 頼んでいる部屋の右上に、「!」の吹き出しを描く（7×7ドットに、しっぽ）
 func _draw() -> void:
-	if request == null or not world.building_grid.has(request.origin):
+	if not is_requester_here():
 		return
 	var tile_size := Vector2(world.tile_map.tile_set.tile_size)
 	var cells: Array[Vector2i] = world.get_unit_cells(request.origin)

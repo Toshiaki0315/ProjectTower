@@ -17,6 +17,8 @@ const NIGHT_TEXT_COLOR := Color(1.0, 0.85, 0.35)   # 夜は黄色く光る
 const POST_COLOR := Color(0.3, 0.32, 0.38)
 
 var world: Node2D # main.gd
+var cached_key := [] # sign_rect() を計算したときの [建物のマスの数, 名前]（変わったときだけ計算し直す）
+var cached_rect := Rect2()
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -25,8 +27,16 @@ func setup(p_world: Node2D) -> void:
 func _process(_delta: float) -> void:
 	queue_redraw()
 
-# 看板の板の四角（タイルマップ座標系）。地上に建物がなければ空の Rect2
+# 看板の板の四角（タイルマップ座標系）。地上に建物がなければ空の Rect2。
+# 一番上の階は建設・撤去でマスの数が変わったときしか変わらないので、そのときだけ計算し直す
 func sign_rect() -> Rect2:
+	var key := [world.building_grid.size(), world.tower_name]
+	if key != cached_key:
+		cached_key = key
+		cached_rect = compute_sign_rect()
+	return cached_rect
+
+func compute_sign_rect() -> Rect2:
 	var top: int = world.ground_y + 1
 	var left := 0
 	var right := 0

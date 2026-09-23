@@ -91,7 +91,7 @@ var ride_dir := 0              # 乗りたい方向（カゴのDirection.UP / DO
 var stress := 0.0
 var walked := 0.0 # 歩いた距離（px。足の動かし方を決めるのに使う）
 var arrived_ticks := -100000 # 行き先に着いたときの時刻（ミリ秒。音符のアイコンを少しのあいだ出すのに使う）
-var wait_started := 0.0 # 乗り場で待ち始めた時刻（ゲーム内の、1日目の0時からの分。エレベーターの成績に使う）
+var wait_started := -1.0 # 乗り場で待ち始めた時刻（待っていなければ -1。途中で乗り場を変えても、最初に待ち始めた時刻から数える）（ゲーム内の、1日目の0時からの分。エレベーターの成績に使う）
 var base_color := Color.WHITE  # 平常時の体の色（社員: 白 / 宿泊客: 薄紫 / 清掃員: 水色）
 var staff := false             # 裏方（清掃員など）。サービスエレベーターに乗れる
 var vip := false               # VIP。VIP専用のエレベーターに乗れる
@@ -162,7 +162,8 @@ func process_walking(delta: float) -> void:
 			ride_dir = ElevatorCar.Direction.UP if next.y < cell.y else ElevatorCar.Direction.DOWN
 			world.elevator_system.request_hall(cell, ride_dir)
 			state = State.WAITING
-			wait_started = world.clock.day * world.clock.MINUTES_PER_DAY + world.clock.minute
+			if wait_started < 0.0:
+				wait_started = world.clock.day * world.clock.MINUTES_PER_DAY + world.clock.minute
 			return
 
 		var target_pos: Vector2 = world.tile_map.map_to_local(next)
@@ -180,6 +181,7 @@ func process_walking(delta: float) -> void:
 			path.pop_front()
 			if path.is_empty():
 				arrived_ticks = Time.get_ticks_msec() # 行き先に着いた（気持ちの吹き出しに使う）
+				wait_started = -1.0 # エレベーターに乗らずに着いた（階段に切り替えたなど）ときは、待ち時間を数えない
 		else:
 			position = position.move_toward(target_pos, speed * time_left)
 			time_left = 0.0
@@ -205,6 +207,7 @@ func process_waiting() -> void:
 		state = State.RIDING
 		var now: float = world.clock.day * world.clock.MINUTES_PER_DAY + world.clock.minute
 		world.elevator_system.record_wait(cell, now - wait_started) # 乗り場で待った時間を、エレベーターの成績に記録する
+		wait_started = -1.0
 	else:
 		world.elevator_system.request_hall(cell, ride_dir) # 呼び出しが取り消されていたら押し直す
 

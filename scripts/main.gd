@@ -590,7 +590,13 @@ func get_ground_entrances() -> Array[Vector2i]:
 func get_entrances() -> Array[Vector2i]:
 	var entrances: Array[Vector2i] = get_ground_entrances()
 	entrances.append_array(find_units_of_type("subway"))
-	entrances.append_array(parking_system.usable_units)
+	# 地下駐車場は、階ごとに1つ（同じ階の駐車場はつながっているので、1つあれば足りる。
+	# 棟ごとに入口にすると、人が出入りするたびの経路探索が駐車場の数だけ増えるため）
+	var parking_floors := {}
+	for unit in parking_system.usable_units:
+		if not parking_floors.has(unit.y):
+			parking_floors[unit.y] = true
+			entrances.append(unit)
 	return entrances
 
 func is_entrance(cell: Vector2i) -> bool:
@@ -797,6 +803,8 @@ func next_speed() -> int:
 
 # 一時停止する・再開する（スペースキー・上部バーのボタン・メニュー）
 func toggle_pause() -> void:
+	if not started:
+		return # タイトル画面の間は、時間を止めない（始めたとたんに止まっていないように）
 	paused = not paused
 	apply_time_scale()
 	show_message("一時停止しました（スペースキーで再開。止めている間も建設・撤去はできます）" if paused else "再開しました")

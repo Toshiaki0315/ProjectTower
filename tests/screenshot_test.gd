@@ -3732,6 +3732,8 @@ func run_title_scenario() -> bool:
 	use_test_save_dir()
 	check(not main.started and main.title_panel.visible, "起動するとタイトル画面が出る")
 	check(not main.clock.is_processing(), "タイトル画面の間は時間が止まっている")
+	main.ui.do_menu_action("pause")
+	check(not main.paused, "タイトル画面の間は、メニューからも一時停止できない")
 	var title_labels: Array[String] = []
 	for node in main.title_panel.find_children("*", "Label", true, false):
 		title_labels.append(node.text)
@@ -5057,6 +5059,11 @@ func run_entrances_scenario() -> bool:
 	check(main.get_entrances() == [Vector2i(-8, 18), Vector2i(8, 18), Vector2i(2, 19)], "入口は1階の左右の出入り口と地下駐車場")
 	check(main.nearest_entrance(Vector2i(4, 19)) == Vector2i(2, 19), "駐車場の近くからは、駐車場が一番近い入口")
 	check(main.lighting.get_entrance_lights().size() == 2, "駐車場には扉がないので、入口の照明は付けない")
+	main.select_mode("parking")
+	main.build_at(Vector2i(-6, 19)) # 同じ地下1階の2つ目の駐車場（真上はロビー）
+	build_support(cells_row(19, -2, -1), "frame")
+	check(main.parking_system.usable_units.size() == 2 and main.get_entrances().filter(func(c): return c.y == 19).size() == 1, "同じ階の駐車場は、入口としては1つに数える（経路探索を増やさない）")
+	main.demolish_at(Vector2i(-6, 19))
 	main.demolish_at(Vector2i(0, 19))
 	check(main.parking_system.usable_units.is_empty() and not main.get_entrances().has(Vector2i(2, 19)), "スロープがないと車が来られないので、駐車場は入口にならない")
 
@@ -5425,6 +5432,9 @@ func run_request_scenario() -> bool:
 	# 頼んだテナントがいなくなったら、頼みは取り下げられる
 	requests.start("rating", office, "offices", 7)
 	main.demolish_at(office)
+	main.select_mode("hotel_twin")
+	main.build_at(office) # 同じ場所に別の建物を建てても、決算まで吹き出しや説明は出さない
+	check(not requests.is_requester_here() and requests.get_cell_text(office) == "", "撤去して建て直した建物には、頼みごとの吹き出しや説明を出さない")
 	requests.check_day(7)
 	check(requests.request == null and logged("頼みごと「評価を良くしてほしい」は取り下げられました"), "頼んだテナントを撤去すると、頼みは取り下げられる")
 	return true
@@ -5520,6 +5530,7 @@ func run_elevator_stats_scenario() -> bool:
 	await wait_until(func(): return is_instance_valid(r) and r.cell == Vector2i(7, 15), 20.0)
 	main.clock.set_process(false)
 	check(elevators.wait_stats.get(elevators.shaft_key(Vector2i(8, 18)), {}).get("riders", 0) == 1, "人がカゴに乗ると、乗り場で待った時間が記録される")
+	check(r.wait_started < 0.0, "乗ったら、待ち始めた時刻は消す（次に待つときに、また数え始める）")
 	return true
 
 # シナリオ85: ビルの名前（タイトル画面・メニューで付けて、屋上の看板・ビルの状況・セーブの枠に出る）
@@ -5545,6 +5556,13 @@ func run_tower_name_scenario() -> bool:
 	ui.name_edit.text = "ProjectTowerビル"
 	ui.name_edit.text_submitted.emit(ui.name_edit.text)
 	check(not ui.name_panel.visible and main.tower_name == "ProjectTowerビル" and logged("ビルの名前を「ProjectTowerビル」にしました"), "決めると名前が変わる")
+	await wait_frames(1)
+	cam_before = main.camera.position
+	await hold_key(KEY_W, 0.2)
+	check(main.camera.position != cam_before, "名前を決めたあとは、またWASDで画面を動かせる")
+	ui.do_menu_action("rename")
+	await press_key(KEY_ESCAPE)
+	check(not ui.name_panel.visible and main.get_viewport().gui_get_focus_owner() != ui.name_edit, "Escで名前の画面を閉じると、入力欄からキーが離れる")
 	await wait_frames(2)
 	check(main.stats_label.text.begins_with("ビル:「ProjectTowerビル」"), "ビルの状況の一番上に名前が出る")
 

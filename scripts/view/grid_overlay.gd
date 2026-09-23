@@ -193,13 +193,18 @@ func waiting_counts() -> Dictionary:
 	return counts
 
 # エレベーター待ち: 待っている人数を、乗り場のマスに数字で出す
+# 文字は画面の拡大率に合わせた大きさで描く（屋上の看板と同じ。小さな文字を拡大すると、ぼやけて読みにくいため）
 func draw_wait_counts(tile_size: Vector2) -> void:
 	var font: Font = ThemeDB.fallback_font
+	var zoom: float = get_global_transform_with_canvas().get_scale().x
+	var size := int(round(9 * zoom))
 	var waiting := waiting_counts()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE / zoom)
 	for cell in waiting:
-		var pos := Vector2(cell) * tile_size + Vector2(1, tile_size.y - 3)
-		draw_string_outline(font, pos, str(waiting[cell]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, 2, Color(0, 0, 0, 0.8))
-		draw_string(font, pos, str(waiting[cell]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
+		var pos := (Vector2(cell) * tile_size + Vector2(1, tile_size.y - 3)) * zoom
+		draw_string_outline(font, pos, str(waiting[cell]), HORIZONTAL_ALIGNMENT_LEFT, -1, size, int(2 * zoom), Color(0, 0, 0, 0.8))
+		draw_string(font, pos, str(waiting[cell]), HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func cell_rect(cell: Vector2i, tile_size: Vector2) -> Rect2:
 	return Rect2(Vector2(cell) * tile_size, tile_size)

@@ -1121,6 +1121,7 @@ func build_title() -> void:
 # 「はじめから」: 入力したビルの名前を付けて、更地から始める
 func start_new_game() -> void:
 	world.set_tower_name(title_name_edit.text, false)
+	title_name_edit.release_focus() # 入力欄にキーを取られたままにしない（WASDで画面を動かせるように）
 	world.start_game()
 
 # ビルの名前の入力欄
@@ -1151,6 +1152,11 @@ func build_name_panel(canvas: CanvasLayer, theme: Theme) -> void:
 	name_edit = make_name_edit()
 	name_edit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	name_edit.text_submitted.connect(func(_text): submit_name())
+	# 入力欄は Esc を自分で受け取ってしまうので、ここで画面を閉じる（Esc で「やめる」）
+	name_edit.gui_input.connect(func(event: InputEvent):
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			name_panel.visible = false
+			name_edit.accept_event())
 	box.add_child(name_edit)
 	var buttons = HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1163,6 +1169,10 @@ func build_name_panel(canvas: CanvasLayer, theme: Theme) -> void:
 		buttons.add_child(button)
 	box.add_child(buttons)
 	name_panel = back
+	# 閉じたら（決める・やめる・Esc）入力欄からキーを離す（WASDで画面を動かせるように）
+	name_panel.visibility_changed.connect(func():
+		if not name_panel.visible:
+			name_edit.release_focus())
 
 func show_name_panel() -> void:
 	name_edit.text = world.tower_name
@@ -1329,4 +1339,5 @@ func show_goal_panel(title: String, text: String) -> void:
 func hide_title() -> void:
 	if title_panel:
 		title_panel.visible = false
+		title_name_edit.release_focus() # 「続きから」で始めたときも、入力欄にキーを取られたままにしない
 
