@@ -48,6 +48,8 @@ var hover_visible := false           # カーソル下のマスを強調表示�
 var hover_cell := Vector2i.ZERO      # カーソル下のマス
 
 var soil: Node2D # 地下の土を描く背景（タイルより奥）
+var border_rects: Array[Rect2] = [] # 建物ごとの枠線の四角（world.building_version が変わったら作り直す）
+var border_version := -1
 var home_markers: Node2D # エレベーターの待機階の印（カゴより手前）
 
 func setup(p_world: Node2D) -> void:
@@ -121,10 +123,17 @@ func _draw() -> void:
 		draw_line(Vector2(visible_rect.position.x, y * tile_size.y), Vector2(visible_rect.end.x, y * tile_size.y), GRID_COLOR, -1)
 
 	# 建物（ユニット）ごとの枠線。横に複数マスの建物は、まとめて1つの枠で囲む
+	# （四角は建物が変わったときだけ計算し直す。大きなビルで毎フレーム全部のマスを調べると重いため）
 	var width := BORDER_WIDTH * px
-	for cell in world.building_grid:
-		if world.building_grid[cell].origin == cell:
-			draw_rect(cells_rect(world.get_unit_cells(cell), tile_size).grow(-width / 2.0), BORDER_COLOR, false, width)
+	if border_version != world.building_version:
+		border_version = world.building_version
+		border_rects.clear()
+		for cell in world.building_grid:
+			if world.building_grid[cell].origin == cell:
+				border_rects.append(cells_rect(world.get_unit_cells(cell), tile_size))
+	for rect in border_rects:
+		if rect.intersects(visible_rect): # 画面に映っている建物だけ描く
+			draw_rect(rect.grow(-width / 2.0), BORDER_COLOR, false, width)
 
 	# 動線（人がこれから通る道すじ）。見た目だけの機能で、経路探索や移動には触らない
 	if world.show_routes:

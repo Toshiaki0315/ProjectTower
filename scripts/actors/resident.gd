@@ -96,6 +96,9 @@ var base_color := Color.WHITE  # 平常時の体の色（社員: 白 / 宿泊客
 var staff := false             # 裏方（清掃員など）。サービスエレベーターに乗れる
 var vip := false               # VIP。VIP専用のエレベーターに乗れる
 var sprite_offset := Vector2.ZERO # 体を描く位置のずれ（同じマスにいる連れ同士が重ならないように）
+var last_look := [] # 前に描いたときの見た目（変わったときだけ描き直す。人が多いと、毎フレームの描き直しが重いため）
+# 体の絵（服・顔の色・足の形の組み合わせごとに1枚の画像にしておく。1ドットずつ描くと重いため）
+static var body_textures := {}
 var selected := false:
 	set(value):
 		selected = value
@@ -133,7 +136,11 @@ func _process(delta: float) -> void:
 			process_waiting()
 		State.RIDING:
 			process_riding()
-	queue_redraw()
+	# 見た目が変わったときだけ描き直す（位置の移動は描き直さなくても反映される）
+	var look := [get_body_color(), get_face_color(), leg_frame(), mood(), state == State.WAITING, sprite_offset]
+	if look != last_look:
+		last_look = look
+		queue_redraw()
 
 # 歩く処理。1フレームでマスをまたいでも余った時間ぶんは続けて進む
 #（そうしないと、早送り中やfpsが低いときに1フレーム1マスまでしか進めず、歩く速さが落ちてしまう）
@@ -250,14 +257,32 @@ func update_stress(delta: float) -> void:
 func get_body_color() -> Color:
 	return Color(1.0, 0.85, 0.1) if selected else base_color
 
-# 今の体のドット絵（歩いているときは、進んだ距離で足の形を切り替える）
+# 今の足の形（WALK_LEGS の番号。歩いているときは、進んだ距離で切り替える）
+func leg_frame() -> int:
+	return int(walked / WALK_FRAME_PIXELS) % WALK_LEGS.size() if is_moving() else 0
+
+# 今の体のドット絵
 func body_sprite() -> Array:
 	var sprite: Array = BODY_SPRITE.duplicate()
-	if is_moving():
-		var frame: int = int(walked / WALK_FRAME_PIXELS) % WALK_LEGS.size()
-		sprite[sprite.size() - 2] = WALK_LEGS[frame][0]
-		sprite[sprite.size() - 1] = WALK_LEGS[frame][1]
+	var frame := leg_frame()
+	sprite[sprite.size() - 2] = WALK_LEGS[frame][0]
+	sprite[sprite.size() - 1] = WALK_LEGS[frame][1]
 	return sprite
+
+# 服・顔の色・足の形の組み合わせの体の絵（はじめて使うときに作って、覚えておく）
+func body_texture(clothes: Color, face: Color) -> Texture2D:
+	var key := [clothes, face, leg_frame()]
+	if not body_textures.has(key):
+		var sprite := body_sprite()
+		var image := Image.create(sprite[0].length(), sprite.size(), false, Image.FORMAT_RGBA8)
+		for y in sprite.size():
+			var row: String = sprite[y]
+			for x in row.length():
+				var ch := row[x]
+				if ch != ".":
+					image.set_pixel(x, y, clothes if ch == "c" else (face if ch == "s" else BODY_COLORS[ch]))
+		body_textures[key] = ImageTexture.create_from_image(image)
+	return body_textures[key]
 
 # 頭の上に出す気持ちのアイコン（MOOD_ICONS のキー。出さなければ ""）
 func mood() -> String:
@@ -295,17 +320,7 @@ func _draw() -> void:
 	# 体（ドット絵）。服は種類ごとの色（選択中は黄色）、顔はストレスに応じた色
 	# 経路線は grid_overlay.gd が world.show_routes を見てまとめて描く。
 	# ここで描くと、導線表示がオフでも黄色い線だけが残ってしまう。
-	var clothes := get_body_color()
-	var face := get_face_color()
-	var sprite := body_sprite()
-	for y in sprite.size():
-		var row: String = sprite[y]
-		for x in row.length():
-			var ch := row[x]
-			if ch == ".":
-				continue
-			var color: Color = clothes if ch == "c" else (face if ch == "s" else BODY_COLORS[ch])
-			draw_rect(Rect2(BODY_ORIGIN + sprite_offset + Vector2(x, y), Vector2.ONE), color)
+	draw_texture(body_texture(get_body_color(), get_face_color()), BODY_ORIGIN + sprite_offset)
 
 	# 気持ちの吹き出し（怒り・汗・音符）
 	var feeling := mood()

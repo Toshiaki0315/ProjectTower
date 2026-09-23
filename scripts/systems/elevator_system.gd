@@ -29,6 +29,9 @@ const SERVICE_PRESETS := [
 
 var world: Node2D  # main.gd
 var cars: Array = [] # すべてのカゴ（シャフトは column と top_y〜bottom_y で分かる）
+# シャフトごとのカゴ（種類 -> 列 -> カゴの一覧）。乗り場で待つ人が毎フレーム何度も探すので、
+# カゴが増えた・減ったとき（rebuild・add_car）だけ作り直す
+var cars_by_shaft := {}
 var hall_assignments := {} # [乗り場のマス, 方向] -> 割り当てたカゴ
 var home_floors := {}      # [シャフトの種類, 列のx] -> 待機階のy
 var service_hours := {}    # [シャフトの種類, 列のx] -> SERVICE_PRESETS の番号（省略時は0＝終日）
@@ -62,6 +65,7 @@ func rebuild() -> void:
 	for c in remaining:
 		c.queue_free()
 	cars = new_cars
+	index_cars()
 	apply_home_floors()
 
 # ---------------------------------------------------
@@ -262,11 +266,23 @@ func find_shafts() -> Array:
 # 指定したマスを含むシャフトのカゴの一覧
 func get_cars_at(cell: Vector2i) -> Array:
 	var result: Array = []
-	var type: String = world.get_building_type(cell)
-	for car in cars:
-		if is_instance_valid(car) and car.shaft_type == type and car.column == shaft_column(cell) and car.has_floor(cell.y):
+	var shaft: Array = cars_by_shaft.get(world.get_building_type(cell), {}).get(shaft_column(cell), [])
+	for car in shaft:
+		if is_instance_valid(car) and car.has_floor(cell.y):
 			result.append(car)
 	return result
+
+# シャフトごとのカゴの一覧を作り直す
+func index_cars() -> void:
+	cars_by_shaft.clear()
+	for car in cars:
+		if not is_instance_valid(car):
+			continue
+		if not cars_by_shaft.has(car.shaft_type):
+			cars_by_shaft[car.shaft_type] = {}
+		if not cars_by_shaft[car.shaft_type].has(car.column):
+			cars_by_shaft[car.shaft_type][car.column] = []
+		cars_by_shaft[car.shaft_type][car.column].append(car)
 
 # 指定したマスを含むシャフトのカゴ（1台目。なければnull）
 func get_car_at(cell: Vector2i):
@@ -298,6 +314,7 @@ func add_car(cell: Vector2i) -> bool:
 		return false
 	var first = get_car_at(cell)
 	cars.append(create_car(first.shaft_type, shaft_column(cell), first.top_y, first.bottom_y, cell.y))
+	index_cars()
 	world.funds -= CAR_COST
 	return true
 

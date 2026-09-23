@@ -62,11 +62,28 @@ func get_moves(cell: Vector2i, staff := false, vip := false) -> Array:
 	return result
 
 # fromからtoへ1回で移動できるか
+# 乗り場で待つ人は毎フレームこれを確かめるので、エレベーターで上下する移動は、行き先の一覧を作らずに
+# get_moves() と同じ条件を直接確かめる（高いビルでは一覧が数十階ぶんになり、待つ人が多いと重いため）
 func can_move(from: Vector2i, to: Vector2i, staff := false, vip := false) -> bool:
+	if is_elevator_ride(from, to):
+		return can_ride_elevator(from, to, staff, vip)
 	for move in get_moves(from, staff, vip):
 		if move.to == to:
 			return true
 	return false
+
+# fromのシャフトのカゴで、toの階へ行けるか（get_moves() のエレベーターの条件と同じ）
+func can_ride_elevator(from: Vector2i, to: Vector2i, staff: bool, vip: bool) -> bool:
+	if not world.is_walkable(from):
+		return false
+	var type: String = world.get_building_type(from)
+	if type == "service_elevator" and not staff:
+		return false
+	if world.elevator_system.is_reserved_for_vip(from) and not vip:
+		return false
+	var car = world.elevator_system.get_car_at(from)
+	return car != null and car.in_service and car.is_stop_floor(from.y) \
+		and to.y >= car.top_y and to.y <= car.bottom_y and car.is_stop_floor(to.y)
 
 # エスカレーターの上り口（左下のマス）の、上の階の降り口までのずれ
 const ESCALATOR_UP := Vector2i(1, -1)

@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario, run_elevator_stats_scenario, run_tower_name_scenario, run_mood_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario, run_elevator_stats_scenario, run_tower_name_scenario, run_mood_scenario, run_cache_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -5578,4 +5578,38 @@ func run_mood_scenario() -> bool:
 		f.path.clear()
 		f.queue_free()
 	r.queue_free()
+	return true
+
+# シナリオ87: 覚えておく一覧（大きなビルで重くならないように、建物の種類ごとの一覧・シャフトごとのカゴを覚えておく）が、
+#   建設・撤去・焼失のあとに正しく作り直される
+# ---------------------------------------------------
+func run_cache_scenario() -> bool:
+	print("[シナリオ] 覚えておく一覧")
+	main.funds = 10000000
+	var offices: int = main.find_units_of_type("office").size()
+	main.select_mode("office")
+	main.build_at(Vector2i(-8, 14))
+	check(main.find_units_of_type("office").size() == offices + 1, "建てると、種類ごとの一覧に増える")
+	var list: Array[Vector2i] = main.find_units_of_type("office")
+	list.clear()
+	check(main.find_units_of_type("office").size() == offices + 1, "受け取った一覧を変えても、覚えている一覧は変わらない")
+	main.demolish_at(Vector2i(-8, 14))
+	check(main.find_units_of_type("office").size() == offices and main.find_cells_of_type("office").size() == offices * 4, "撤去すると、一覧から消える")
+	main.destroy_unit(Vector2i(-8, 17))
+	check(main.find_units_of_type("office").size() == offices - 1 and main.find_units_of_type("ruin").size() == 4, "焼け落ちると、焼け跡の一覧に入る")
+	check(main.stress_recover_rate() == 1.0, "メディカルセンターがなければ、ストレスの回復は1倍")
+	main.select_mode("medical")
+	main.build_at(Vector2i(-8, 14))
+	check(main.stress_recover_rate() > 1.0, "メディカルセンターを建てると、すぐに回復が速くなる")
+
+	# シャフトごとのカゴ
+	var elevators = main.elevator_system
+	main.select_mode("elevator")
+	for y in range(18, 14, -1):
+		main.build_at(Vector2i(8, y))
+	check(elevators.get_cars_at(Vector2i(8, 16)).size() == 1, "シャフトを建てると、そのシャフトのカゴが見つかる")
+	elevators.add_car(Vector2i(8, 18))
+	check(elevators.get_cars_at(Vector2i(8, 16)).size() == 2, "カゴを足すと、すぐに見つかる")
+	main.demolish_at(Vector2i(8, 15))
+	check(elevators.get_cars_at(Vector2i(8, 16)).size() == 2 and elevators.get_cars_at(Vector2i(8, 15)).is_empty(), "シャフトを縮めると、なくなった階ではカゴが見つからない")
 	return true

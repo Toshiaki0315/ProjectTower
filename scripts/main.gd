@@ -129,6 +129,10 @@ const MEDICAL_RECOVER_MAX := 2.5   # 回復の速さの上限（何倍まで）
 const MESSAGE_LOG_MAX := 500  # ⌘Lで見られるメッセージの記録の数
 
 var building_grid: Dictionary = {} # マス -> {type, origin}
+# 種類ごとの建物の一覧（毎フレーム何度も数えると、大きなビルで重くなるため覚えておく。建物が変わったら invalidate_units() で消す）
+var units_cache := {} # 種類 -> 左端のマスの一覧
+var cells_cache := {} # 種類 -> マスの一覧
+var building_version := 0 # 建物が変わるたびに1つ増える（見た目の計算を覚えておく部品が、作り直すかを判断する）
 var residents: Array = []          # 配置済みの住人
 var selected_resident = null       # 行き先の指示を待っている住人
 var started := false               # ゲームが始まっているか（タイトル画面の間は false）
@@ -362,6 +366,7 @@ func apply_tile_types():
 # 同じ行で左右につながった同じ種類のマスを、左から建物の横幅ずつユニットにまとめる
 func load_grid_from_tilemap():
 	building_grid.clear()
+	invalidate_units()
 	var cells: Array[Vector2i] = []
 	for cell in tile_map.get_used_cells():
 		if BUILDINGS.has(get_type_from_tile(cell)):
@@ -377,6 +382,7 @@ func load_grid_from_tilemap():
 			if cell.x - left_origin.x < get_width(type):
 				origin = left_origin
 		building_grid[cell] = {"type": type, "origin": origin}
+		invalidate_units()
 		# ユニットの何マス目かに合わせて、ドット絵の区画を置き直す
 		tile_map.set_cell(cell, BUILDINGS[type].source_id, Vector2i(cell.x - origin.x, 0))
 
@@ -448,11 +454,13 @@ func get_unit_cells(cell: Vector2i) -> Array[Vector2i]:
 
 # 指定した種類の建物の左端のマス（= 建物1つにつき1マス）をすべて返す
 func find_units_of_type(type: String) -> Array[Vector2i]:
-	var result: Array[Vector2i] = []
-	for cell in building_grid:
-		if building_grid[cell].type == type and building_grid[cell].origin == cell:
-			result.append(cell)
-	return result
+	if not units_cache.has(type):
+		var result: Array[Vector2i] = []
+		for cell in building_grid:
+			if building_grid[cell].type == type and building_grid[cell].origin == cell:
+				result.append(cell)
+		units_cache[type] = result
+	return units_cache[type].duplicate() # 呼んだ側が並べ替えたりしても、覚えている一覧は変わらないように
 
 # オフィス（小・普通・大）の左端のマスをすべて返す
 func find_office_units() -> Array[Vector2i]:
@@ -470,11 +478,19 @@ func find_office_cells() -> Array[Vector2i]:
 
 # 指定した種類の建物がある座標をすべて返す（住人AIの目的地探索用）
 func find_cells_of_type(type: String) -> Array[Vector2i]:
-	var result: Array[Vector2i] = []
-	for cell in building_grid:
-		if building_grid[cell].type == type:
-			result.append(cell)
-	return result
+	if not cells_cache.has(type):
+		var result: Array[Vector2i] = []
+		for cell in building_grid:
+			if building_grid[cell].type == type:
+				result.append(cell)
+		cells_cache[type] = result
+	return cells_cache[type].duplicate()
+
+# 建物が増えた・減ったときに呼ぶ: 種類ごとの一覧を作り直す（find_units_of_type・find_cells_of_type）
+func invalidate_units() -> void:
+	units_cache.clear()
+	cells_cache.clear()
+	building_version += 1
 
 # ---------------------------------------------------
 # 移動ルールと経路探索（中身は scripts/systems/pathfinding.gd）
@@ -864,12 +880,14 @@ func place_unit(origin: Vector2i, type: String) -> void:
 		var atlas := Vector2i(cell.x - origin.x, height - 1 - (origin.y - cell.y))
 		tile_map.set_cell(cell, data.source_id, atlas)
 		building_grid[cell] = {"type": type, "origin": origin}
+	invalidate_units()
 
 # 建物と住人をすべて消す（セーブの読み込みで使う）
 func clear_world() -> void:
 	for cell in building_grid.keys():
 		tile_map.erase_cell(cell)
 	building_grid.clear()
+	invalidate_units()
 	for resident in residents:
 		if is_instance_valid(resident):
 			resident.queue_free()
@@ -887,6 +905,7 @@ func destroy_unit(cell: Vector2i) -> void:
 		tile_map.erase_cell(c)
 		building_grid.erase(c)
 		place_unit(c, Buildings.RUIN_TYPE)
+	invalidate_units()
 	rebuild_systems()
 
 # その建物を撤去するのにかかる費用（建設費の1割。ただし最低 MIN_DEMOLISH_FEE）
@@ -923,6 +942,7 @@ func demolish_at(map_pos: Vector2i):
 		building_grid.erase(cell)
 		if leave_frame:
 			place_unit(cell, Buildings.FRAME_TYPE)
+	invalidate_units()
 	rebuild_systems()
 	update_funds_display()
 	audio_system.play("demolish")
