@@ -36,6 +36,14 @@ const CINEMA := {
 	"shows": [13 * 60, 16 * 60, 19 * 60], "shows_holiday": [11 * 60, 14 * 60, 17 * 60, 20 * 60],
 	"length": 120, "audience": 10, "audience_holiday": 16, "arrive_before": 30, "parking_bonus_max": 8,
 }
+# 季節のにぎわい: この時期は、外から来るお客さん（店・展望台・映画館）が rate 倍になる。from〜to は [月, 日]
+const SEASONS := [
+	{"name": "お正月", "from": [1, 1], "to": [1, 3], "rate": 2.0, "text": "初売りでにぎわいます"},
+	{"name": "ゴールデンウィーク", "from": [4, 29], "to": [5, 5], "rate": 1.5, "text": "連休で人出が増えます"},
+	{"name": "お盆休み", "from": [8, 10], "to": [8, 16], "rate": 1.5, "text": "帰省や行楽の人でにぎわいます"},
+	{"name": "クリスマス", "from": [12, 20], "to": [12, 25], "rate": 1.8, "text": "買い物やデートの人でにぎわいます"},
+]
+const SEASON_NOTICE_MINUTE := 6 * 60 # 季節のにぎわいが始まったことを知らせる時刻
 const SUBWAY_BONUS := 0.5      # 地下鉄駅1つにつき、外から来るお客さんが何割増えるか
 const SUBWAY_BONUS_MAX := 2.0  # 増える割合の上限（2倍まで）
 const WEEKDAY_START := 11 * 60 # 平日に来はじめる時刻
@@ -59,6 +67,7 @@ var cinema_revenue_by_day := {} # 日 -> その日の映画館の売上
 var cinema_audience_by_day := {} # 日 -> その日に映画を見た客の数
 var observatory_revenue_by_day := {} # 日 -> その日の展望台の入場料
 var customers_by_day := {}   # 日 -> その日に店で過ごした外からの客の数
+var season_notice_day := 0   # 最後に季節のにぎわいを知らせるか確かめた日
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -69,6 +78,33 @@ func is_shop_type(type: String) -> bool:
 # 地下鉄駅があると、外から来るお客さんが増える（駅からの人の流入）
 func subway_rate() -> float:
 	return minf(1.0 + SUBWAY_BONUS * world.find_units_of_type("subway").size(), SUBWAY_BONUS_MAX)
+
+# その日の季節のにぎわい（SEASONS の1つ。なければ空）
+func season(day: int) -> Dictionary:
+	var md: Array = world.clock.date(day)
+	var today: int = md[0] * 100 + md[1]
+	for s in SEASONS:
+		if today >= s.from[0] * 100 + s.from[1] and today <= s.to[0] * 100 + s.to[1]:
+			return s
+	return {}
+
+# その日の、外から来るお客さんの倍率（季節のにぎわい。ふだんは1倍）
+func season_rate(day: int) -> float:
+	return season(day).get("rate", 1.0)
+
+# 季節のにぎわいが始まった日の朝に、メッセージで知らせる
+func notice_season(day: int) -> void:
+	var s := season(day)
+	if s.is_empty() or (day > 1 and season(day - 1).get("name", "") == s.name):
+		return # にぎわいの時期ではない・2日目以降
+	world.show_message("%s（%d月%d日まで）: %s。店・展望台・映画館のお客さんが%.1f倍になります" % [s.name, s.to[0], s.to[1], s.text, s.rate])
+
+# ビルの状況に出す文（にぎわいの時期でなければ ""）
+func get_season_text() -> String:
+	var s := season(world.clock.day)
+	if s.is_empty():
+		return ""
+	return "季節: %s（%d月%d日まで・お客さん%.1f倍）" % [s.name, s.to[0], s.to[1], s.rate]
 
 # お客さんの種類ごとの設定（店と映画館）
 func visit_info(type: String) -> Dictionary:
@@ -85,6 +121,9 @@ func _process(_delta: float) -> void:
 	var start: int = HOLIDAY_START if world.clock.is_holiday(day) else WEEKDAY_START
 	var end: int = HOLIDAY_END if world.clock.is_holiday(day) else WEEKDAY_END
 	# 映画館は上映時刻が夜まであるので、店の客より早い時刻から予定を立てる
+	if season_notice_day != day and now >= SEASON_NOTICE_MINUTE:
+		season_notice_day = day
+		notice_season(day)
 	var plan_from: int = mini(start, showtimes(day)[0] - CINEMA.arrive_before)
 	if plan_day != day and now >= plan_from and now < end:
 		plan_day = day
@@ -103,9 +142,9 @@ func plan_shop_visits(day: int, start: int, end: int) -> void:
 		var info: Dictionary = SHOP_TYPES[type]
 		for unit in world.find_units_of_type(type):
 			var seats: Array[Vector2i] = world.get_unit_cells(unit)
-			# 雨の日は減り、地下鉄駅があると増え、ゴキブリのいる店は減る
+			# 雨の日は減り、地下鉄駅があると増え、ゴキブリのいる店は減る。季節のにぎわいの時期は増える
 			var count := int((info.holiday if holiday else info.weekday) * world.weather_system.visitor_rate() * subway_rate()
-				* world.incident_system.customer_rate(unit))
+				* world.incident_system.customer_rate(unit) * season_rate(day))
 			for i in count:
 				var seat: Vector2i = seats[i % seats.size()]
 				var entrance = world.nearest_entrance(seat)
@@ -125,7 +164,7 @@ func plan_cinema_visits(day: int) -> void:
 	var base: int = CINEMA.audience_holiday if holiday else CINEMA.audience
 	# 駐車場が使えるぶんだけ客が増える（映画館は車で来る人が多い）
 	var bonus: int = mini(world.parking_system.car_capacity(), CINEMA.parking_bonus_max)
-	base = int(base * subway_rate()) # 地下鉄駅からも客が来る
+	base = int(base * subway_rate() * season_rate(day)) # 地下鉄駅からも客が来る。季節のにぎわいの時期は増える
 	for unit in cinemas:
 		var seats: Array[Vector2i] = world.get_unit_cells(unit).filter(func(c): return c.y == unit.y)
 		for show in showtimes(day):

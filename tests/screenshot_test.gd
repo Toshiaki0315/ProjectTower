@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -5407,4 +5407,55 @@ func run_request_scenario() -> bool:
 	main.demolish_at(office)
 	requests.check_day(7)
 	check(requests.request == null and logged("頼みごと「評価を良くしてほしい」は取り下げられました"), "頼んだテナントを撤去すると、頼みは取り下げられる")
+	return true
+
+# シナリオ83: 季節のにぎわい（お正月・ゴールデンウィーク・お盆休み・クリスマスは、外から来るお客さんが増える）
+#   2階のショップ（x=9〜11）で、ふだんの平日とゴールデンウィークの平日の客の数を比べる
+# ---------------------------------------------------
+func run_season_scenario() -> bool:
+	print("[シナリオ] 季節のにぎわい")
+	main.funds = 10000000
+	var visitors = main.visitor_system
+	var clock = main.clock
+	var weather = main.weather_system
+	build_support([Vector2i(8, 18)] + cells_row(18, 10, 14), "lobby")
+	build_support([Vector2i(9, 18)])
+	main.select_mode("shop")
+	main.build_at(Vector2i(9, 17))
+	var find_day := func(condition: Callable) -> int:
+		for d in range(1, 366):
+			if condition.call(d):
+				return d
+		return -1
+	var new_year: int = find_day.call(func(d): return clock.date(d) == [1, 1])
+	var gw: int = find_day.call(func(d): return clock.date(d)[0] in [4, 5] and not visitors.season(d).is_empty() and not clock.is_holiday(d) and weather.weather_for(d) != weather.Weather.RAINY)
+	var normal: int = find_day.call(func(d): return visitors.season(d).is_empty() and not clock.is_holiday(d) and weather.weather_for(d) != weather.Weather.RAINY)
+	check(visitors.season(new_year).name == "お正月" and visitors.season_rate(new_year) == 2.0, "お正月（1月1日〜3日）はお客さんが2倍")
+	check(visitors.season(gw).name == "ゴールデンウィーク" and visitors.season_rate(gw) == 1.5, "ゴールデンウィークは1.5倍（%s）" % clock.date_text(gw))
+	check(visitors.season(find_day.call(func(d): return clock.date(d) == [12, 24])).name == "クリスマス", "12月24日はクリスマスのにぎわい")
+	check(visitors.season(find_day.call(func(d): return clock.date(d) == [8, 12])).name == "お盆休み", "8月12日はお盆休みのにぎわい")
+	check(visitors.season_rate(normal) == 1.0, "ふだんの日は1倍")
+
+	# ゴールデンウィークの平日は、ふだんの平日よりショップのお客さんが多い
+	var count_shop_visits := func(day: int) -> int:
+		visitors.visits.clear()
+		visitors.plan_shop_visits(day, visitors.WEEKDAY_START, visitors.WEEKDAY_END)
+		return visitors.visits.filter(func(v): return v.type == "shop").size()
+	clock.day = normal
+	var usual: int = count_shop_visits.call(normal)
+	clock.day = gw
+	var busy: int = count_shop_visits.call(gw)
+	visitors.visits.clear()
+	check(usual == visitors.SHOP_TYPES.shop.weekday and busy == int(usual * 1.5), "ゴールデンウィークはショップの客が増える（ふだん%d人 → %d人）" % [usual, busy])
+
+	# 始まった日の朝に知らせる（2日目からは知らせない）。ビルの状況にも出る
+	var first_gw: int = find_day.call(func(d): return clock.date(d) == [4, 29])
+	visitors.notice_season(first_gw)
+	check(logged("ゴールデンウィーク（5月5日まで）"), "にぎわいが始まった日にメッセージで知らせる")
+	var notices: int = main.message_log.filter(func(line): return line.contains("ゴールデンウィーク（5月5日まで）")).size()
+	visitors.notice_season(first_gw + 1)
+	check(main.message_log.filter(func(line): return line.contains("ゴールデンウィーク（5月5日まで）")).size() == notices, "2日目からは知らせない")
+	clock.day = first_gw + 1
+	await wait_frames(2)
+	check(main.stats_label.text.contains("季節: ゴールデンウィーク（5月5日まで・お客さん1.5倍）"), "ビルの状況に季節のにぎわいが出る")
 	return true

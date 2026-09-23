@@ -472,6 +472,7 @@ const HELP_SECTIONS := [
 		["爆破予告", "★3以上で資金の多いビルに届く。身代金を払うか、警備員に探させる（見つからないと、まわりの階ごと吹き飛ぶ）"],
 		["VIP", "★4の条件がそろうと来館し、スイートに一泊。ストレス30以下で帰れば合格"],
 		["頼みごと", "ときどきテナントが困りごとを頼んでくる（部屋の上に「!」）。3日以内にかなえるとお礼、かなえないと評価が下がる"],
+		["季節のにぎわい", "お正月・ゴールデンウィーク・お盆休み・クリスマスは、店・展望台・映画館のお客さんが1.5〜2倍に増える"],
 		["そのほか", "地下を掘ると埋蔵金が見つかることがある。天気（6月は梅雨）や曜日（土日は休日）でお客さんの数が変わる"],
 	]],
 ]
@@ -858,6 +859,9 @@ func update_stats_panel(warning_list: Array[String]) -> void:
 	var request_text: String = world.request_system.get_status_text()
 	if request_text != "":
 		lines.append(request_text)
+	var season_text: String = world.visitor_system.get_season_text()
+	if season_text != "":
+		lines.append(season_text)
 	for w in warning_list:
 		lines.append("⚠ " + w)
 	stats_label.text = "\n".join(lines)
