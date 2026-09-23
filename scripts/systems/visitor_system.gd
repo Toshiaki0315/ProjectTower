@@ -42,6 +42,11 @@ const HOLIDAY_START := 10 * 60 # 休日に来はじめる時刻
 const HOLIDAY_END := 17 * 60
 
 enum Phase { GOING, STAYING, LEAVING }
+# 映画館の状態（スクリーンの見た目とカーソルの説明に使う）
+#   CLOSED  … 閉館（その日の最初の上映の arrive_before 分前より前と、最後の上映が終わった後）。幕が閉じている
+#   OPEN    … 開場中（上映と上映の間）。幕が開いて、スクリーンは白いまま
+#   SHOWING … 上映中。スクリーンに映画が映り、場内が暗くなる
+enum CinemaState { CLOSED, OPEN, SHOWING }
 
 var world: Node2D # main.gd
 
@@ -214,19 +219,46 @@ func count_visitors() -> int:
 			count += 1
 	return count
 
-# カーソル下の説明用: 次の上映時刻と、今いる客の数
-func get_cinema_text(cell: Vector2i) -> String:
+# 今上映している回の開始時刻（上映中でなければ -1）
+func current_show() -> int:
 	var now: int = world.clock.minute_of_day()
-	var next_show := -1
 	for show in showtimes(world.clock.day):
-		if show >= now and next_show < 0:
-			next_show = show
-	var text := "客 %d人" % count_at_shop(cell)
-	if next_show >= 0:
-		text += "・次の上映 %d:%02d" % [next_show / 60, next_show % 60]
-	else:
-		text += "・今日の上映は終わり"
-	return text
+		if now >= show and now < show + CINEMA.length:
+			return show
+	return -1
+
+# 次に始まる回の開始時刻（今日はもうなければ -1）
+func next_show() -> int:
+	var now: int = world.clock.minute_of_day()
+	for show in showtimes(world.clock.day):
+		if show > now:
+			return show
+	return -1
+
+# 映画館の今の状態（どの映画館も同じ時刻に上映する）
+func cinema_state() -> CinemaState:
+	if current_show() >= 0:
+		return CinemaState.SHOWING
+	var now: int = world.clock.minute_of_day()
+	var shows: Array = showtimes(world.clock.day)
+	if now >= shows[0] - CINEMA.arrive_before and now < shows[-1] + CINEMA.length:
+		return CinemaState.OPEN
+	return CinemaState.CLOSED
+
+# カーソル下の説明用: 閉館・開場中・上映中と、次の上映時刻、今いる客の数
+func get_cinema_text(cell: Vector2i) -> String:
+	var people := "客 %d人" % count_at_shop(cell)
+	match cinema_state():
+		CinemaState.SHOWING:
+			return "上映中・%s まで・%s" % [time_text(current_show() + CINEMA.length), people]
+		CinemaState.OPEN:
+			return "開場中・次の上映 %s・%s" % [time_text(next_show()), people]
+	if next_show() >= 0:
+		return "閉館・次の上映 %s" % time_text(next_show())
+	return "閉館・今日の上映は終わり"
+
+func time_text(minute: int) -> String:
+	return "%d:%02d" % [minute / 60, minute % 60]
 
 # 指定した店にいる外からの客の数（店のどのマスを指定してもよい）
 func count_at_shop(cell: Vector2i) -> int:

@@ -2564,7 +2564,7 @@ func run_cinema_scenario() -> bool:
 	check(visitors.showtimes(1) == [13 * 60, 16 * 60, 19 * 60], "平日は13時・16時・19時の3回上映")
 	check(visitors.showtimes(6) == [11 * 60, 14 * 60, 17 * 60, 20 * 60], "休日は11時・14時・17時・20時の4回上映")
 	await hover_cell(Vector2i(12, 17))
-	check(main.hover_label.text.contains("映画館（客 0人・次の上映 13:00）"), "カーソルを合わせると次の上映時刻が出る")
+	check(main.hover_label.text.contains("映画館（閉館・次の上映 13:00）"), "カーソルを合わせると、閉館中と次の上映時刻が出る")
 	
 	# 平日1回目の上映（13時）: 30分前から集まり、15時に一斉に帰る
 	main.clock.set_time(1, 12, 25)
@@ -2600,6 +2600,30 @@ func run_cinema_scenario() -> bool:
 	check(main.economy_system.last_report.get("cinema") == 3 * 14 * 1800, "決算に3回の上映の売上（75,600Cr）が入る")
 	check(main.last_message.contains("映画館 +75,600Cr"), "決算のメッセージに映画館の売上が出る")
 	check(main.economy_system.MAINTENANCE["cinema"] == 20000, "映画館の維持費は2万Cr/日")
+	focus_camera(Vector2i(13, 16))
+	# スクリーンの見た目（3日目・平日）: 閉館は幕が閉じ、開場中は幕が開いて白いスクリーン、上映中は映画が映る
+	var screen = main.cinema_screen
+	main.clock.set_time(3, 9, 0)
+	check(visitors.cinema_state() == visitors.CinemaState.CLOSED, "上映の30分前より前は閉館")
+	await wait_frames(2)
+	await capture("cinema_00_closed")
+	main.clock.set_time(3, 12, 40)
+	check(visitors.cinema_state() == visitors.CinemaState.OPEN, "上映の30分前からは開場中")
+	await hover_cell(Vector2i(12, 17))
+	check(main.hover_label.text.contains("開場中・次の上映 13:00"), "開場中は、カーソルを合わせると次の上映時刻が出る")
+	await capture("cinema_00_open")
+	main.clock.set_time(3, 13, 50)
+	check(visitors.cinema_state() == visitors.CinemaState.SHOWING and visitors.current_show() == 13 * 60, "上映が始まると上映中")
+	await hover_cell(Vector2i(12, 17))
+	check(main.hover_label.text.contains("上映中・15:00 まで"), "上映中は、カーソルを合わせると終わる時刻が出る")
+	await capture("cinema_00_showing")
+	main.clock.set_time(3, 15, 30)
+	check(visitors.cinema_state() == visitors.CinemaState.OPEN, "上映と上映の間は開場中")
+	main.clock.set_time(3, 21, 30)
+	check(visitors.cinema_state() == visitors.CinemaState.CLOSED and visitors.next_show() == -1, "最後の上映が終わると閉館")
+	await hover_cell(Vector2i(12, 17))
+	check(main.hover_label.text.contains("閉館・今日の上映は終わり"), "閉館後は、今日の上映が終わったことが出る")
+	check(screen.visible and screen.z_index > main.grid_overlay.z_index, "スクリーンの表示は建物のタイルより手前に描く")
 	return true
 
 # ---------------------------------------------------
