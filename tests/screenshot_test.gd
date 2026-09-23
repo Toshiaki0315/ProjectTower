@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario, run_elevator_stats_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -5458,4 +5458,46 @@ func run_season_scenario() -> bool:
 	clock.day = first_gw + 1
 	await wait_frames(2)
 	check(main.stats_label.text.contains("季節: ゴールデンウィーク（5月5日まで・お客さん1.5倍）"), "ビルの状況に季節のにぎわいが出る")
+	return true
+
+# シナリオ84: エレベーターの成績（今日の平均待ち時間・一番長い待ち時間・乗った人数・一番混む時間帯）
+#   共通のビルの右端 x=8 に1号機（2〜4階と1階をつなぐ）、x=9 に2号機を建てて試す
+# ---------------------------------------------------
+func run_elevator_stats_scenario() -> bool:
+	print("[シナリオ] エレベーターの成績")
+	main.funds = 10000000
+	var elevators = main.elevator_system
+	main.select_mode("elevator")
+	for x in [8, 9]:
+		for y in range(18, 14, -1):
+			main.build_at(Vector2i(x, y))
+	main.clock.set_time(1, 8, 30)
+	check(elevators.shaft_label(elevators.shaft_key(Vector2i(8, 16))) == "1号機（エレベーター）" and elevators.shaft_label(elevators.shaft_key(Vector2i(9, 16))) == "2号機（エレベーター）", "シャフトは左から1号機・2号機と呼ぶ")
+
+	# 乗った人の待ち時間から、平均・最長・人数・混む時間帯を出す
+	elevators.record_wait(Vector2i(8, 18), 2.0)
+	elevators.record_wait(Vector2i(8, 17), 6.0)
+	main.clock.set_time(1, 18, 10)
+	elevators.record_wait(Vector2i(9, 18), 1.0)
+	check(elevators.stats_text(elevators.shaft_key(Vector2i(8, 16))) == "平均待ち4.0分・最長6分・2人・8時台が一番混む", "1号機: 平均4分・最長6分・2人・8時台が一番混む")
+	var lines: Array[String] = elevators.stats_lines()
+	check(lines.size() == 2 and lines[0].begins_with("エレベーター 1号機（エレベーター）: 平均待ち4.0分"), "ビルの状況には、待ち時間の長いエレベーターから出す")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("エレベーター 2号機（エレベーター）: 平均待ち1.0分"), "ビルの状況にエレベーターの成績が出る")
+	focus_camera(Vector2i(8, 16))
+	await wait_frames(1)
+	await hover_cell(Vector2i(8, 16))
+	check(main.hover_label.text.contains("1号機・今日: 平均待ち4.0分"), "シャフトにカーソルを合わせると、そのエレベーターの成績が出る")
+
+	# 日付が変わると数え直す
+	main.clock.set_time(2, 0, 10)
+	check(elevators.stats_lines().is_empty(), "日付が変わると、今日の成績は数え直す")
+
+	# 実際に人が乗ると記録される
+	var r = main.spawn_resident(Vector2i(7, 18))
+	r.go_to(Vector2i(7, 15))
+	main.clock.set_process(true)
+	await wait_until(func(): return is_instance_valid(r) and r.cell == Vector2i(7, 15), 20.0)
+	main.clock.set_process(false)
+	check(elevators.wait_stats.get(elevators.shaft_key(Vector2i(8, 18)), {}).get("riders", 0) == 1, "人がカゴに乗ると、乗り場で待った時間が記録される")
 	return true

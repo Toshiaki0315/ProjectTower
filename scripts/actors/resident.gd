@@ -77,6 +77,7 @@ var car = null                 # 乗っているカゴ
 var ride_dir := 0              # 乗りたい方向（カゴのDirection.UP / DOWN）
 var stress := 0.0
 var walked := 0.0 # 歩いた距離（px。足の動かし方を決めるのに使う）
+var wait_started := 0.0 # 乗り場で待ち始めた時刻（ゲーム内の、1日目の0時からの分。エレベーターの成績に使う）
 var base_color := Color.WHITE  # 平常時の体の色（社員: 白 / 宿泊客: 薄紫 / 清掃員: 水色）
 var staff := false             # 裏方（清掃員など）。サービスエレベーターに乗れる
 var vip := false               # VIP。VIP専用のエレベーターに乗れる
@@ -147,6 +148,7 @@ func process_walking(delta: float) -> void:
 			ride_dir = ElevatorCar.Direction.UP if next.y < cell.y else ElevatorCar.Direction.DOWN
 			world.elevator_system.request_hall(cell, ride_dir)
 			state = State.WAITING
+			wait_started = world.clock.day * world.clock.MINUTES_PER_DAY + world.clock.minute
 			return
 
 		var target_pos: Vector2 = world.tile_map.map_to_local(next)
@@ -185,6 +187,8 @@ func process_waiting() -> void:
 		car = boardable
 		car.board(self, path[0].y)
 		state = State.RIDING
+		var now: float = world.clock.day * world.clock.MINUTES_PER_DAY + world.clock.minute
+		world.elevator_system.record_wait(cell, now - wait_started) # 乗り場で待った時間を、エレベーターの成績に記録する
 	else:
 		world.elevator_system.request_hall(cell, ride_dir) # 呼び出しが取り消されていたら押し直す
 

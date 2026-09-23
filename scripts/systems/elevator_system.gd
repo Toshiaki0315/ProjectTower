@@ -43,7 +43,11 @@ func setup(p_world: Node2D) -> void:
 func rebuild() -> void:
 	var remaining := cars.duplicate()
 	var new_cars: Array = []
-	for shaft in find_shafts():
+	var shafts := find_shafts()
+	# 号機の番号（左から順）。成績の表示で毎フレーム使うので、建設・撤去のときだけ数え直す
+	shaft_order = shafts.map(func(s): return [s.x, s.type])
+	shaft_order.sort()
+	for shaft in shafts:
 		var kept := 0
 		for c in remaining.duplicate():
 			if c.shaft_type == shaft.type and c.column == shaft.x \
@@ -166,6 +170,59 @@ func _process(_delta: float) -> void:
 	for car in cars:
 		if is_instance_valid(car):
 			car.in_service = is_in_service(car.shaft_type, car.column)
+	roll_stats_day()
+
+# ---------------------------------------------------
+# エレベーターの成績（今日の分）: 人が乗り場で待ち始めてからカゴに乗るまでの時間を、シャフトごとに数える。
+#   ビルの状況（待ち時間の長いシャフトを STATS_LINES 本まで）と、シャフトのカーソルの説明に出す。
+#   日付が変わると数え直す。シャフトは左から順に「1号機・2号機…」と呼ぶ。
+# ---------------------------------------------------
+const STATS_LINES := 3
+var wait_stats := {} # [種類, 列] -> {"riders": 乗った人数, "total": 待った分の合計, "max": 一番長く待った分, "hours": 時 -> 乗った人数}
+var stats_day := 0   # wait_stats が何日目の分か
+var shaft_order: Array = [] # [列, 種類] を左から並べたもの（号機の番号。rebuild() で数え直す）
+
+# 人がカゴに乗ったときに呼ばれる（minutes: 乗り場で待っていたゲーム内の分）
+func record_wait(cell: Vector2i, minutes: float) -> void:
+	roll_stats_day()
+	var key := shaft_key(cell)
+	if not wait_stats.has(key):
+		wait_stats[key] = {"riders": 0, "total": 0.0, "max": 0.0, "hours": {}}
+	var s: Dictionary = wait_stats[key]
+	s.riders += 1
+	s.total += minutes
+	s.max = maxf(s.max, minutes)
+	var hour: int = world.clock.minute_of_day() / 60
+	s.hours[hour] = s.hours.get(hour, 0) + 1
+
+# 日付が変わったら、今日の成績を数え直す
+func roll_stats_day() -> void:
+	if stats_day != world.clock.day:
+		stats_day = world.clock.day
+		wait_stats.clear()
+
+# シャフトの呼び名（左から順に「1号機」…）と種類
+func shaft_label(key: Array) -> String:
+	var number: int = shaft_order.find([key[1], key[0]]) + 1
+	return "%d号機（%s）" % [number, world.BUILDINGS[key[0]].name]
+
+# 今日の成績の文（まだ誰も乗っていなければ ""）
+func stats_text(key: Array) -> String:
+	if not wait_stats.has(key):
+		return ""
+	var s: Dictionary = wait_stats[key]
+	var busiest: int = s.hours.keys().reduce(func(a, b): return a if s.hours[a] >= s.hours[b] else b)
+	return "平均待ち%.1f分・最長%d分・%d人・%d時台が一番混む" % [s.total / s.riders, int(s.max), s.riders, busiest]
+
+# ビルの状況に出す行（待ち時間の長いシャフトから STATS_LINES 本まで）
+func stats_lines() -> Array[String]:
+	roll_stats_day()
+	var keys: Array = wait_stats.keys().filter(func(k): return shaft_order.has([k[1], k[0]])) # 撤去したシャフトは出さない
+	keys.sort_custom(func(a, b): return wait_stats[a].total / wait_stats[a].riders > wait_stats[b].total / wait_stats[b].riders)
+	var lines: Array[String] = []
+	for key in keys.slice(0, STATS_LINES):
+		lines.append("エレベーター %s: %s" % [shaft_label(key), stats_text(key)])
+	return lines
 
 # 待機階に設定されているマスの一覧（マス目の表示で印を描くのに使う）
 func get_home_cells() -> Array:

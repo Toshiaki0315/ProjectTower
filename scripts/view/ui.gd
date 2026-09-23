@@ -452,6 +452,7 @@ const HELP_SECTIONS := [
 		["種類", "急行（1階とスカイロビーだけに停まる）・大型（横2マス・定員16人・速さ1.5倍）・サービス（清掃員と警備員だけ）"],
 		["設定", "「待機階を設定」「稼働時間帯」「VIP専用」を選んでシャフトをクリック（どれも無料）"],
 		["階段・エスカレーター", "近い階の移動に。エスカレーターは待ち時間がなく、階段より楽"],
+		["成績", "★を押すと、今日の待ち時間が長いエレベーターが出る（平均・最長・人数・混む時間帯）。シャフトにカーソルを合わせても出る"],
 	]],
 	["テナントと人", [
 		["オフィス", "平日8〜9時に社員が出勤し、17〜18時に帰る（1マスに1人）。「家賃」で 普通 → 高い → 安い と切り替えられる。高い階ほど賃料が高い（5階ごとに1割・最大2倍。地下は0.8倍）"],
@@ -862,6 +863,7 @@ func update_stats_panel(warning_list: Array[String]) -> void:
 	var season_text: String = world.visitor_system.get_season_text()
 	if season_text != "":
 		lines.append(season_text)
+	lines.append_array(world.elevator_system.stats_lines()) # 待ち時間の長いエレベーター（今日）
 	for w in warning_list:
 		lines.append("⚠ " + w)
 	stats_label.text = "\n".join(lines)
@@ -989,6 +991,9 @@ func update_hover_label():
 			for car in cars:
 				loads.append("%d/%d" % [car.passengers.size(), car.capacity])
 			text += "（カゴ%d台: %s人）" % [cars.size(), "・".join(loads)]
+			var stats: String = world.elevator_system.stats_text(world.elevator_system.shaft_key(cell))
+			text += "（%s・今日: %s）" % [world.elevator_system.shaft_label(world.elevator_system.shaft_key(cell)).get_slice("（", 0),
+				stats if stats != "" else "まだ誰も乗っていない"]
 	elif type == "housing":
 		var home_rating: String = world.tenant_system.get_home_rating_text(cell)
 		text += "（%s%s・%s）" % [world.housing_system.get_home_state_text(cell), "・" + home_rating if home_rating != "" else "",
