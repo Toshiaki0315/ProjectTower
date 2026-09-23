@@ -403,8 +403,25 @@ func run_ui_scenario() -> bool:
 	check(main.log_panel.visible, "⌘Lでメッセージの記録が開く")
 	check(main.log_label.text.contains("テストのメッセージ1") and main.log_label.text.contains("テストのメッセージ2"), "記録にはゲーム開始からのメッセージが時刻つきで並ぶ")
 	await capture("ui_03_log_open")
+	# 開いている間は、スクロールで動くのはメッセージの記録だけ（操作説明と同じ）
+	for i in 60:
+		main.show_message("スクロールするためのメッセージ %d" % i)
+	main.ui.update_log_panel()
+	await wait_frames(2)
+	var log_center: Vector2 = main.log_panel.get_global_rect().get_center()
+	cam_before = cam.position
+	main.ui.log_scroll.scroll_vertical = 0
+	await scroll_wheel(log_center, MOUSE_BUTTON_WHEEL_DOWN, 200, false)
+	check(main.ui.log_scroll.scroll_vertical > 0, "メッセージの記録の上でホイールを回すと、記録がスクロールする")
+	await pan_gesture(log_center, Vector2(0, 5), 30)
+	await scroll_wheel(world_pos, MOUSE_BUTTON_WHEEL_DOWN, 3, false)
+	await pan_gesture(world_pos, Vector2(0, 5), 3)
+	check(cam.position == cam_before, "メッセージの記録を開いている間は、一番下まで行っても・記録の外でも、後ろの画面はスクロールしない")
 	await press_shortcut(KEY_L)
 	check(not main.log_panel.visible, "もう一度⌘Lを押すと閉じる")
+	await scroll_wheel(world_pos, MOUSE_BUTTON_WHEEL_DOWN, 1, false)
+	check(cam.position != cam_before, "メッセージの記録を閉じると、また画面をスクロールできる")
+	cam.position = cam_before
 	
 	# 画面の拡大・縮小（⌘+ / ⌘- / ⌘0）
 	var zoom_before: float = main.camera.zoom.x

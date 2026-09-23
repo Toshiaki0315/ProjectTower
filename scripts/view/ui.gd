@@ -285,8 +285,7 @@ func build_bars() -> void:
 	help_scroll.add_child(help_label)
 	help_panel = make_bar(help_scroll)
 	help_panel.visible = false
-	# 開いている間は、スクロールで後ろの画面を動かさない（操作説明だけがスクロールする）
-	help_panel.visibility_changed.connect(func(): world.camera.scroll_locked = help_panel.visible)
+	help_panel.visibility_changed.connect(update_scroll_lock)
 	help_row.add_child(help_panel)
 	
 	# --- ビルの状況（2段目の★を押すと開閉する） ---
@@ -316,6 +315,7 @@ func build_bars() -> void:
 	log_scroll.add_child(log_label)
 	log_panel = make_bar(log_scroll)
 	log_panel.visible = false
+	log_panel.visibility_changed.connect(update_scroll_lock)
 	log_row.add_child(log_panel)
 	log_row.add_child(make_spacer())
 	
@@ -388,6 +388,11 @@ func make_tooltip_bar(content: Control) -> PanelContainer:
 	return panel
 
 # 半透明の背景を持つバーを作る（中身をcontentとして入れる）
+# 操作説明・メッセージの記録を開いている間は、スクロールで後ろの画面を動かさない
+#（スクロールで動くのは開いている欄だけ。一番下まで行った後の2本指スクロールが後ろに届かないように）
+func update_scroll_lock() -> void:
+	world.camera.scroll_locked = help_panel.visible or log_panel.visible
+
 func make_bar(content: Control) -> PanelContainer:
 	var panel = PanelContainer.new()
 	var style = StyleBoxFlat.new()
