@@ -28,6 +28,7 @@ const HousingSystem := preload("res://scripts/systems/housing_system.gd")
 const EventSystem := preload("res://scripts/systems/event_system.gd")
 const Lighting := preload("res://scripts/view/lighting.gd")
 const CinemaScreen := preload("res://scripts/view/cinema_screen.gd")
+const SkyEvents := preload("res://scripts/view/sky_events.gd")
 const TenantSystem := preload("res://scripts/systems/tenant_system.gd")
 
 @onready var tile_map = $TileMapLayer
@@ -138,6 +139,7 @@ var grid_overlay # マス目の表示
 var effects      # 建設・撤去・お金の演出
 var lighting     # 夜の明かり
 var cinema_screen # 映画館のスクリーン（上映中・開場中・閉館の見た目）
+var sky_events   # 空のイベント（飛行機・鳥・気球・虹・流れ星・ロケット・UFO・花火。見た目だけ）
 
 # 仕組み（systems）
 var clock           # ゲーム内の時計
@@ -193,6 +195,7 @@ const PARTS := [
 	{"name": "lighting", "script": Lighting, "parent": "map"},
 	{"name": "grid_overlay", "script": GridOverlay, "parent": "map"},
 	{"name": "cinema_screen", "script": CinemaScreen, "parent": "map"},
+	{"name": "sky_events", "script": SkyEvents, "parent": "map"},
 	{"name": "effects", "script": Effects, "parent": "map"},
 	{"name": "ui", "script": Ui},
 ]

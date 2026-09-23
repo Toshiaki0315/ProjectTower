@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -4977,4 +4977,70 @@ func run_entrances_scenario() -> bool:
 	main.build_at(Vector2i(0, 18))
 	check(main.get_ground_entrances() == [Vector2i(0, 18)], "ロビーが1マスだけなら、出入り口は1つ")
 	check(main.lighting.get_entrance_lights().size() == 1, "照明も1つ")
+	return true
+
+# シナリオ77: 空のイベント（ゲームには関係しない、背景の飛行機・鳥・気球・虹・流れ星・ロケット・UFO・花火）
+# ---------------------------------------------------
+func run_sky_events_scenario() -> bool:
+	print("[シナリオ] 空のイベント")
+	var sky = main.sky_events
+	var weather = main.weather_system
+	var clock = main.clock
+	var kinds := func(day: int) -> Array:
+		return sky.events_for(day).map(func(e): return e.kind)
+	# その日の条件に合う日を探す（1年のうちで最初の日。なければ -1）
+	var find_day := func(condition: Callable) -> int:
+		for d in range(2, 366):
+			if condition.call(d):
+				return d
+		return -1
+	var sunny: int = find_day.call(func(d): return weather.weather_for(d) == weather.Weather.SUNNY and weather.weather_for(d - 1) != weather.Weather.RAINY)
+	var rainy: int = find_day.call(func(d): return weather.weather_for(d) == weather.Weather.RAINY)
+	var after_rain: int = find_day.call(func(d): return weather.weather_for(d - 1) == weather.Weather.RAINY and weather.weather_for(d) != weather.Weather.RAINY)
+	var summer_holiday: int = find_day.call(func(d): return clock.date(d)[0] == 7 and clock.is_holiday(d) and weather.weather_for(d) != weather.Weather.RAINY)
+	var june_holiday: int = find_day.call(func(d): return clock.date(d)[0] == 6 and clock.is_holiday(d) and weather.weather_for(d) != weather.Weather.RAINY)
+	var rocket_day: int = find_day.call(func(d): return kinds.call(d).has("rocket"))
+	var ufo_day: int = find_day.call(func(d): return kinds.call(d).has("ufo"))
+	var balloon_day: int = find_day.call(func(d): return kinds.call(d).has("balloon"))
+	check(sunny > 0 and rainy > 0 and after_rain > 0 and summer_holiday > 0 and june_holiday > 0, "晴れ・雨・雨上がり・夏の休日・6月の休日の日がある")
+
+	# 予定は日付から決まる（同じ日なら同じ）
+	check(sky.events_for(sunny) == sky.events_for(sunny), "同じ日なら、同じ空のイベントが起きる")
+	var planes: Array = sky.events_for(sunny).filter(func(e): return e.kind == "airplane")
+	check(planes.size() >= sky.AIRPLANES[0] and planes.size() <= sky.AIRPLANES[1], "晴れた日には飛行機が%d機飛ぶ" % planes.size())
+	check(planes.all(func(e): return e.start >= sky.DAY_FROM and e.start + e.length <= sky.DAY_TO), "飛行機が飛ぶのは昼だけ")
+	check(kinds.call(sunny).has("birds") and kinds.call(sunny).has("shooting_star"), "晴れた日は、昼に鳥の群れ・夜に流れ星が見える")
+	var stars: Array = sky.events_for(sunny).filter(func(e): return e.kind == "shooting_star")
+	check(stars.all(func(e): return e.start >= sky.NIGHT_FROM), "流れ星は夜だけ")
+	check(not kinds.call(rainy).has("airplane") and not kinds.call(rainy).has("birds") and not kinds.call(rainy).has("shooting_star"), "雨の日は飛行機も鳥も流れ星も見えない")
+	check(kinds.call(after_rain).has("rainbow") and not kinds.call(sunny).has("rainbow"), "雨の次の日の朝だけ、虹がかかる")
+	check(kinds.call(summer_holiday).has("firework") and not kinds.call(june_holiday).has("firework"), "花火は夏（7・8月）の休日の夜だけ")
+	check(rocket_day > 0 and ufo_day > 0 and balloon_day > 0, "ときどきロケット・UFO・気球が見られる（ロケット%d日目・UFO%d日目・気球%d日目）" % [rocket_day, ufo_day, balloon_day])
+
+	# 起きている間だけ描かれる（見た目を撮っておく）
+	focus_camera(Vector2i(0, 6))
+	var shots := [
+		["airplane", sunny, planes[0].start + planes[0].length * 0.5],
+		["birds", sunny, sky.events_for(sunny).filter(func(e): return e.kind == "birds")[0].start + sky.BIRD_MINUTES * 0.5],
+		["rainbow", after_rain, 8 * 60 + 30],
+		["shooting_star", sunny, stars[0].start + 0.8],
+		["rocket", rocket_day, sky.events_for(rocket_day).filter(func(e): return e.kind == "rocket")[0].start + sky.ROCKET_MINUTES * 0.5],
+		["ufo", ufo_day, sky.events_for(ufo_day).filter(func(e): return e.kind == "ufo")[0].start + sky.UFO_MINUTES * 0.4],
+		["balloon", balloon_day, sky.events_for(balloon_day).filter(func(e): return e.kind == "balloon")[0].start + sky.BALLOON_MINUTES * 0.3],
+		["firework", summer_holiday, sky.FIREWORKS_FROM + 10],
+	]
+	for shot in shots:
+		var minute: float = shot[2]
+		var day: int = shot[1]
+		if minute >= 24 * 60: # 夜中の0時を過ぎたら、次の日の続き
+			minute -= 24 * 60
+			day += 1
+		clock.day = day
+		clock.minute = minute
+		await wait_frames(2)
+		check(sky.is_active(shot[0]), "%s が空に出ている（%d日目 %d:%02d）" % [shot[0], day, int(minute) / 60, int(minute) % 60])
+		await capture("sky_%s" % shot[0])
+	clock.day = sunny
+	clock.minute = 3 * 60 # 夜中の3時: 昼のイベントは出ていない
+	check(not sky.is_active("airplane") and not sky.is_active("birds") and not sky.is_active("rainbow"), "夜中には昼のイベントは出ない")
 	return true

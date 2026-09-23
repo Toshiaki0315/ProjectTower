@@ -45,6 +45,7 @@ func _init() -> void:
 	await save_screenshots()
 	await save_express_screenshot()
 	await save_event_screenshots()
+	await save_sky_screenshots()
 	print("README用の画像を作りました: ", ProjectSettings.globalize_path(OUT))
 	quit()
 
@@ -396,3 +397,29 @@ func save_event_screenshots() -> void:
 		await process_frame
 	focus(m, lucky + Vector2i(0, -2))
 	await shoot(m, "events/treasure.png")
+
+# ---------------------------------------------------
+# 空のイベント（飛行機・虹・ロケット・花火）。その種類が起きる日を探して、起きている時刻に撮る
+# ---------------------------------------------------
+func save_sky_screenshots() -> void:
+	for shot in [["airplane", 0.35, "events/sky_airplane.png"], ["rainbow", 0.45, "events/sky_rainbow.png"],
+			["rocket", 0.6, "events/sky_rocket.png"], ["firework", 0.5, "events/sky_fireworks.png"]]:
+		var m = await new_world()
+		small_tower(m)
+		var sky = m.sky_events
+		for day in range(2, 366):
+			var events: Array = sky.events_for(day).filter(func(e): return e.kind == shot[0])
+			if events.is_empty():
+				continue
+			var minute: float = events[0].start + events[0].length * shot[1]
+			if shot[0] == "firework":
+				minute = events[1].start + events[1].length * shot[1] # 2発目が開いたところ（1発目も残っている）
+			m.clock.day = day + (1 if minute >= 24 * 60 else 0)
+			m.clock.minute = fmod(minute, 24 * 60)
+			break
+		for i in 3:
+			await process_frame
+		quiet(m) # 日付を進めたぶんの決算のメッセージと、お金の演出を消す
+		m.effects.clear()
+		focus(m, Vector2i(12, 12))
+		await shoot(m, shot[2])
