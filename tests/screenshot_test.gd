@@ -71,6 +71,7 @@ func start_main(standard_block := true) -> void:
 		main.queue_free()
 		await wait_frames(1)
 	main = load("res://scenes/main.tscn").instantiate()
+	main.test_tools = true # 建設メニューに「住人（テスト）」を出す（遊ぶときには出さない）
 	root.add_child(main)
 	Engine.time_scale = 1.0
 	await wait_frames(3) # _ready()が済むまで待つ
@@ -4406,6 +4407,12 @@ func run_menu_scenario() -> bool:
 		if not (text.ends_with("Cr") or text.ends_with("Cr〜") or text.ends_with("無料")):
 			no_price.append(text)
 	check(no_price.is_empty(), "建設メニューのどの項目にも金額か「無料」が出る（出ていない項目: %s）" % ", ".join(no_price))
+	# 「住人（テスト）」はテストのときだけメニューに出る
+	var other_group: Dictionary = main.MODE_GROUPS[-1]
+	check(ui.menu_modes(other_group).has(main.MODE_RESIDENT), "テストのときは、建設メニューに「住人（テスト）」がある")
+	main.test_tools = false
+	check(not ui.menu_modes(other_group).has(main.MODE_RESIDENT) and ui.menu_modes(other_group).has(main.MODE_RENT), "遊ぶときは、建設メニューに「住人（テスト）」が出ない")
+	main.test_tools = true
 	var widths := {}
 	for i in main.mode_select.item_count:
 		if not main.mode_select.is_item_separator(i):

@@ -127,6 +127,7 @@ var started := false               # ゲームが始まっているか（タイ�
 var drag_button := 0               # 押したままなぞっているマウスのボタン（0なら押していない）
 var drag_last_cell := Vector2i.ZERO # なぞっている間に、最後に処理したマス
 var show_routes := false           # 経路（人の通り道）を線で表示するか
+var test_tools := false            # テスト用の道具（「住人（テスト）」）を建設メニューに出すか。テストのときだけ true にする
 var message_log: Array[String] = [] # ゲーム開始からのメッセージ（時刻つき）
 var last_message := ""             # 一番新しいメッセージ（時刻なし）
 

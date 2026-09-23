@@ -85,7 +85,6 @@ func save_people_images() -> void:
 		"shop_customer": VisitorSystem.SHOP_TYPES.shop.color,             # ショップのお客さん
 		"cinema_customer": VisitorSystem.CINEMA.color,                    # 映画のお客さん
 		"vip": VipSystem.VIP_COLOR,                           # VIP
-		"selected": Color(1.0, 0.85, 0.1),                   # 選択中（住人モード）
 	}
 	# ストレスは顔（肌）の色で表す（服は種類の色のまま）
 	var faces := {

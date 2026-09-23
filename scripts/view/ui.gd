@@ -170,7 +170,7 @@ func build_bars() -> void:
 	mode_select.custom_minimum_size.x = 290 * UI_SCALE
 	for group in world.MODE_GROUPS:
 		mode_select.add_separator(group.name)
-		for mode in group.modes:
+		for mode in menu_modes(group):
 			mode_select.add_item(get_mode_label(mode))
 			mode_select.set_item_metadata(mode_select.item_count - 1, mode)
 	mode_select.item_selected.connect(func(index): world.select_mode(mode_select.get_item_metadata(index)))
@@ -222,7 +222,6 @@ func build_bars() -> void:
 		"更地から始まる。1階はロビー専用（ロビー・階段・エレベーターだけ）。人はロビーの左端（入口）から出入りする",
 		"吹き抜けロビー: 2階分・3階分の高さのロビー。上の階には床がないので、人は1階だけを歩く",
 		"スカイロビー: 15階・30階・45階…にだけ建てられる乗り換え専用のフロア（何階かはカーソル下の情報に出る）",
-		"住人モード: 建物をクリックで住人を配置 → 行き先をクリックで移動",
 		"大型エレベーター（横2マス）: 全部の階に停まり、定員16人・速さ1.5倍。人の多いビルの渋滞をさばく",
 		"エレベーター: 縦に並べるとシャフトになる。シャフトをクリックでその階にカゴを呼ぶ",
 		"カゴ追加: シャフトをクリックすると、その階にカゴを1台追加（1本に4台まで、維持費3,000Cr/日）。カゴの定員は8人",
@@ -420,13 +419,17 @@ func _get_menu_target_width() -> float:
 	var font_size: int = BASE_FONT_SIZE * UI_SCALE
 	var max_w: float = 0.0
 	for group in world.MODE_GROUPS: # メニューに並ぶ項目のうち、名前と金額が一番長いもの
-		for mode in group.modes:
+		for mode in menu_modes(group):
 			var nw: float = font.get_string_size(mode_name(mode), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 			var cw: float = font.get_string_size(mode_price_text(mode), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 			max_w = maxf(max_w, nw + cw)
 	var space_w: float = font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	_menu_target_width = max_w + space_w * 4
 	return _menu_target_width
+
+# 建設メニューのその見出しに並べる項目（「住人（テスト）」はテストのときだけ出す）
+func menu_modes(group: Dictionary) -> Array:
+	return group.modes.filter(func(mode): return mode != world.MODE_RESIDENT or world.test_tools)
 
 func get_mode_label(mode: String) -> String:
 	return priced_label(mode_name(mode), mode_price_text(mode))
