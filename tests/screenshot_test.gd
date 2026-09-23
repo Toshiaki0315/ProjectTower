@@ -1302,13 +1302,12 @@ func run_subway_scenario() -> bool:
 	await choose_mode("office")
 	build_support(cells_row(14, 4, 7)) # 足場: 5階(y=14)を埋めて、その上に6階のオフィスを建てられるようにする
 	await click_cell(Vector2i(4, 13), MOUSE_BUTTON_LEFT) # 横4マスのオフィス（x=4〜7、社員4人）
-	# 左側: 1階の入口の左隣(-9,18)の階段で2階へ上がれるようにする（上に x=-12〜-9 のオフィス）
-	# 足場: オフィス(x=-12〜-9)の下の1階に階段を足す（ロビーにすると入口が左に移ってしまう）。
-	# (-9,18)の階段は、2階へ上がる道にもなる
+	# 左側: ロビーの左隣(-9,18)の階段で2階へ上がれるようにする（上に x=-12〜-9 のオフィス）
+	# 足場: オフィス(x=-12〜-9)の下の1階に階段を足す。(-9,18)の階段は、2階へ上がる道にもなる
 	build_support(cells_row(18, -12, -9))
 	main.select_mode("office")
 	main.build_at(Vector2i(-12, 17))
-	check(main.get_entrance() == Vector2i(-8, 18), "ロビーの左に階段を置いても、入口はロビーの左端のまま")
+	check(main.get_entrance() == Vector2i(-12, 18), "ロビーの左に階段が続いていれば、1階の左の出入り口はその一番端（フロアの端）")
 	
 	# 地下鉄駅は、地下5階より深いところにしか建てられない
 	await choose_mode("subway")
@@ -1324,10 +1323,10 @@ func run_subway_scenario() -> bool:
 	var station := Vector2i(9, 23) # 地下5階
 	await click_cell(station, MOUSE_BUTTON_LEFT)
 	check(main.get_building_type(station) == "subway", "地下5階(y=23)には地下鉄駅を建てられる")
-	check(main.get_entrance() == Vector2i(-8, 18), "地下に建物ができても、1階の入口は変わらない")
-	check(main.get_entrances() == [Vector2i(-8, 18), Vector2i(12, 18), station], "入口は1階の左右の出入り口と地下鉄駅")
+	check(main.get_entrance() == Vector2i(-12, 18), "地下に建物ができても、1階の入口は変わらない")
+	check(main.get_entrances() == [Vector2i(-12, 18), Vector2i(12, 18), station], "入口は1階の左右の出入り口と地下鉄駅")
 	check(main.nearest_entrance(Vector2i(6, 13)) == station, "上の階のオフィスからは地下鉄駅の方が近い")
-	check(main.nearest_entrance(Vector2i(-6, 17)) == Vector2i(-8, 18), "左寄りのオフィスからは、階段で上がれる1階の入口の方が近い")
+	check(main.nearest_entrance(Vector2i(-6, 17)) == Vector2i(-12, 18), "左寄りのオフィスからは、階段で上がれる1階の入口の方が近い")
 	await capture("subway_01_built")
 
 	
@@ -1348,7 +1347,7 @@ func run_subway_scenario() -> bool:
 	for r in first_cells:
 		if first_cells[r] == station:
 			from_station += 1
-		elif first_cells[r] == Vector2i(-8, 18):
+		elif first_cells[r] == Vector2i(-12, 18):
 			from_main += 1
 	check(from_station > 0 and from_main > 0, "地下鉄駅と1階の入口の両方から社員が来る（駅 %d人・1階 %d人）" % [from_station, from_main])
 	check(from_station + from_main == 56, "56人全員がどちらかの入口から来る")
@@ -4950,8 +4949,8 @@ func run_entrances_scenario() -> bool:
 	main.select_mode("elevator")
 	for y in range(19, 14, -1):
 		main.build_at(Vector2i(8, y))
-	check(main.get_right_entrance() == Vector2i(7, 18), "ロビーの右にエレベーターを建てても、右の出入り口はロビーの右端")
-	check(main.nearest_entrance(Vector2i(5, 17)) == Vector2i(7, 18), "右寄りのオフィスの社員は、近い右の出入り口を使う")
+	check(main.get_right_entrance() == Vector2i(8, 18), "ロビーの右端にエレベーターがあれば、右の出入り口はその隣（フロアの端）")
+	check(main.nearest_entrance(Vector2i(5, 17)) == Vector2i(8, 18), "右寄りのオフィスの社員は、近い右の出入り口を使う")
 	var lights: Array[Vector2] = main.lighting.get_entrance_lights()
 	check(lights.size() == 2 and lights[1].x > lights[0].x, "夜は左右の出入り口に照明が灯る")
 	focus_camera(Vector2i(4, 17))
@@ -4965,7 +4964,7 @@ func run_entrances_scenario() -> bool:
 	main.build_at(Vector2i(2, 19))
 	build_support(cells_row(19, 6, 7), "frame")
 	check(main.parking_system.usable_units == [Vector2i(2, 19)], "スロープにつながった駐車場は使える")
-	check(main.get_entrances() == [Vector2i(-8, 18), Vector2i(7, 18), Vector2i(2, 19)], "入口は1階の左右の出入り口と地下駐車場")
+	check(main.get_entrances() == [Vector2i(-8, 18), Vector2i(8, 18), Vector2i(2, 19)], "入口は1階の左右の出入り口と地下駐車場")
 	check(main.nearest_entrance(Vector2i(4, 19)) == Vector2i(2, 19), "駐車場の近くからは、駐車場が一番近い入口")
 	check(main.lighting.get_entrance_lights().size() == 2, "駐車場には扉がないので、入口の照明は付けない")
 	main.demolish_at(Vector2i(0, 19))

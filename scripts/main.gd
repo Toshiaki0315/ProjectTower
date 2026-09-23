@@ -531,17 +531,19 @@ func spawn_resident(cell: Vector2i):
 	residents.append(resident)
 	return resident
 
-# 1階の左の出入り口のマス：1階メインロビーの左端（ロビーがなければnull）
+# 1階の左の出入り口のマス：1階のフロアの左端（ロビーがなければnull）
 func get_entrance():
 	var ground := get_ground_entrances()
 	return ground[0] if not ground.is_empty() else null
 
-# 1階の右の出入り口のマス：1階メインロビーの右端（ロビーがなければnull。1マスだけなら左と同じ）
+# 1階の右の出入り口のマス：1階のフロアの右端（ロビーがなければnull。1マスだけなら左と同じ）
 func get_right_entrance():
 	var ground := get_ground_entrances()
 	return ground[-1] if not ground.is_empty() else null
 
-# 1階の出入り口（ロビーの左端と右端。ロビーが1マスだけなら1つ）
+# 1階の出入り口（左端と右端。1マスだけなら1つ）。
+# ロビーの左端・右端から、外側へ途切れずに並んでいる1階の建物（エレベーター・階段など）の一番端までを
+# 1つのフロアとみなし、その両端を出入り口にする（端がエレベーターでも、その隣に出入り口ができる）
 func get_ground_entrances() -> Array[Vector2i]:
 	var left = null
 	var right = null
@@ -552,10 +554,15 @@ func get_ground_entrances() -> Array[Vector2i]:
 			if right == null or cell.x > right.x:
 				right = cell
 	var result: Array[Vector2i] = []
-	if left != null:
-		result.append(left)
-		if right != left:
-			result.append(right)
+	if left == null:
+		return result # ロビーがないうちは、誰も入ってこられない
+	while is_walkable(left + Vector2i.LEFT):
+		left += Vector2i.LEFT
+	while is_walkable(right + Vector2i.RIGHT):
+		right += Vector2i.RIGHT
+	result.append(left)
+	if right != left:
+		result.append(right)
 	return result
 
 # 入口の一覧。人はビルの外からここに現れ、ここから帰る（一番近い入口を使う）
