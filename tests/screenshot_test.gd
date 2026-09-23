@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario, run_observatory_scenario, run_overlay_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -5267,4 +5267,73 @@ func run_observatory_scenario() -> bool:
 	check(goals.cleared and main.goal_panel.visible and main.goal_title.text == "タワー完成！", "★5になると「タワー完成！」の画面が出る")
 	await capture("observatory_02_complete")
 	main.goal_panel.visible = false
+	return true
+
+# シナリオ81: 色分け表示（Vキーで ストレス → 騒音 → エレベーター待ち → 消す）
+#   共通のビルに、右端 x=8 のエレベーターと、2階の飲食店（うるさい）を足して試す
+# ---------------------------------------------------
+func run_overlay_scenario() -> bool:
+	print("[シナリオ] 色分け表示")
+	main.funds = 10000000
+	var overlay = main.grid_overlay
+	var tenants = main.tenant_system
+	main.select_mode("elevator")
+	for y in range(18, 14, -1):
+		main.build_at(Vector2i(8, y))
+	build_support(cells_row(18, 9, 12), "lobby")
+	main.select_mode("restaurant")
+	main.build_at(Vector2i(9, 17))
+	focus_camera(Vector2i(2, 16))
+	check(main.overlay == "" and not main.ui.overlay_panel.visible, "はじめは色分けを出していない")
+
+	# ストレス: テナントの評価で塗る（良い=緑・普通=黄・悪い=赤・空室=灰色）
+	await press_key(KEY_V)
+	check(main.overlay == "stress" and main.ui.overlay_panel.visible and main.ui.overlay_label.text.contains("ストレス"), "Vでストレスの色分けになり、凡例が出る")
+	var bad := Vector2i(-8, 17)
+	var vacant := Vector2i(-4, 17)
+	tenants.offices[bad] = tenants.new_tenant()
+	tenants.offices[bad].rating = tenants.Rating.BAD
+	tenants.offices[vacant] = tenants.new_tenant()
+	tenants.offices[vacant].vacant = true
+	tenants.offices[Vector2i(0, 17)] = tenants.new_tenant()
+	var heat: Dictionary = overlay.heat_cells()
+	check(heat.get(bad + Vector2i(3, 0)) == overlay.HEAT_BAD, "評価が悪いオフィスは、どのマスも赤")
+	check(heat.get(vacant) == overlay.HEAT_VACANT and heat.get(Vector2i(0, 17)) == overlay.HEAT_GOOD, "空室は灰色、評価が良いオフィスは緑")
+	await wait_frames(2)
+	await capture("overlay_01_stress")
+
+	# 騒音: うるさいマスほど濃い赤
+	await press_key(KEY_V)
+	check(main.overlay == "noise" and main.ui.overlay_label.text.contains("騒音"), "もう一度Vで騒音の色分けになる")
+	heat = overlay.heat_cells()
+	var noise = main.noise_system
+	var loud := Vector2i(10, 17) # 飲食店の中
+	check(heat.has(loud) and noise.get_noise(loud) > 0, "騒音のあるマスが塗られる（飲食店のまわり）")
+	var quiet_cell: Vector2i = noise.noise_map.keys().reduce(func(a, b): return a if noise.noise_map[a] <= noise.noise_map[b] else b)
+	check(heat[loud].a >= heat[quiet_cell].a, "うるさいマスほど濃く塗る")
+	await wait_frames(2)
+	await capture("overlay_02_noise")
+
+	# エレベーター待ち: 待っている人が多い乗り場ほど赤く、人数も出す
+	await press_key(KEY_V)
+	check(main.overlay == "wait" and main.ui.overlay_label.text.contains("エレベーター待ち"), "もう一度Vでエレベーター待ちの色分けになる")
+	var hall := Vector2i(8, 18)
+	var waiting: Array = []
+	for i in overlay.WAIT_BUSY: # 乗り場で待っている人を置く（すぐに数えて、次のフレームまでに戻す）
+		var r = main.spawn_resident(hall)
+		r.state = r.State.WAITING
+		waiting.append(r)
+	check(overlay.waiting_counts().get(hall) == overlay.WAIT_BUSY, "乗り場で待っている人の数を数える（%d人）" % overlay.WAIT_BUSY)
+	check(overlay.heat_cells().get(hall).is_equal_approx(Color(1.0, 0.55, 0.15, 0.55)), "%d人以上待っている乗り場は橙" % overlay.WAIT_BUSY)
+	for r in waiting:
+		r.state = r.State.WALKING # 行き先のない「待っている人」のまま動かすとエラーになるので、戻してから消す
+		r.queue_free()
+
+	# もう一度Vで消える。メニューからも選べる（もう一度選ぶと消える）
+	await press_key(KEY_V)
+	check(main.overlay == "" and not main.ui.overlay_panel.visible and overlay.heat_cells().is_empty(), "もう一度Vで色分けが消える")
+	main.ui.do_menu_action("overlay_noise")
+	check(main.overlay == "noise" and main.ui.is_menu_on("overlay_noise"), "メニューからも騒音の色分けを出せる（チェックが付く）")
+	main.ui.do_menu_action("overlay_noise")
+	check(main.overlay == "", "出している色分けをもう一度選ぶと消える")
 	return true

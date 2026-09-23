@@ -27,6 +27,15 @@ const GRIME_ALPHA_PER_LEVEL := 0.07        # 悪化のレベル1につき、く�
 const GRIME_SPOT_COLOR := Color(0.2, 0.14, 0.06, 0.55) # 汚れの点
 const VIP_ONLY_COLOR := Color(1.0, 0.75, 0.1) # VIP専用のシャフトの印（金色）
 const BOMB_COLOR := Color(1.0, 0.25, 0.2) # 爆破予告のマスの印
+# 色分け表示の色（main.overlay）
+const HEAT_GOOD := Color(0.3, 0.9, 0.4, 0.45)   # ストレス: 評価が良い（緑）
+const HEAT_NORMAL := Color(1.0, 0.85, 0.2, 0.5) # 普通（黄）
+const HEAT_BAD := Color(1.0, 0.25, 0.25, 0.55)  # 悪い（赤）
+const HEAT_VACANT := Color(0.5, 0.5, 0.55, 0.5) # 空室（灰色）
+const NOISE_LOW := Color(1.0, 0.9, 0.3)         # 騒音: 少し（黄）〜 NOISE_HIGH（赤）
+const NOISE_HIGH := Color(1.0, 0.15, 0.1)
+const WAIT_BUSY := 4   # エレベーター待ち: この人数から橙、WAIT_JAM人から赤
+const WAIT_JAM := 8
 const FIRE_COLORS := [Color(1.0, 0.5, 0.1), Color(1.0, 0.8, 0.2)] # 燃えているマス（交互に点滅）
 const ROACH_COLOR := Color(0.25, 0.15, 0.1) # ゴキブリ
 const SOIL_COLOR := Color(0.36, 0.26, 0.18)       # 地下（1階より下）の土
@@ -128,6 +137,14 @@ func _draw() -> void:
 	if pollution > 0:
 		draw_grime(pollution, first, last, tile_size)
 
+	# 色分け表示（ストレス・騒音・エレベーター待ち）
+	if world.overlay != "":
+		var heat := heat_cells()
+		for cell in heat:
+			draw_rect(cell_rect(cell, tile_size), heat[cell])
+		if world.overlay == "wait":
+			draw_wait_counts(tile_size)
+
 	# カーソル下のマス
 	# 建設モードなら、建てたときに使うマス全体を強調する
 	if hover_visible:
@@ -135,6 +152,54 @@ func _draw() -> void:
 		var rect := cells_rect(world.get_hover_footprint(hover_cell), tile_size)
 		draw_rect(rect, Color(color, 0.25))
 		draw_rect(rect.grow(-px), color, false, 2.0 * px)
+
+# 色分け表示で塗るマスと色（マス -> 色）
+#   ストレス:         オフィス・客室・住宅を、評価のストレスで 緑（良い）・黄（普通）・赤（悪い）に。空室は灰色
+#   騒音:             騒音のあるマスを、うるさいほど濃い赤に（noise_system.noise_map）
+#   エレベーター待ち: 乗り場で待っている人がいるシャフトのマスを、人数が多いほど 黄 → 橙 → 赤 に
+func heat_cells() -> Dictionary:
+	var heat := {}
+	match world.overlay:
+		"stress":
+			var tenants = world.tenant_system
+			var colors := {tenants.Rating.GOOD: HEAT_GOOD, tenants.Rating.NORMAL: HEAT_NORMAL, tenants.Rating.BAD: HEAT_BAD}
+			for records in [tenants.offices, tenants.rooms, tenants.homes]:
+				for origin in records:
+					if not world.building_grid.has(origin):
+						continue
+					var record: Dictionary = records[origin]
+					var color: Color = HEAT_VACANT if record.get("vacant", false) else colors[record.rating]
+					for cell in world.get_unit_cells(origin):
+						heat[cell] = color
+		"noise":
+			var noise = world.noise_system
+			for cell in noise.noise_map:
+				var level: float = float(noise.noise_map[cell]) / noise.NOISE_MAX
+				heat[cell] = Color(NOISE_LOW.lerp(NOISE_HIGH, level), 0.15 + 0.45 * level)
+		"wait":
+			var waiting := waiting_counts()
+			for cell in waiting:
+				var n: int = waiting[cell]
+				var color := Color(1.0, 0.85, 0.2, 0.45) if n < WAIT_BUSY else (Color(1.0, 0.55, 0.15, 0.55) if n < WAIT_JAM else Color(1.0, 0.2, 0.2, 0.65))
+				heat[cell] = color
+	return heat
+
+# 乗り場で待っている人の数（マス -> 人数）
+func waiting_counts() -> Dictionary:
+	var counts := {}
+	for resident in world.residents:
+		if is_instance_valid(resident) and resident.state == resident.State.WAITING:
+			counts[resident.cell] = counts.get(resident.cell, 0) + 1
+	return counts
+
+# エレベーター待ち: 待っている人数を、乗り場のマスに数字で出す
+func draw_wait_counts(tile_size: Vector2) -> void:
+	var font: Font = ThemeDB.fallback_font
+	var waiting := waiting_counts()
+	for cell in waiting:
+		var pos := Vector2(cell) * tile_size + Vector2(1, tile_size.y - 3)
+		draw_string_outline(font, pos, str(waiting[cell]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, 2, Color(0, 0, 0, 0.8))
+		draw_string(font, pos, str(waiting[cell]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
 
 func cell_rect(cell: Vector2i, tile_size: Vector2) -> Rect2:
 	return Rect2(Vector2(cell) * tile_size, tile_size)

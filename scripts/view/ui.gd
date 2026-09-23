@@ -78,6 +78,8 @@ var log_panel: Control     # メッセージの記録（⌘L）
 var log_label: Label
 var log_scroll: ScrollContainer
 var chart_panel: Control   # 収支のグラフ（⌘G）
+var overlay_panel: Control # 色分け表示の凡例（Vキー）
+var overlay_label: RichTextLabel
 var tutorial_panel: Control # はじめての案内
 var tutorial_label: Label
 var title_panel: Control   # タイトル画面
@@ -292,6 +294,23 @@ func build_bars() -> void:
 	tutorial_row.add_child(tutorial_panel)
 	tutorial_row.add_child(make_spacer())
 	
+	# --- 色分け表示の凡例（上部バーの下、左寄せ。色分けを出している間だけ） ---
+	var overlay_row = HBoxContainer.new()
+	overlay_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(overlay_row)
+	overlay_label = RichTextLabel.new()
+	overlay_label.bbcode_enabled = true
+	overlay_label.fit_content = true
+	overlay_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	overlay_label.scroll_active = false
+	overlay_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_label.add_theme_font_size_override("normal_font_size", 13 * UI_SCALE)
+	overlay_panel = make_bar(overlay_label)
+	overlay_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_panel.visible = false
+	overlay_row.add_child(overlay_panel)
+	overlay_row.add_child(make_spacer())
+
 	# --- 操作説明（上部バーの下、右寄せ） ---
 	var help_row = HBoxContainer.new()
 	help_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -358,6 +377,7 @@ func build_bars() -> void:
 		"ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 		"一時停止: スペースキー または 上部バーの ⏸ のボタン（止めている間も建設・撤去・カメラの移動はできる）",
+		"色分け表示: V で ストレス → 騒音 → エレベーター待ち → 消す と切り替え（どこが混んでいるか・うるさいかがひと目でわかる）",
 		"取り消し: ⌘Z で直前の建設・撤去を1つずつ戻す（払ったお金も戻る。その日の決算までの操作だけ）",
 	])
 	help_label.add_theme_font_size_override("font_size", 13 * UI_SCALE) # 行数が多いので少し小さめ
@@ -566,6 +586,25 @@ func make_icon(name: String) -> TextureRect:
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return icon
 
+# 色分け表示の凡例（色の見方）。色分けを消しているときは隠す
+func update_overlay_legend() -> void:
+	overlay_panel.visible = world.overlay != ""
+	var overlay = world.grid_overlay
+	var swatch := func(color: Color, text: String) -> String:
+		return "[color=#%s]■[/color] %s" % [Color(color, 1.0).to_html(false), text]
+	match world.overlay:
+		"stress":
+			overlay_label.text = "色分け: ストレス（テナントの評価）  %s  %s  %s  %s  （Vで次へ）" % [
+				swatch.call(overlay.HEAT_GOOD, "良い"), swatch.call(overlay.HEAT_NORMAL, "普通"),
+				swatch.call(overlay.HEAT_BAD, "悪い"), swatch.call(overlay.HEAT_VACANT, "空室")]
+		"noise":
+			overlay_label.text = "色分け: 騒音  %s  %s  （Vで次へ）" % [
+				swatch.call(overlay.NOISE_LOW, "少しうるさい"), swatch.call(overlay.NOISE_HIGH, "とてもうるさい")]
+		"wait":
+			overlay_label.text = "色分け: エレベーター待ち（数字は待っている人数）  %s  %s  %s  （Vで消す）" % [
+				swatch.call(Color(1.0, 0.85, 0.2), "%d人まで" % (overlay.WAIT_BUSY - 1)),
+				swatch.call(Color(1.0, 0.55, 0.15), "%d人から" % overlay.WAIT_BUSY), swatch.call(Color(1.0, 0.2, 0.2), "%d人から" % overlay.WAIT_JAM)]
+
 # 一時停止のボタン: 動いている間は「⏸」のアイコン、止めている間は「▶」のアイコンとオレンジの枠
 func update_pause_button() -> void:
 	if not pause_button:
@@ -691,6 +730,9 @@ const MENUS := [
 	{"name": "表示", "items": [
 		{"text": "ビルの状況（★を押しても開く）", "action": "stats", "check": true},
 		{"text": "経路（人の通り道）（R）", "action": "routes", "check": true},
+		{"text": "色分け: ストレス（V）", "action": "overlay_stress", "check": true},
+		{"text": "色分け: 騒音（V）", "action": "overlay_noise", "check": true},
+		{"text": "色分け: エレベーター待ち（V）", "action": "overlay_wait", "check": true},
 		{"text": "メッセージの記録（⌘L）", "action": "log", "check": true},
 		{"text": "収支のグラフ（⌘G）", "action": "chart", "check": true},
 		{"text": "拡大（⌘+）", "action": "zoom_in"},
@@ -739,6 +781,8 @@ func is_menu_on(action: String) -> bool:
 		"help": return help_panel.visible
 		"mute": return not world.audio_system.muted
 		"pause": return world.paused
+	if action.begins_with("overlay_"):
+		return world.overlay == action.trim_prefix("overlay_")
 	return false
 
 # メニューを選んだときの処理。ショートカットと同じことをする
@@ -760,6 +804,9 @@ func do_menu_action(action: String) -> void:
 		"zoom_reset": world.camera.reset_zoom()
 		"speed": world.set_speed(world.next_speed())
 		"pause": world.toggle_pause()
+		"overlay_stress", "overlay_noise", "overlay_wait":
+			var mode := action.trim_prefix("overlay_")
+			world.set_overlay("" if world.overlay == mode else mode) # 出しているものをもう一度選ぶと消す
 		"undo":
 			if world.started:
 				world.undo()

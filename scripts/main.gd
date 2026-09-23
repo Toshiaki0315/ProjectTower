@@ -135,6 +135,10 @@ var started := false               # ゲームが始まっているか（タイ�
 var drag_button := 0               # 押したままなぞっているマウスのボタン（0なら押していない）
 var drag_last_cell := Vector2i.ZERO # なぞっている間に、最後に処理したマス
 var show_routes := false           # 経路（人の通り道）を線で表示するか
+# 色分け表示（Vキーで 消す → ストレス → 騒音 → エレベーター待ち → 消す と切り替える。見た目だけ）
+const OVERLAYS := ["", "stress", "noise", "wait"]
+const OVERLAY_NAMES := {"stress": "ストレス", "noise": "騒音", "wait": "エレベーター待ち"}
+var overlay := "" # 今の色分け（"" なら出さない）
 var test_tools := false            # テスト用の道具（「住人（テスト）」）を建設メニューに出すか。テストのときだけ true にする
 var message_log: Array[String] = [] # ゲーム開始からのメッセージ（時刻つき）
 var last_message := ""             # 一番新しいメッセージ（時刻なし）
@@ -686,7 +690,7 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 		build_at(map_pos)
 
 # ショートカット。受け付けたら true
-#   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / R: 経路の表示 / Space: 一時停止・再開 / Esc: 開いているパネルを閉じる
+#   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / R: 経路の表示 / V: 色分け表示 / Space: 一時停止・再開 / Esc: 開いているパネルを閉じる
 #   ⌘L: メッセージの記録の開閉 / ⌘G: 収支のグラフの開閉
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
 #   ⌘S: セーブ / ⌘O: セーブデータの読み込み / ⌘Z: 直前の建設・撤去の取り消し
@@ -705,6 +709,8 @@ func handle_shortcut(event: InputEventKey) -> bool:
 				toggle_pause()
 			KEY_R:
 				toggle_routes()
+			KEY_V:
+				set_overlay(OVERLAYS[(OVERLAYS.find(overlay) + 1) % OVERLAYS.size()])
 			KEY_ESCAPE:
 				return close_panels()
 			_:
@@ -743,6 +749,15 @@ func close_panels() -> bool:
 			panel.visible = false
 			closed = true
 	return closed
+
+# 色分け表示を切り替える（"" で消す）。見た目だけの機能で、ゲームの計算には触らない
+func set_overlay(mode: String) -> void:
+	overlay = mode
+	ui.update_overlay_legend()
+	if mode == "":
+		show_message("色分け表示を消しました（Vキーで切り替え）")
+	else:
+		show_message("色分け表示: %s（Vキーで次へ）" % OVERLAY_NAMES[mode])
 
 # 経路（人の通り道）の表示を切り替える。見た目だけの機能で、経路探索や移動には触らない
 func toggle_routes() -> void:
