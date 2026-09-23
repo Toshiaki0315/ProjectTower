@@ -419,60 +419,56 @@ func _get_menu_target_width() -> float:
 	var font: Font = ThemeDB.fallback_font
 	var font_size: int = BASE_FONT_SIZE * UI_SCALE
 	var max_w: float = 0.0
-	for key in world.BUILDINGS:
-		var b = world.BUILDINGS[key]
-		var nw: float = font.get_string_size(b.name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		var cw: float = font.get_string_size("%s" % world.money_text(b.cost), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		max_w = maxf(max_w, nw + cw)
-	# カゴ追加も価格表示があるので幅計算に含める
-	var car_nw: float = font.get_string_size("カゴ追加", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	var car_cw: float = font.get_string_size("%s" % world.money_text(world.elevator_system.CAR_COST), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	max_w = maxf(max_w, car_nw + car_cw)
+	for group in world.MODE_GROUPS: # メニューに並ぶ項目のうち、名前と金額が一番長いもの
+		for mode in group.modes:
+			var nw: float = font.get_string_size(mode_name(mode), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+			var cw: float = font.get_string_size(mode_price_text(mode), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+			max_w = maxf(max_w, nw + cw)
 	var space_w: float = font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	_menu_target_width = max_w + space_w * 4
 	return _menu_target_width
 
 func get_mode_label(mode: String) -> String:
-	if mode == world.MODE_RESIDENT:
-		return "住人（テスト）"
-	if mode == world.MODE_ADD_CAR:
-		var car_name := "カゴ追加"
-		var car_cost_text := "%s" % world.money_text(world.elevator_system.CAR_COST)
-		var font: Font = ThemeDB.fallback_font
-		var font_size: int = BASE_FONT_SIZE * UI_SCALE
-		var name_w: float = font.get_string_size(car_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		var cost_w: float = font.get_string_size(car_cost_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		var space_w: float = font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		var target_w: float = _get_menu_target_width()
-		var gap: float = target_w - name_w - cost_w
-		var num_spaces: int = maxi(int(round(gap / space_w)), 2)
-		return "%s%s%s" % [car_name, " ".repeat(num_spaces), car_cost_text]
-	if mode == world.MODE_SET_HOME:
-		return "待機階を設定"
-	if mode == world.MODE_SERVICE:
-		return "稼働時間帯"
-	if mode == world.MODE_VIP_ONLY:
-		return "VIP専用"
-	if mode == world.MODE_RENT:
-		return "家賃"
-	if mode == world.MODE_DEMOLISH:
-		return "撤去"
-	var name: String = world.BUILDINGS[mode].name
-	var cost_text: String = "%s" % world.money_text(world.BUILDINGS[mode].cost)
+	return priced_label(mode_name(mode), mode_price_text(mode))
+
+# メニューに出す名前
+func mode_name(mode: String) -> String:
+	match mode:
+		world.MODE_RESIDENT: return "住人（テスト）"
+		world.MODE_ADD_CAR: return "カゴ追加"
+		world.MODE_SET_HOME: return "待機階を設定"
+		world.MODE_SERVICE: return "稼働時間帯"
+		world.MODE_VIP_ONLY: return "VIP専用"
+		world.MODE_RENT: return "家賃"
+		world.MODE_DEMOLISH: return "撤去"
+	return world.BUILDINGS[mode].name
+
+# メニューの右側に出す金額（建設費。設定を変えるだけのものは「無料」）
+func mode_price_text(mode: String) -> String:
+	match mode:
+		world.MODE_ADD_CAR:
+			return world.money_text(world.elevator_system.CAR_COST)
+		world.MODE_DEMOLISH:
+			return world.money_text(world.MIN_DEMOLISH_FEE) + "〜" # 建物ごとに違う（建設費の1割・最低額あり）
+		world.MODE_RESIDENT, world.MODE_SET_HOME, world.MODE_SERVICE, world.MODE_VIP_ONLY, world.MODE_RENT:
+			return "無料"
+	return world.money_text(world.BUILDINGS[mode].cost)
+
+# 名前を左、金額を右にそろえた1行（間を空白で埋めて、金額の右端をそろえる）
+func priced_label(name: String, price_text: String) -> String:
 	var font: Font = ThemeDB.fallback_font
 	var font_size: int = BASE_FONT_SIZE * UI_SCALE
 	var name_w: float = font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	var cost_w: float = font.get_string_size(cost_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var cost_w: float = font.get_string_size(price_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	var space_w: float = font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	var target_w: float = _get_menu_target_width()
-	var gap: float = target_w - name_w - cost_w
+	var gap: float = _get_menu_target_width() - name_w - cost_w
 	var num_spaces: int = maxi(int(round(gap / space_w)), 2)
-	return "%s%s%s" % [name, " ".repeat(num_spaces), cost_text]
+	return "%s%s%s" % [name, " ".repeat(num_spaces), price_text]
 
 # 選んだもののくわしい説明（建設メニューにカーソルを合わせると出る）
 func get_mode_info(mode: String) -> String:
 	if mode == world.MODE_RESIDENT:
-		return "建物をクリックで住人を置き、行き先をクリック"
+		return "無料（テスト用。建物をクリックで住人を置き、行き先をクリック）"
 	if mode == world.MODE_SET_HOME:
 		return "無料（シャフトをクリックでその階を待機階に。もう一度クリックで解除）"
 	if mode == world.MODE_SERVICE:

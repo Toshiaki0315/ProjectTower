@@ -2252,7 +2252,7 @@ func run_home_floor_scenario() -> bool:
 	check(car.floor_y == 18 and not car.has_home_floor, "最初は待機階がなく、カゴは建てた階で止まったまま")
 	
 	await choose_mode("set_home")
-	check(main.mode_select.text == "待機階を設定" and main.mode_select.tooltip_text.begins_with("無料"), "建設メニューに「待機階を設定」がある")
+	check(main.mode_select.text.begins_with("待機階を設定") and main.mode_select.text.ends_with("無料") and main.mode_select.tooltip_text.begins_with("無料"), "建設メニューに「待機階を設定」がある")
 	await click_cell(Vector2i(0, 17), MOUSE_BUTTON_LEFT)
 	check(main.last_message == "待機階はエレベーターのシャフトに設定します", "シャフト以外をクリックすると理由がメッセージで出る")
 	check(not main.can_click_cell(Vector2i(0, 17)) and main.can_click_cell(Vector2i(8, 16)), "シャフトのマスだけ操作できる（緑）")
@@ -2307,7 +2307,7 @@ func run_service_hours_scenario() -> bool:
 	
 	# クリックするたびに 終日 → 6時〜24時 → 8時〜20時 と切り替わる
 	await choose_mode("service")
-	check(main.mode_select.text == "稼働時間帯", "建設メニューに「稼働時間帯」がある")
+	check(main.mode_select.text.begins_with("稼働時間帯") and main.mode_select.text.ends_with("無料"), "建設メニューに「稼働時間帯」（無料）がある")
 	await click_cell(Vector2i(0, 17), MOUSE_BUTTON_LEFT)
 	check(main.last_message == "稼働時間帯はエレベーターのシャフトに設定します", "シャフト以外をクリックすると理由がメッセージで出る")
 	await click_cell(Vector2i(8, 16), MOUSE_BUTTON_LEFT)
@@ -3559,7 +3559,7 @@ func run_usability_scenario() -> bool:
 	
 	# 撤去モード: 左クリックで撤去できる
 	await choose_mode("demolish")
-	check(main.mode_select.text == "撤去", "建設メニューに「撤去」がある")
+	check(main.mode_select.text.begins_with("撤去") and main.mode_select.text.ends_with("2,000Cr〜"), "建設メニューに「撤去」があり、撤去費用（最低2,000Cr〜）が出る")
 	check(main.can_click_cell(Vector2i(11, 18)) and not main.can_click_cell(Vector2i(13, 18)), "建物のあるマスだけ操作できる（緑）")
 	await click_cell(Vector2i(11, 18), MOUSE_BUTTON_LEFT)
 	check(main.is_cell_empty(Vector2i(11, 18)), "撤去モードでは左クリックで撤去できる")
@@ -4397,6 +4397,22 @@ func run_menu_scenario() -> bool:
 		names.append(String(popup.name))
 	check(names == ["ファイル", "表示", "ゲーム", "ヘルプ"], "メニューは ファイル・表示・ゲーム・ヘルプ の4つ")
 	check(main.menu_bar.prefer_global_menu, "macOSでは画面最上部のメニューバーに出す設定になっている")
+	# 建設メニューのどの項目にも、右側に金額（設定を変えるだけのものは「無料」）が出る
+	var no_price: Array = []
+	for i in main.mode_select.item_count:
+		if main.mode_select.is_item_separator(i):
+			continue
+		var text: String = main.mode_select.get_item_text(i)
+		if not (text.ends_with("Cr") or text.ends_with("Cr〜") or text.ends_with("無料")):
+			no_price.append(text)
+	check(no_price.is_empty(), "建設メニューのどの項目にも金額か「無料」が出る（出ていない項目: %s）" % ", ".join(no_price))
+	var widths := {}
+	for i in main.mode_select.item_count:
+		if not main.mode_select.is_item_separator(i):
+			widths[ThemeDB.fallback_font.get_string_size(main.mode_select.get_item_text(i), HORIZONTAL_ALIGNMENT_LEFT, -1, ui.BASE_FONT_SIZE * ui.UI_SCALE).x] = true
+	var sorted_widths: Array = widths.keys()
+	sorted_widths.sort()
+	check(sorted_widths[-1] - sorted_widths[0] < ThemeDB.fallback_font.get_string_size("  ", HORIZONTAL_ALIGNMENT_LEFT, -1, ui.BASE_FONT_SIZE * ui.UI_SCALE).x, "金額の右端がそろっている")
 
 	# 「ヘルプ > 操作説明」で、F1と同じように開け閉めできる
 	check(not main.help_panel.visible, "操作説明は最初は閉じている")
@@ -4656,7 +4672,7 @@ func run_vip_elevator_scenario() -> bool:
 
 	# エレベーターAをVIP専用にする
 	await choose_mode("vip_only")
-	check(main.mode_select.text == "VIP専用" and main.mode_select.tooltip_text.contains("VIPだけが乗れる"), "建設メニューに「VIP専用」がある")
+	check(main.mode_select.text.begins_with("VIP専用") and main.mode_select.text.ends_with("無料") and main.mode_select.tooltip_text.contains("VIPだけが乗れる"), "建設メニューに「VIP専用」がある")
 	await click_cell(Vector2i(9, 18), MOUSE_BUTTON_LEFT)
 	check(elevators.is_vip_only(Vector2i(9, 16)), "シャフトをクリックするとVIP専用になる（どの階でも同じシャフト）")
 	check(logged("VIP専用にしました"), "設定したことがメッセージで出る")
@@ -4713,7 +4729,7 @@ func run_rent_scenario() -> bool:
 
 	# 「家賃」でオフィスをクリックするたびに 普通 → 高い → 安い → 普通 と切り替わる
 	await choose_mode("rent")
-	check(main.mode_select.text == "家賃" and main.mode_select.tooltip_text.contains("普通 → 高い → 安い"), "建設メニューに「家賃」がある")
+	check(main.mode_select.text.begins_with("家賃") and main.mode_select.text.ends_with("無料") and main.mode_select.tooltip_text.contains("普通 → 高い → 安い"), "建設メニューに「家賃」がある")
 	await click_cell(Vector2i(2, 17), MOUSE_BUTTON_LEFT)
 	check(tenants.rent_info(office).name == "高い" and economy.office_rent(Vector2i(3, 17)) == 14000, "高い: 賃料が1.4倍（1マス14,000Cr）")
 	check(logged("家賃を「高い」（1マス1日 14,000Cr）にしました"), "切り替えたことがメッセージで出る")
