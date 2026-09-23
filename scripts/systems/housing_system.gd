@@ -5,6 +5,8 @@ extends Node
 #   家族の人数は住宅のマス数と同じで、1人ずつ自分のマス（部屋）を持つ。
 #   入居:     まだ入居していない住宅には、夕方に入口から家族が来る。
 #             最初の1人が家に着いたら入居が決まり、販売収入 SALE_PRICE が1回だけ入る。
+#             販売収入は建設費より少し安い（建てるだけでお金が増えて、いくらでも建て増せてしまわないように）。
+#             そのかわり、入居している間は毎日の決算で管理費 MANAGEMENT_FEE が入る。
 #   毎日:     家族はそれぞれ、朝 LEAVE_START〜LEAVE_END に家から入口へ出かけ（ビルの外に出る）、
 #             夕方 RETURN_START〜RETURN_END に入口から家に帰ってくる。
 #   休日:     ゆっくり HOLIDAY_LEAVE_START〜HOLIDAY_LEAVE_END に出かけ、
@@ -20,7 +22,8 @@ const HOLIDAY_LEAVE_START := 10 * 60
 const HOLIDAY_LEAVE_END := 12 * 60
 const HOLIDAY_RETURN_START := 15 * 60
 const HOLIDAY_RETURN_END := 18 * 60
-const SALE_PRICE := 700000
+const SALE_PRICE := 350000     # 販売収入（建設費40万Crより少し安い）
+const MANAGEMENT_FEE := 3000   # 入居している住宅1戸から、毎日入る管理費
 const RESIDENT_COLOR := Color(0.65, 1.0, 0.6)
 
 var world: Node2D # main.gd

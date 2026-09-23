@@ -9,13 +9,15 @@ extends Node
 #   population: 必要な人口
 #   buildings:  少なくとも1マス必要な建物
 #   vip:        VIPの宿泊（最終試験）に合格していること（vip_system）
+#   unhappy:    不満なテナント（評価が「悪い」か、退去しそうなオフィス・住宅）が、入居しているオフィス・住宅の
+#               この割合以下であること（人を増やすだけでなく、エレベーターの混雑などを片づけないと上がらないように）
 # ---------------------------------------------------
 
 const REQUIREMENTS := {
 	2: {"population": 50, "buildings": ["security"]},
 	3: {"population": 120, "buildings": ["medical", "recycling"]},
-	4: {"population": 250, "buildings": ["subway"], "vip": true},
-	5: {"population": 500, "buildings": ["observatory", "wedding"]}, # 最高評価。屋上の展望台と結婚式場のある、名所のタワー
+	4: {"population": 250, "buildings": ["subway"], "vip": true, "unhappy": 0.1},
+	5: {"population": 500, "buildings": ["observatory", "wedding"], "unhappy": 0.1}, # 最高評価。屋上の展望台と結婚式場のある、名所のタワー
 }
 const MAX_STARS := 5
 const BONUS_PER_STAR := 0.25
@@ -46,9 +48,28 @@ func missing_for_next() -> Array[String]:
 	for type in req.buildings:
 		if world.find_cells_of_type(type).is_empty():
 			missing.append(world.BUILDINGS[type].name)
+	if req.has("unhappy") and unhappy_rate() > req.unhappy:
+		missing.append("不満なテナント%d割以下（今%d%%）" % [int(req.unhappy * 10), int(round(unhappy_rate() * 100))])
 	if req.get("vip", false) and not world.vip_system.passed:
 		missing.append("VIPの宿泊")
 	return missing
+
+# 不満なテナントの割合（入居しているオフィス・住宅のうち、評価が「悪い」か、退去しそうなもの）
+func unhappy_rate() -> float:
+	var tenants = world.tenant_system
+	var total := 0
+	var unhappy := 0
+	for records in [tenants.offices, tenants.homes]:
+		for origin in records:
+			var record: Dictionary = records[origin]
+			if record.vacant:
+				continue
+			if records == tenants.homes and not (world.housing_system.homes.has(origin) and world.housing_system.homes[origin].moved_in):
+				continue # まだ入居していない住宅は数えない
+			total += 1
+			if record.rating == tenants.Rating.BAD or tenants.is_about_to_leave(origin):
+				unhappy += 1
+	return float(unhappy) / total if total > 0 else 0.0
 
 # VIPの宿泊だけが足りない状態か（VIPはこのときに来館する）
 func waiting_for_vip() -> bool:

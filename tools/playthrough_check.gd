@@ -33,6 +33,7 @@ const RIGHT_HOMES := [11, 14, 17, 20]
 const RESERVE := 300000    # 手元に残しておくお金（急な出費のため）
 const CARS_PER_PERSON := 30 # 人口このくらいにつき、カゴを1台足す
 const FLOORS_PER_GUARD := 5 # この階数ごとに警備室を1つ置く（火事を早く消せるように）
+const UNHAPPY_LIMIT := 0.08 # 不満なテナントがこの割合を超えたら、建て増しを止める
 
 var main: Node2D
 var days := 180
@@ -57,7 +58,7 @@ func _init() -> void:
 	main.tutorial_system.finished = true
 	build_start()
 
-	print("日付\t資金\t人口\t★\t収支\t退去間近\t空室\tゴミ/処理能力\t目標")
+	print("日付\t資金\t人口\t★\t収支\t退去間近\t空室\t不満\tゴミ/処理能力\t目標")
 	Engine.time_scale = 60.0
 	var last_day := 0
 	while main.clock.day <= days:
@@ -107,7 +108,8 @@ func add_shaft_if_needed() -> bool:
 		var x: int = SHAFT_XS[i]
 		if not main.is_cell_empty(Vector2i(x, GROUND)):
 			continue
-		if main.rating_system.population() < SHAFT_POPULATION[i]:
+		# 人口が増えたとき、または不満なテナントが多い（エレベーターが混んでいる）ときに足す
+		if main.rating_system.population() < SHAFT_POPULATION[i] and main.rating_system.unhappy_rate() <= UNHAPPY_LIMIT:
 			return false
 		var floors := 0
 		for cell: Vector2i in main.building_grid:
@@ -161,7 +163,20 @@ func grow_once() -> bool:
 		return true
 	if main.rating_system.population() >= 40 and widen_lobby():
 		return true
+	# 不満なテナントが増えてきたら、建て増しを止めて落ち着くのを待つ（★4・★5には満足度も要るため）
+	if main.rating_system.unhappy_rate() > UNHAPPY_LIMIT:
+		return add_any_car()
 	return build_next_unit()
+
+# どのシャフトでもよいので、カゴを1台足す（不満なテナントが多いとき）
+func add_any_car() -> bool:
+	for x in SHAFT_XS:
+		var cell := Vector2i(x, GROUND)
+		if not main.is_cell_empty(cell) and main.elevator_system.get_add_car_problem(cell) == "" \
+				and main.funds > main.elevator_system.CAR_COST + RESERVE:
+			main.elevator_system.add_car(cell)
+			return true
+	return false
 
 # 焼け跡を1つ撤去する（撤去したら true）
 func clear_ruin() -> bool:
@@ -314,8 +329,9 @@ func report_day() -> void:
 	var report: Dictionary = main.economy_system.last_report
 	var tenants = main.tenant_system
 	var goal = main.goal_system.current()
-	print("%s\t%s\t%d\t%d\t%s\t%d\t%d\t%d/%d\t%s" % [
+	print("%s\t%s\t%d\t%d\t%s\t%d\t%d\t%d%%\t%d/%d\t%s" % [
 		main.clock.date_text(report.day), main.format_money(main.funds), main.rating_system.population(),
 		main.rating_system.stars, main.format_money(report.total, true),
-		tenants.count_about_to_leave(), tenants.count_vacant(), report.garbage, main.economy_system.recycling_capacity(),
+		tenants.count_about_to_leave(), tenants.count_vacant(), int(main.rating_system.unhappy_rate() * 100),
+		report.garbage, main.economy_system.recycling_capacity(),
 		"達成" if goal == null else goal.name.substr(0, 16)])

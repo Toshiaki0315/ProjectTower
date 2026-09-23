@@ -58,7 +58,7 @@ func _draw() -> void:
 func summary(report: Dictionary) -> String:
 	var items: Array[String] = []
 	for item in [["賃料", "rent"], ["宿泊", "hotel"], ["飲食", "food"], ["ショップ", "shop"], ["映画館", "cinema"], ["展望台", "observatory"],
-			["住宅", "housing"], ["イベント", "event"], ["ボーナス", "bonus"]]:
+			["住宅", "housing"], ["管理費", "housing_fee"], ["イベント", "event"], ["ボーナス", "bonus"]]:
 		if report.get(item[1], 0) > 0:
 			items.append("%s +%s" % [item[0], world.format_money(report[item[1]])])
 	for item in [["維持費", "maintenance"], ["ゴミ", "garbage_cost"], ["返金", "refund"]]:

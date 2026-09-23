@@ -9,6 +9,7 @@ extends Node
 #   宿泊料:   その日にチェックアウトした客の宿泊料（hotel_system が記録する）
 #   飲食売上: その日に飲食店で食事をした客の代金（commerce_system が記録する）
 #   住宅販売: その日に入居が決まった住宅の販売収入（housing_system が記録する）
+#   管理費:   入居している住宅1戸につき housing_system.MANAGEMENT_FEE
 #   住宅の返金: 評価の悪い日が続いて家族が退去した住宅の販売収入を返す（tenant_system が決める）
 #   イベント: その日に結婚式場・イベントホールに来た客の料金（event_system が記録する）
 #   評価ボーナス: 賃料と宿泊料に、ビルの評価（★）に応じた割合を上乗せ（rating_system）
@@ -104,6 +105,7 @@ func settle(day: int) -> void:
 	var checkouts: int = world.hotel_system.checkouts_by_day.get(day, 0)
 	var meals: int = world.commerce_system.meals_by_day.get(day, 0)
 	var housing: int = world.housing_system.revenue_by_day.get(day, 0)
+	var housing_fee: int = world.housing_system.count_moved_in() * world.housing_system.MANAGEMENT_FEE
 	var event: int = world.event_system.revenue_by_day.get(day, 0)
 	var shop: int = world.visitor_system.revenue_by_day.get(day, 0)
 	var cinema: int = world.visitor_system.cinema_revenue_by_day.get(day, 0)
@@ -125,8 +127,8 @@ func settle(day: int) -> void:
 	# テナントの評価（人のストレスから）と、オフィス・住宅の退去・入居。住宅の退去では販売収入を返金する
 	var tenants: Dictionary = world.tenant_system.evaluate_day(day)
 	var refund: int = tenants.refund
-	var total := rent + hotel + food + shop + cinema + observatory + housing + event + bonus - maintenance - garbage_cost - refund
-	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "shop": shop, "cinema": cinema, "observatory": observatory, "housing": housing, "event": event, "bonus": bonus, "maintenance": maintenance,
+	var total := rent + hotel + food + shop + cinema + observatory + housing + housing_fee + event + bonus - maintenance - garbage_cost - refund
+	last_report = {"day": day, "rent": rent, "hotel": hotel, "food": food, "shop": shop, "cinema": cinema, "observatory": observatory, "housing": housing, "housing_fee": housing_fee, "event": event, "bonus": bonus, "maintenance": maintenance,
 		"garbage": garbage, "garbage_cost": garbage_cost, "unclean": unclean, "pollution": pollution, "refund": refund, "total": total}
 	history.append(last_report)
 	if history.size() > HISTORY_MAX:
@@ -135,7 +137,7 @@ func settle(day: int) -> void:
 	world.update_funds_display() # last_reportを更新してから表示する（前日の収支も表示されるため）
 	# 0の項目は省いて短くする
 	var items: Array[String] = []
-	for item in [["賃料", rent], ["宿泊料", hotel], ["飲食", food], ["ショップ", shop], ["映画館", cinema], ["展望台", observatory], ["住宅販売", housing], ["イベント", event], ["評価ボーナス", bonus]]:
+	for item in [["賃料", rent], ["宿泊料", hotel], ["飲食", food], ["ショップ", shop], ["映画館", cinema], ["展望台", observatory], ["住宅販売", housing], ["管理費", housing_fee], ["イベント", event], ["評価ボーナス", bonus]]:
 		if item[1] > 0:
 			items.append("%s +%s" % [item[0], world.money_text(item[1])])
 	if maintenance > 0:

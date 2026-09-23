@@ -1123,7 +1123,7 @@ func run_housing_scenario() -> bool:
 		if housing.is_at_home(m):
 			rooms[m.resident.cell] = true
 	check(rooms.size() == 3, "家族3人はそれぞれ別のマス（部屋）にいる")
-	check(housing.revenue_by_day.get(1, 0) == 1400000, "入居で販売収入70万Cr×2が入る")
+	check(housing.revenue_by_day.get(1, 0) == 700000, "入居で販売収入35万Cr×2が入る")
 	check(housing.homes[homes[0]].members[0].resident.base_color == housing.RESIDENT_COLOR, "入居者は緑の服")
 	var others: int = main.commute_system.workers.size() - main.commute_system.count_unreachable() + main.hotel_system.total_capacity()
 	check(main.rating_system.population() == others + 6, "入居者6人の分だけ人口が増える")
@@ -1134,8 +1134,10 @@ func run_housing_scenario() -> bool:
 	# 2日目の朝: 1日目の決算に販売収入が入り、入居者は出かける
 	main.clock.set_time(2, 6, 59)
 	await wait_until(func(): return main.economy_system.last_report.get("day") == 1, 10.0)
-	check(main.economy_system.last_report.get("housing") == 1400000, "1日目の決算に住宅販売140万Crが入る")
-	check(main.last_message.contains("住宅販売 +1,400,000Cr"), "決算のメッセージに住宅販売が出る")
+	check(main.economy_system.last_report.get("housing") == 700000, "1日目の決算に住宅販売70万Crが入る")
+	check(logged("住宅販売 +700,000Cr"), "決算のメッセージに住宅販売が出る")
+	check(main.economy_system.last_report.get("housing_fee") == 2 * housing.MANAGEMENT_FEE and logged("管理費 +6,000Cr"), "入居している住宅2戸から、毎日の管理費（1戸3,000Cr）が入る")
+	check(housing.SALE_PRICE < main.BUILDINGS.housing.cost, "販売収入は建設費より安い（建てるだけでお金が増えない）")
 	check(main.economy_system.last_report.get("garbage") >= 2, "入居済みの住宅2戸からゴミが出る（1戸につき1）")
 	await wait_until(func(): return main.clock.minute_of_day() >= 10 * 60, 30.0)
 	check(housing.count_at_home() == 0, "朝のうちに入居者は全員出かけている")
@@ -1993,8 +1995,8 @@ func run_home_rating_scenario() -> bool:
 		await run_home_evening(day, true)
 	check(tenants.homes[home].vacant, "家族のストレスが高い日が3日続くと、家族が退去する")
 	check(not housing.homes[home].moved_in and housing.count_at_home() == 0, "退去すると住宅は空になる")
-	check(main.economy_system.last_report.get("refund") == 700000, "退去した住宅の販売収入70万Crを返金する")
-	check(main.last_message.contains("住宅の返金 -700,000Cr（1戸退去）"), "決算のメッセージに返金が出る")
+	check(main.economy_system.last_report.get("refund") == 350000, "退去した住宅の販売収入35万Crを返金する")
+	check(logged("住宅の返金 -350,000Cr（1戸退去）"), "決算のメッセージに返金が出る")
 	await hover_cell(home)
 	check(main.hover_label.text.contains("退去・2日後に入居者を募集"), "カーソルを合わせると、入居者の募集までの日数が出る")
 	await capture("home_rating_01_moved_out")
@@ -2007,7 +2009,7 @@ func run_home_rating_scenario() -> bool:
 	check(not tenants.homes[home].vacant, "退去して2日たつと、また入居者を募集する")
 	await run_home_evening(6, false)
 	check(housing.homes[home].moved_in, "新しい家族が入居する")
-	check(main.economy_system.last_report.get("housing") == 700000, "新しい家族の入居で、また販売収入70万Crが入る")
+	check(main.economy_system.last_report.get("housing") == 350000, "新しい家族の入居で、また販売収入35万Crが入る")
 	return true
 
 # 指定した日の夕方に住宅の家族を帰らせ（stressed なら全員のストレスを高くする）、その日の決算まで進める
@@ -5261,6 +5263,20 @@ func run_observatory_scenario() -> bool:
 	rating.stars = 4
 	var missing: Array[String] = rating.missing_for_next()
 	check(missing.has("人口500") and missing.has("結婚式場") and not missing.has("展望台"), "★5には人口500・展望台・結婚式場が必要（展望台はもうある）")
+	# 不満なテナント（評価が「悪い」か、退去しそうなオフィス・住宅）が1割を超えていると、★5に上がれない
+	var tenants = main.tenant_system
+	var office_origins: Array[Vector2i] = main.find_office_units()
+	for origin in office_origins:
+		tenants.offices[origin] = tenants.new_tenant()
+	check(rating.unhappy_rate() == 0.0 and not rating.missing_for_next().any(func(m): return m.begins_with("不満なテナント")), "不満なテナントがいなければ、満足度の条件は満たしている")
+	tenants.offices[office_origins[0]].rating = tenants.Rating.BAD
+	tenants.offices[office_origins[1]].bad_days = tenants.LEAVE_AFTER_BAD_DAYS - 1 # 退去しそう
+	tenants.offices[office_origins[2]].vacant = true # 空室は数えない
+	var expected := 2.0 / (office_origins.size() - 1)
+	check(is_equal_approx(rating.unhappy_rate(), expected), "不満なテナントの割合は、入居しているオフィス・住宅のうち、悪い評価か退去しそうなもの（%d%%）" % int(round(expected * 100)))
+	check(rating.missing_for_next().has("不満なテナント1割以下（今%d%%）" % int(round(expected * 100))), "不満なテナントが1割を超えていると、★5の条件に足りないものとして出る")
+	for origin in office_origins:
+		tenants.offices[origin] = tenants.new_tenant()
 	await wait_frames(2)
 	check(main.stats_button.text.begins_with("★★★★☆"), "★は5つの星で見せる（★4なら ★★★★☆）")
 
