@@ -83,6 +83,10 @@ var tutorial_label: Label
 var title_panel: Control   # タイトル画面
 var goal_panel: Control    # 目標を達成したときの画面
 var ransom_panel: Control  # 爆破予告の身代金を払うか決める画面
+var save_panel: Control    # セーブ・読み込みの枠を選ぶ画面（⌘S・⌘O）
+var save_title: Label
+var save_rows: VBoxContainer
+var save_mode := "save"    # "save"（保存する枠を選ぶ）/ "load"（読み込む枠を選ぶ）
 var ransom_text: Label
 var ransom_pay_button: Button
 var ransom_refuse_button: Button
@@ -680,8 +684,8 @@ func get_mode_info(mode: String) -> String:
 # check を付けた項目は、開くたびに今の状態にチェックを合わせる
 const MENUS := [
 	{"name": "ファイル", "items": [
-		{"text": "セーブ（⌘S）", "action": "save"},
-		{"text": "セーブデータの読み込み（⌘O）", "action": "load"},
+		{"text": "セーブ（⌘S。3つの枠から選ぶ）", "action": "save"},
+		{"text": "セーブデータの読み込み（⌘O。オートセーブからも読み込める）", "action": "load"},
 	]},
 	{"name": "表示", "items": [
 		{"text": "ビルの状況（★を押しても開く）", "action": "stats", "check": true},
@@ -738,8 +742,10 @@ func is_menu_on(action: String) -> bool:
 # メニューを選んだときの処理。ショートカットと同じことをする
 func do_menu_action(action: String) -> void:
 	match action:
-		"save": world.save_system.save_game()
-		"load": world.save_system.load_game()
+		"save":
+			if world.started:
+				show_save_panel("save")
+		"load": show_save_panel("load")
 		"stats": toggle_stats_panel()
 		"routes": world.toggle_routes()
 		"log":
@@ -982,17 +988,85 @@ func build_title() -> void:
 	continue_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	continue_button.custom_minimum_size.x = 320 * UI_SCALE
 	continue_button.disabled = not world.save_system.has_save()
-	continue_button.pressed.connect(func():
-		world.start_game()
-		world.save_system.load_game())
+	continue_button.pressed.connect(func(): show_save_panel("load")) # 読み込む枠を選ぶ
 	box.add_child(continue_button)
 	var hint = Label.new()
-	hint.text = "遊び方は F1（操作説明）。⌘S で保存、⌘O で読み込み、M で音のオン・オフ"
+	hint.text = "遊び方は F1（操作説明）。⌘S で保存、⌘O で読み込み（毎日0時に自動でも保存）、M で音のオン・オフ"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
 	title_panel = back
 	build_goal_panel(canvas, theme)
 	build_ransom_panel(canvas, theme)
+	build_save_panel(canvas, theme) # タイトル画面の「続きから」でも使うので、タイトル画面より手前に作る
+
+# セーブ・読み込みの枠を選ぶ画面を作る（中身は開くたびに作り直す）
+func build_save_panel(canvas: CanvasLayer, theme: Theme) -> void:
+	var back = ColorRect.new()
+	back.color = Color(0.06, 0.07, 0.12, 0.9)
+	back.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	back.visible = false
+	canvas.add_child(back)
+	var box = VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 10 * UI_SCALE)
+	box.theme = theme
+	back.add_child(box)
+	save_title = Label.new()
+	save_title.add_theme_font_size_override("font_size", 28 * UI_SCALE)
+	save_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(save_title)
+	save_rows = VBoxContainer.new()
+	save_rows.add_theme_constant_override("separation", 8 * UI_SCALE)
+	save_rows.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(save_rows)
+	var close = Button.new()
+	close.text = "閉じる（Esc）"
+	close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close.custom_minimum_size.x = 240 * UI_SCALE
+	close.pressed.connect(func(): save_panel.visible = false)
+	box.add_child(close)
+	save_panel = back
+
+# 枠を選ぶ画面を開く。mode: "save" は保存する枠（1〜3）、"load" は読み込む枠（オートセーブと1〜3）
+func show_save_panel(mode: String) -> void:
+	save_mode = mode
+	var saves = world.save_system
+	save_title.text = "どの枠にセーブしますか？" if mode == "save" else "どのセーブデータを読み込みますか？"
+	for row in save_rows.get_children():
+		row.queue_free()
+	var first: int = 1 if mode == "save" else saves.AUTOSAVE_SLOT
+	for slot in range(first, saves.SLOT_COUNT + 1):
+		var info: Dictionary = saves.slot_info(slot)
+		var button = Button.new()
+		button.custom_minimum_size.x = 720 * UI_SCALE
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.text = "%s: %s" % [saves.slot_name(slot), slot_summary(info)]
+		if slot == saves.AUTOSAVE_SLOT:
+			button.text += "（毎日0時の決算のあとに自動で保存）"
+		button.disabled = mode == "load" and info.is_empty() # 空の枠は読み込めない
+		button.pressed.connect(func(): choose_save_slot(slot))
+		save_rows.add_child(button)
+	save_panel.visible = true
+
+# 枠のボタンに出す要約（空なら「空き」）
+func slot_summary(info: Dictionary) -> String:
+	if info.is_empty():
+		return "（空き）"
+	var text := "%s・★%d・資金 %s" % [info.date, info.stars, world.money_text(info.funds)]
+	if info.saved_at != "":
+		text += "（保存 %s）" % info.saved_at.substr(0, 16).replace("T", " ")
+	return text
+
+# 枠を選んだとき: 保存する、または読み込む（タイトル画面からなら、ゲームを始めてから読み込む）
+func choose_save_slot(slot: int) -> void:
+	save_panel.visible = false
+	if save_mode == "save":
+		world.save_system.save_slot(slot)
+		return
+	if not world.started:
+		world.start_game()
+	world.save_system.load_slot(slot)
 
 # 爆破予告の身代金を払うか決める画面を作る（中身はそのつど差し替える）
 func build_ransom_panel(canvas: CanvasLayer, theme: Theme) -> void:

@@ -154,6 +154,7 @@ func settle(day: int) -> void:
 	world.audio_system.play("money")
 	world.show_message(message)
 	world.goal_system.check_day(day) # 目標を達成したか確かめる
+	world.save_system.autosave() # 決算のあとの状態を、オートセーブの枠に保存する
 
 # オフィスの1マスの1日の賃料（オフィスの種類で変わる）
 func office_rent(cell: Vector2i) -> int:

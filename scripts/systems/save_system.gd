@@ -6,33 +6,89 @@ extends Node
 #                 エレベーターの設定（待機階・稼働時間帯・カゴの数）・テナントの評価・
 #                 客室と住宅の状態・衛生の悪化・ゴキブリ・掘った地下のマス。
 #   保存しないもの: 今ビルの中を歩いている人（読み込んだ後、各システムがまた出してくる）。
-# 保存先: user://save.json（Godotのユーザーデータのフォルダ）
+# 保存先（Godotのユーザーデータのフォルダ）:
+#   セーブの枠 1〜SLOT_COUNT … save.json（枠1）・save_2.json・save_3.json（⌘S で枠を選んで保存する）
+#   オートセーブ           … autosave.json（毎日0時の決算のあとに、自動で上書きする）
 # ---------------------------------------------------
 
-const SAVE_PATH := "user://save.json"
+const SLOT_COUNT := 3
+const AUTOSAVE_SLOT := 0 # オートセーブの枠の番号（読み込みの画面で一番上に出す）
 const VERSION := 1
 
 var world: Node2D # main.gd
+var save_dir := "user://"     # 保存先のフォルダ（テストでは別のフォルダにして、遊んでいるデータを上書きしない）
+var autosave_enabled := true  # オートセーブするか（README の画像づくりでは止める）
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
 
-func has_save() -> bool:
-	return FileAccess.file_exists(SAVE_PATH)
+# その枠のファイル（0 はオートセーブ）
+func slot_path(slot: int) -> String:
+	if slot == AUTOSAVE_SLOT:
+		return save_dir.path_join("autosave.json")
+	return save_dir.path_join("save.json" if slot == 1 else "save_%d.json" % slot)
 
-# 今の状態をファイルに保存する。成功したらtrue
-func save_game(path := SAVE_PATH) -> bool:
-	var file := FileAccess.open(path, FileAccess.WRITE)
-	if file == null:
+func slot_name(slot: int) -> String:
+	return "オートセーブ" if slot == AUTOSAVE_SLOT else "枠%d" % slot
+
+# どこかの枠（オートセーブを含む）にセーブデータがあるか
+func has_save() -> bool:
+	for slot in range(AUTOSAVE_SLOT, SLOT_COUNT + 1):
+		if FileAccess.file_exists(slot_path(slot)):
+			return true
+	return false
+
+# 枠に保存する・読み込む（メッセージには枠の名前を出す）
+func save_slot(slot: int) -> bool:
+	if not write_file(slot_path(slot)):
 		world.show_message("セーブできませんでした（ファイルを開けません）")
 		return false
-	file.store_string(JSON.stringify(collect(), "\t"))
-	file.close()
+	world.show_message("%sにセーブしました（%s日目 %s）" % [slot_name(slot), world.clock.day, world.clock.date_text()])
+	return true
+
+func load_slot(slot: int) -> bool:
+	return load_game(slot_path(slot))
+
+# 毎日の決算のあとに呼ばれる: オートセーブの枠に黙って保存する（決算のメッセージを邪魔しない）
+func autosave() -> void:
+	if autosave_enabled:
+		write_file(slot_path(AUTOSAVE_SLOT))
+
+# その枠のセーブデータの中身の要約（読み込みの画面に出す。なければ空）
+#   {"day": 日, "date": "4月12日（金） 21:44", "funds": 資金, "stars": ★, "saved_at": 保存した日時}
+func slot_info(slot: int) -> Dictionary:
+	var path := slot_path(slot)
+	if not FileAccess.file_exists(path):
+		return {}
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(data) != TYPE_DICTIONARY or data.get("version", 0) != VERSION:
+		return {}
+	var day := int(data.day)
+	var minute := int(data.minute)
+	return {"day": day, "funds": int(data.funds), "stars": int(data.stars), "saved_at": str(data.get("saved_at", "")),
+		"date": "%s（%s） %02d:%02d" % [world.clock.date_text(day), world.clock.WEEKDAY_NAMES[world.clock.weekday(day)], minute / 60, minute % 60]}
+
+# 今の状態をファイルに保存する。成功したらtrue（path を省くと枠1）
+func save_game(path := "") -> bool:
+	if not write_file(path if path != "" else slot_path(1)):
+		world.show_message("セーブできませんでした（ファイルを開けません）")
+		return false
 	world.show_message("セーブしました（%s日目 %s）" % [world.clock.day, world.clock.date_text()])
 	return true
 
-# ファイルから読み込んで、その状態に戻す。成功したらtrue
-func load_game(path := SAVE_PATH) -> bool:
+func write_file(path: String) -> bool:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir()))
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(JSON.stringify(collect(), "\t"))
+	file.close()
+	return true
+
+# ファイルから読み込んで、その状態に戻す。成功したらtrue（path を省くと枠1）
+func load_game(path := "") -> bool:
+	if path == "":
+		path = slot_path(1)
 	if not FileAccess.file_exists(path):
 		world.show_message("セーブデータがありません")
 		return false
@@ -54,6 +110,7 @@ func collect() -> Dictionary:
 	var tenants = world.tenant_system
 	return {
 		"version": VERSION,
+		"saved_at": Time.get_datetime_string_from_system(false, true), # 保存した日時（読み込みの画面に出す）
 		"funds": world.funds,
 		"day": world.clock.day,
 		"minute": world.clock.minute,

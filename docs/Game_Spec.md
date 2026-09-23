@@ -132,7 +132,8 @@
 - ⌘G で収支のグラフ（`chart_view.gd`）。`economy_system.history` に決算を60日ぶん残し、棒グラフと内わけで見せる。
 
 ### セーブ／ロード ✅
-- `save_system.gd` が、ビルの状態を JSON（`user://save.json`）に保存し、読み込んで元に戻す（⌘S / ⌘O）。
+- `save_system.gd` が、ビルの状態を JSON に保存し、読み込んで元に戻す（⌘S / ⌘O で枠を選ぶ画面を開く）。
+- セーブの枠は3つ（`save.json`・`save_2.json`・`save_3.json`）と、オートセーブ（`autosave.json`。毎日の決算のあとに `economy_system` が `save_system.autosave()` を呼ぶ）。保存先のフォルダは `save_system.save_dir`（テストはテスト用のフォルダにして、遊んでいるデータを上書きしない）。
 - 保存するもの: 建物の配置（左端のマスと種類）・資金・日付と時刻・★・VIPの合否・エレベーターの設定（カゴ・待機階・稼働時間帯）・テナントの評価・客室と住宅の状態（清掃待ちの客室は汚れた日も）・衛生の悪化・ゴキブリ・掘った地下のマス。
 - 人（住人）は保存せず、読み込み後に各システムが出し直す。`main.place_unit()` / `main.clear_world()` を使って建物を組み直す。
 

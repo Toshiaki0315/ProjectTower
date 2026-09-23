@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -75,11 +75,26 @@ func start_main(standard_block := true) -> void:
 	root.add_child(main)
 	Engine.time_scale = 1.0
 	await wait_frames(3) # _ready()が済むまで待つ
+	use_test_save_dir() # _ready()で部品ができてから切り替える（ゲームが始まる前なので、まだ何も保存しない）
 	main.start_game()    # タイトル画面を閉じて、ゲームを始める
 	main.clock.set_process(false) # 社員の出勤で他のシナリオが乱れないよう、時計は止めておく
 	if standard_block:
 		build_standard_block()
 		await wait_frames(1)
+
+# セーブ・オートセーブの保存先を、テスト用のフォルダにする（遊んでいるセーブデータを上書きしないように）。
+# 並べて実行する組ごとに分けて、ほかの組の保存とぶつからないようにする
+func use_test_save_dir() -> void:
+	main.save_system.save_dir = TEST_SAVE_DIR + OS.get_environment("TEST_SHARD").replace("/", "_")
+
+const TEST_SAVE_DIR := "user://test_saves_"
+
+# テストが書いたセーブの枠のファイルを消す。テスト用のフォルダの中でなければ、決して消さない
+func remove_test_save(path: String) -> void:
+	if not path.begins_with(TEST_SAVE_DIR):
+		failures.append("テスト用のフォルダの外のセーブデータを消そうとした: " + path)
+		return
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 # 多くのシナリオで使う共通のビル（ゲームは更地から始まるので、テストで建てておく）
 #   1階（y=18）: ロビー（x=-8〜7。入口は左端の (-8,18)）
@@ -3685,6 +3700,7 @@ func run_title_scenario() -> bool:
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	await wait_frames(3)
+	use_test_save_dir()
 	check(not main.started and main.title_panel.visible, "起動するとタイトル画面が出る")
 	check(not main.clock.is_processing(), "タイトル画面の間は時間が止まっている")
 	var title_labels: Array[String] = []
@@ -5084,4 +5100,58 @@ func run_sky_events_scenario() -> bool:
 	clock.day = sunny
 	clock.minute = 3 * 60 # 夜中の3時: 昼のイベントは出ていない
 	check(not sky.is_active("airplane") and not sky.is_active("birds") and not sky.is_active("rainbow"), "夜中には昼のイベントは出ない")
+	return true
+
+# シナリオ78: セーブの枠（3つ）とオートセーブ（毎日の決算のあと）
+# ---------------------------------------------------
+func run_save_slots_scenario() -> bool:
+	print("[シナリオ] セーブの枠とオートセーブ")
+	var saves = main.save_system
+	var ui = main.ui
+	check(saves.slot_path(1).begins_with(TEST_SAVE_DIR), "テストのセーブは、遊んでいるセーブデータとは別のフォルダに書く")
+	if not saves.slot_path(1).begins_with(TEST_SAVE_DIR):
+		return true # 遊んでいるセーブデータを上書きしないよう、ここでやめる
+	for slot in range(0, saves.SLOT_COUNT + 1): # 前に流したテストの残りを消しておく
+		remove_test_save(saves.slot_path(slot))
+	check(not saves.has_save() and saves.slot_info(2).is_empty(), "はじめはどの枠も空き")
+
+	# ⌘S で保存する枠を選ぶ画面が開く（枠1〜3）
+	await press_shortcut(KEY_S)
+	check(ui.save_panel.visible and ui.save_mode == "save", "⌘Sで、保存する枠を選ぶ画面が開く")
+	await wait_frames(1)
+	var rows: Array = ui.save_rows.get_children()
+	check(rows.size() == 3 and rows[1].text.begins_with("枠2: （空き）"), "枠は3つで、空いている枠は「空き」と出る")
+	await capture("save_01_slots")
+	main.funds = 12340000
+	rows[1].pressed.emit() # 枠2に保存する
+	check(not ui.save_panel.visible and FileAccess.file_exists(saves.slot_path(2)), "枠を選ぶと、その枠に保存して画面が閉じる")
+	check(logged("枠2にセーブしました"), "どの枠に保存したかがメッセージで出る")
+	var info: Dictionary = saves.slot_info(2)
+	check(info.funds == 12340000 and info.day == main.clock.day and info.saved_at != "", "枠の中身（日付・資金・保存した日時）を読める")
+
+	# ⌘O で読み込む枠を選ぶ（オートセーブと枠1〜3。空の枠は押せない）
+	main.funds = 1
+	await press_shortcut(KEY_O)
+	await wait_frames(1)
+	rows = ui.save_rows.get_children()
+	check(ui.save_mode == "load" and rows.size() == 4 and rows[0].text.begins_with("オートセーブ"), "⌘Oで、読み込む枠を選ぶ画面が開く（一番上はオートセーブ）")
+	check(rows[0].disabled and not rows[2].disabled and rows[2].text.contains("資金 12,340,000Cr"), "空の枠は押せず、保存した枠には資金などが出る")
+	await capture("save_02_load")
+	rows[2].pressed.emit()
+	check(main.funds == 12340000 and not ui.save_panel.visible, "枠2を読み込むと、保存したときの資金に戻る")
+	await press_shortcut(KEY_O)
+	await press_key(KEY_ESCAPE)
+	check(not ui.save_panel.visible, "Escで枠を選ぶ画面を閉じる")
+
+	# 毎日の決算のあとに、オートセーブの枠へ黙って保存する（決算のメッセージはそのまま）
+	main.economy_system.settle(main.clock.day)
+	check(FileAccess.file_exists(saves.slot_path(0)) and saves.slot_info(0).funds == main.funds, "決算のあとに、オートセーブの枠へ自動で保存する")
+	check(main.last_message.contains("の決算"), "オートセーブしても、決算のメッセージは消えない")
+	remove_test_save(saves.slot_path(0))
+	saves.autosave_enabled = false
+	main.economy_system.settle(main.clock.day)
+	check(not FileAccess.file_exists(saves.slot_path(0)), "オートセーブを止めると保存しない（READMEの画像づくりで使う）")
+	saves.autosave_enabled = true
+	for slot in range(0, saves.SLOT_COUNT + 1):
+		remove_test_save(saves.slot_path(slot))
 	return true

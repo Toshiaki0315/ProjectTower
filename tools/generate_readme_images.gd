@@ -132,6 +132,7 @@ func save_screenshots() -> void:
 	root.add_child(m)
 	for i in 3:
 		await process_frame
+	m.save_system.autosave_enabled = false # 画像づくりで、遊んでいるオートセーブを上書きしない（部品ができてから止める）
 	m.start_game() # タイトル画面を閉じる
 	m.tutorial_system.finished = true # はじめての案内のバーを写さない
 	m.funds = 100000000
@@ -207,6 +208,7 @@ func new_world():
 	root.add_child(m)
 	for i in 3:
 		await process_frame
+	m.save_system.autosave_enabled = false # 画像づくりで、遊んでいるオートセーブを上書きしない（部品ができてから止める）
 	m.start_game()
 	m.tutorial_system.finished = true
 	m.clear_world()

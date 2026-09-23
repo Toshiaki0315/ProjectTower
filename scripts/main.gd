@@ -709,9 +709,10 @@ func handle_shortcut(event: InputEventKey) -> bool:
 		KEY_G:
 			chart_panel.visible = not chart_panel.visible
 		KEY_S:
-			save_system.save_game()
+			if started:
+				ui.show_save_panel("save") # 保存する枠を選ぶ画面を開く
 		KEY_O:
-			save_system.load_game()
+			ui.show_save_panel("load") # 読み込む枠を選ぶ画面を開く
 		KEY_L:
 			log_panel.visible = not log_panel.visible
 			if log_panel.visible:
@@ -729,7 +730,7 @@ func handle_shortcut(event: InputEventKey) -> bool:
 # Esc: 開いているパネルを閉じる。1つでも閉じたら true（何も開いていなければ false）
 func close_panels() -> bool:
 	var closed := false
-	for panel in [help_panel, log_panel, chart_panel, stats_panel]:
+	for panel in [help_panel, log_panel, chart_panel, stats_panel, ui.save_panel]:
 		if panel.visible:
 			panel.visible = false
 			closed = true
