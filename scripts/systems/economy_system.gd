@@ -163,7 +163,6 @@ func settle(day: int) -> void:
 	world.show_message(message)
 	world.goal_system.check_day(day) # 目標を達成したか確かめる
 	world.request_system.check_day(day) # テナントからの頼みごとが、かなったか・期限が切れたか
-	world.clear_undo() # 前の日の建設・撤去は取り消せない（賃料を受け取ってから取り消せないように）
 	world.save_system.autosave() # 決算のあとの状態を、オートセーブの枠に保存する
 
 # オフィスの1マスの1日の賃料（オフィスの種類で変わる）

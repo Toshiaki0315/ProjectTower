@@ -428,8 +428,7 @@ const HELP_SECTIONS := [
 	]],
 	["操作", [
 		["建てる", "上の「建設」メニューで選び、マップを[key]左クリック[/key]。建てる大きさはカーソルの枠でわかる。[key]ドラッグ[/key]で続けて建てられる"],
-		["撤去", "[key]右クリック[/key]（またはメニューの「撤去」で左クリック）。建物のどのマスでも建物ごと撤去。撤去費用がかかる（建設費の1割・最低2,000Cr）"],
-		["取り消し", "[key]⌘Z[/key] で直前の建設・撤去を1つずつ戻す（払ったお金も戻る。その日の決算までの操作だけ）"],
+		["撤去", "[key]右クリック[/key]（またはメニューの「撤去」で左クリック）。建物のどのマスでも建物ごと撤去。撤去費用がかかる（建設費の1割・最低2,000Cr）。間違えて建てたときも、撤去して建て直す"],
 		["一時停止", "[key]スペース[/key] または上部バーの ⏸ ボタン。止めている間も建設・撤去・カメラの移動はできる"],
 		["速さ", "上部バーの速さのボタンで 1x → 4x → 16x と切り替わる"],
 		["カメラ", "[key]マウスホイール[/key]で上下、[key]Shift＋ホイール[/key]で左右、[key]2本指スクロール[/key]・[key]中ボタンドラッグ[/key]・[key]WASD[/key]・[key]矢印キー[/key]でも動く"],
@@ -773,7 +772,6 @@ const MENUS := [
 		{"text": "もとの大きさ（⌘0）", "action": "zoom_reset"},
 	]},
 	{"name": "ゲーム", "items": [
-		{"text": "取り消し（⌘Z）", "action": "undo"},
 		{"text": "ビルの名前を変える", "action": "rename"},
 		{"text": "一時停止（スペース）", "action": "pause", "check": true},
 		{"text": "速さを切り替える", "action": "speed"},
@@ -841,9 +839,6 @@ func do_menu_action(action: String) -> void:
 		"overlay_stress", "overlay_noise", "overlay_wait":
 			var mode := action.trim_prefix("overlay_")
 			world.set_overlay("" if world.overlay == mode else mode) # 出しているものをもう一度選ぶと消す
-		"undo":
-			if world.started:
-				world.undo()
 		"rename":
 			if world.started:
 				show_name_panel()
