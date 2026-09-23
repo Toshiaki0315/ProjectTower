@@ -358,6 +358,7 @@ func build_bars() -> void:
 		"ズーム: Ctrl（⌘）+マウスホイール / トラックパッドのピンチ",
 		"カメラ移動: 2本指スクロール / 中ボタンドラッグ / WASD・矢印キー",
 		"一時停止: スペースキー または 上部バーの ⏸ のボタン（止めている間も建設・撤去・カメラの移動はできる）",
+		"取り消し: ⌘Z で直前の建設・撤去を1つずつ戻す（払ったお金も戻る。その日の決算までの操作だけ）",
 	])
 	help_label.add_theme_font_size_override("font_size", 13 * UI_SCALE) # 行数が多いので少し小さめ
 	# 長い行は折り返して、右がはみ出して読めなくならないようにする
@@ -697,6 +698,7 @@ const MENUS := [
 		{"text": "もとの大きさ（⌘0）", "action": "zoom_reset"},
 	]},
 	{"name": "ゲーム", "items": [
+		{"text": "取り消し（⌘Z）", "action": "undo"},
 		{"text": "一時停止（スペース）", "action": "pause", "check": true},
 		{"text": "速さを切り替える", "action": "speed"},
 		{"text": "音を出す（M）", "action": "mute", "check": true},
@@ -758,6 +760,9 @@ func do_menu_action(action: String) -> void:
 		"zoom_reset": world.camera.reset_zoom()
 		"speed": world.set_speed(world.next_speed())
 		"pause": world.toggle_pause()
+		"undo":
+			if world.started:
+				world.undo()
 		"mute": world.audio_system.toggle_mute()
 		"help": help_panel.visible = not help_panel.visible
 

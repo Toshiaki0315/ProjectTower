@@ -118,6 +118,11 @@ const GROUND_FLOOR_Y := 18
 const SPEEDS := [1, 4, 16]    # ゲームの速度（押すたびにこの順に切り替わる）
 var speed := 1      # 選んでいるゲームの速度（一時停止している間も覚えておく）
 var paused := false # 一時停止しているか（時間が止まる。建設・撤去・カメラの移動はできる）
+const UNDO_MAX := 50 # 取り消せる操作の数（古いものから忘れる）
+# 取り消せる操作（⌘Z。新しいものが後ろ）。その日の決算まで取り消せる
+#   建設: {"kind": "build", "origin": 左下のマス, "type": 種類, "money": 建設費, "before": 建てる前にあった空きフロアのマス -> {type, origin}}
+#   撤去: {"kind": "demolish", "origin": 左下のマス, "type": 種類, "money": 撤去費用, "left_frame": 空きフロアを残したか}
+var undo_history: Array = []
 const MEDICAL_RECOVER_BONUS := 0.5 # メディカルセンター1施設で、ストレスの回復が何割速くなるか
 const GARDEN_RECOVER_BONUS := 0.3  # 屋上庭園1つで、ストレスの回復が何割速くなるか
 const MEDICAL_RECOVER_MAX := 2.5   # 回復の速さの上限（何倍まで）
@@ -684,7 +689,7 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 #   F1 / H: 操作説明の開閉 / M: 音のオン・オフ / R: 経路の表示 / Space: 一時停止・再開 / Esc: 開いているパネルを閉じる
 #   ⌘L: メッセージの記録の開閉 / ⌘G: 収支のグラフの開閉
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
-#   ⌘S: セーブ / ⌘O: セーブデータの読み込み
+#   ⌘S: セーブ / ⌘O: セーブデータの読み込み / ⌘Z: 直前の建設・撤去の取り消し
 # ヘルプと音を⌘と組み合わせないのは、macOSの⌘H（隠す）・⌘M（しまう）とぶつかるため。
 # このゲームは文字を打つところがないので、単体のキーで受けてよい。
 func handle_shortcut(event: InputEventKey) -> bool:
@@ -706,6 +711,9 @@ func handle_shortcut(event: InputEventKey) -> bool:
 				return false
 		return true
 	match event.keycode:
+		KEY_Z:
+			if started:
+				undo() # 直前の建設・撤去を取り消す
 		KEY_G:
 			chart_panel.visible = not chart_panel.visible
 		KEY_S:
@@ -806,8 +814,13 @@ func build_at(map_pos: Vector2i):
 		audio_system.play("error")
 		return
 	
+	var before := {} # 建てる前にあった空きフロア（取り消したら元に戻す）
+	for cell in get_footprint(map_pos, current_mode):
+		if building_grid.has(cell):
+			before[cell] = building_grid[cell].duplicate()
 	funds -= BUILDINGS[current_mode].cost
 	place_unit(map_pos, current_mode)
+	remember_undo({"kind": "build", "origin": map_pos, "type": current_mode, "money": BUILDINGS[current_mode].cost, "before": before})
 	rebuild_systems()
 	update_funds_display()
 	audio_system.play("build")
@@ -825,8 +838,64 @@ func place_unit(origin: Vector2i, type: String) -> void:
 		tile_map.set_cell(cell, data.source_id, atlas)
 		building_grid[cell] = {"type": type, "origin": origin}
 
+# ---------------------------------------------------
+# 取り消し（⌘Z）: 直前の建設・撤去を1つずつ戻す。払ったお金（建設費・撤去費用）も戻す。
+#   戻した建物は、新しく建てたときと同じ状態から始まる（テナントの評価・家賃の設定・カゴの数などは戻らない）。
+#   その後に火災・爆破などで建物が変わっていて戻せないときは、その操作は取り消せない。
+#   前の日の操作は取り消せない（決算のときに記録を消す。家賃を受け取ってから取り消すことはできない）。
+# ---------------------------------------------------
+func remember_undo(action: Dictionary) -> void:
+	undo_history.append(action)
+	if undo_history.size() > UNDO_MAX:
+		undo_history.pop_front()
+
+func clear_undo() -> void:
+	undo_history.clear()
+
+func undo() -> void:
+	if undo_history.is_empty():
+		show_message("取り消せる操作がありません（その日の建設・撤去だけ取り消せます）")
+		audio_system.play("error")
+		return
+	var action: Dictionary = undo_history.pop_back()
+	var cells := get_footprint(action.origin, action.type)
+	var name: String = BUILDINGS[action.type].name
+	if not can_undo(action, cells):
+		show_message("%sの%sは、その後に建物が変わったので取り消せません" % [name, "建設" if action.kind == "build" else "撤去"])
+		audio_system.play("error")
+		return
+	for cell in cells: # 今そのマスにあるもの（建てた建物・撤去で残した空きフロア）をどける
+		tile_map.erase_cell(cell)
+		building_grid.erase(cell)
+	if action.kind == "build":
+		for cell in action.before: # 建てる前にあった空きフロアを戻す
+			place_unit(cell, action.before[cell].type)
+		effects.play_demolish(cells)
+	else:
+		place_unit(action.origin, action.type)
+		effects.play_build(cells)
+	funds += action.money
+	rebuild_systems()
+	update_funds_display()
+	audio_system.play("demolish" if action.kind == "build" else "build")
+	show_message("%sの%sを取り消しました（%s を戻しました）" % [name, "建設" if action.kind == "build" else "撤去", money_text(action.money)])
+
+# その操作を今も取り消せるか（建てた建物・撤去の跡がそのまま残っているか）
+func can_undo(action: Dictionary, cells: Array[Vector2i]) -> bool:
+	for cell in cells:
+		if action.kind == "build":
+			if get_building_type(cell) != action.type or building_grid[cell].origin != action.origin:
+				return false
+		elif action.left_frame:
+			if get_building_type(cell) != Buildings.FRAME_TYPE:
+				return false
+		elif not is_cell_empty(cell):
+			return false
+	return true
+
 # 建物と住人をすべて消す（セーブの読み込みで使う）
 func clear_world() -> void:
+	clear_undo() # 読み込んだビルでは、前の操作は取り消せない
 	for cell in building_grid.keys():
 		tile_map.erase_cell(cell)
 	building_grid.clear()
@@ -877,6 +946,7 @@ func demolish_at(map_pos: Vector2i):
 	var origin: Vector2i = building_grid[map_pos].origin
 	
 	funds -= fee
+	remember_undo({"kind": "demolish", "origin": origin, "type": type, "money": fee, "left_frame": leave_frame})
 	effects.play_demolish(get_unit_cells(map_pos))
 	for cell in get_unit_cells(map_pos):
 		tile_map.erase_cell(cell)

@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_undo_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -987,7 +987,7 @@ func run_lunch_scenario() -> bool:
 	Engine.time_scale = 1.0
 	main.clock.set_process(false)
 	check(main.economy_system.last_report.get("food") == 54000, "決算に飲食店の売上5.4万Crが入る")
-	check(main.last_message.contains("飲食 +54,000Cr"), "決算のメッセージに飲食の売上が出る")
+	check(logged("飲食 +54,000Cr"), "決算のメッセージに飲食の売上が出る") # 同じフレームにエレベーターの到着のメッセージが続くことがあるので、記録から探す
 	return true
 
 # ---------------------------------------------------
@@ -1392,7 +1392,8 @@ func run_subway_scenario() -> bool:
 	main.clock.set_time(1, 7, 59)
 	main.clock.set_process(true)
 	set_speed(8.0)
-	while main.clock.minute_of_day() < 10 * 60 + 45: # 定員8人のカゴ1台では運びきるのに時間がかかるので余裕をもつ
+	# 定員8人のカゴ1台では運びきるのに時間がかかるので、全員が着くか11時半になるまで待つ
+	while main.clock.minute_of_day() < 11 * 60 + 30 and (main.clock.minute_of_day() < 10 * 60 or main.commute_system.count_at_office() < 56):
 		for r in main.residents:
 			if is_instance_valid(r) and not first_cells.has(r):
 				first_cells[r] = r.cell
@@ -1408,7 +1409,7 @@ func run_subway_scenario() -> bool:
 			from_main += 1
 	check(from_station > 0 and from_main > 0, "地下鉄駅と1階の入口の両方から社員が来る（駅 %d人・1階 %d人）" % [from_station, from_main])
 	check(from_station + from_main == 56, "56人全員がどちらかの入口から来る")
-	check(main.commute_system.count_at_office() == 56, "10時45分には56人全員がオフィスに着いている")
+	check(main.commute_system.count_at_office() == 56, "11時半までには56人全員がオフィスに着いている（%d:%02d）" % [main.clock.minute_of_day() / 60, main.clock.minute_of_day() % 60])
 	
 	# ★4の条件に地下鉄駅がある
 	main.rating_system.stars = 3
@@ -5154,4 +5155,54 @@ func run_save_slots_scenario() -> bool:
 	saves.autosave_enabled = true
 	for slot in range(0, saves.SLOT_COUNT + 1):
 		remove_test_save(saves.slot_path(slot))
+	return true
+
+# シナリオ79: 取り消し（⌘Z）: 直前の建設・撤去を1つずつ戻し、払ったお金も戻す
+#   共通のビル（1階のロビー x=-8〜7、2〜4階にオフィス）の右に建てて試す
+# ---------------------------------------------------
+func run_undo_scenario() -> bool:
+	print("[シナリオ] 取り消し")
+	main.funds = 10000000
+	main.clear_undo()
+	await press_shortcut(KEY_Z)
+	check(logged("取り消せる操作がありません"), "何もしていないうちは取り消せない")
+
+	# 建設を取り消すと、建物がなくなり建設費が戻る
+	main.select_mode("lobby")
+	main.build_at(Vector2i(8, 18))
+	check(main.funds == 10000000 - 15000, "ロビーを建てると建設費がかかる")
+	await press_shortcut(KEY_Z)
+	check(main.is_cell_empty(Vector2i(8, 18)) and main.funds == 10000000, "⌘Zで建設を取り消すと、建物がなくなり建設費が戻る")
+	check(logged("ロビーの建設を取り消しました（15,000Cr を戻しました）"), "取り消したことがメッセージで出る")
+
+	# 撤去を取り消すと、建物が戻り撤去費用も戻る（上に建物があって空きフロアになった場合も）
+	var office := Vector2i(4, 16) # 3階のオフィス（上の4階にもオフィスがあるので、撤去すると空きフロアが残る）
+	main.demolish_at(office)
+	check(main.get_building_type(office) == "frame" and main.funds == 10000000 - 40000, "上に建物のあるオフィスを撤去すると、空きフロアが残り撤去費用がかかる")
+	main.ui.do_menu_action("undo")
+	check(main.get_building_type(office) == "office" and main.building_grid[Vector2i(7, 16)].origin == office, "メニューからも取り消せる（オフィスが元の場所に戻る）")
+	check(main.funds == 10000000, "撤去を取り消すと、撤去費用も戻る")
+
+	# 空きフロアの上に建てたのを取り消すと、空きフロアに戻る
+	main.demolish_at(office) # 空きフロアにする
+	main.select_mode("small_office")
+	main.build_at(office)
+	check(main.get_building_type(office) == "small_office" and main.get_building_type(Vector2i(6, 16)) == "frame", "空きフロアの上に小さいオフィスを建てる")
+	await press_shortcut(KEY_Z)
+	check(main.get_building_type(office) == "frame" and main.get_building_type(Vector2i(5, 16)) == "frame", "取り消すと、建てる前の空きフロアに戻る")
+	await press_shortcut(KEY_Z)
+	check(main.get_building_type(office) == "office" and main.funds == 10000000, "続けて取り消すと、さらに前の撤去も戻る（新しい操作から順に）")
+
+	# その後に建物が変わっていたら（火災で焼け落ちたなど）、取り消せない
+	main.select_mode("lobby")
+	main.build_at(Vector2i(8, 18))
+	main.destroy_unit(Vector2i(8, 18))
+	await press_shortcut(KEY_Z)
+	check(main.get_building_type(Vector2i(8, 18)) == "ruin" and logged("その後に建物が変わったので取り消せません"), "その後に焼け跡になった建物の建設は取り消せない")
+
+	# 前の日の操作は取り消せない（決算で記録を消す）
+	main.demolish_at(Vector2i(8, 18))
+	main.economy_system.settle(main.clock.day)
+	await press_shortcut(KEY_Z)
+	check(main.is_cell_empty(Vector2i(8, 18)) and main.undo_history.is_empty(), "決算の後は、前の日の建設・撤去は取り消せない")
 	return true
