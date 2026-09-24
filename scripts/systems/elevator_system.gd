@@ -12,6 +12,11 @@ extends Node
 # カゴ: シャフトを建てると1台できる。add_car() で1本のシャフトに MAX_CARS 台まで増やせる。
 # 乗り場呼び（群管理）: 待っている人のボタンはシャフト全体で受け付け、到着までの手間の見積もり
 #   （ElevatorCar.estimate_cost）が一番小さいカゴに割り当てる。割り当てたカゴが満員になったら割り当て直す。
+#   待っている人がカゴの空いている席より多いときは、席が足りるまで次に早いカゴも向かわせる
+#   （1台ずつしか来ないと、朝の1階のように大勢が待つ乗り場で、ほかのカゴが空いたまま遊んでしまうため）。
+# シャフトの混み具合（waiting_at）: そのシャフトのどこかの階の乗り場で待っている人の数。経路探索は、混んでいるシャフトほど
+#   乗る手間を高く見るので、エレベーターを何本か並べると、人が空いている方へ分かれる（近いシャフトにばかり並ばないように）。
+#   ほかの階で待っている人も数えるのは、夕方の帰りのように、上の階でカゴが満員になると下の階の人が待たされるため。
 # ---------------------------------------------------
 
 const ElevatorCar := preload("res://scripts/actors/elevator_car.gd")
@@ -32,10 +37,14 @@ var cars: Array = [] # すべてのカゴ（シャフトは column と top_y〜b
 # シャフトごとのカゴ（種類 -> 列 -> カゴの一覧）。乗り場で待つ人が毎フレーム何度も探すので、
 # カゴが増えた・減ったとき（rebuild・add_car）だけ作り直す
 var cars_by_shaft := {}
-var hall_assignments := {} # [乗り場のマス, 方向] -> 割り当てたカゴ
+var hall_assignments := {} # [乗り場のマス, 方向] -> 割り当てたカゴの一覧
+var hall_checked := {}     # [乗り場のマス, 方向] -> 割り当てを見直したフレーム（同じ乗り場は1フレームに1回だけ見直す）
 var home_floors := {}      # [シャフトの種類, 列のx] -> 待機階のy
 var service_hours := {}    # [シャフトの種類, 列のx] -> SERVICE_PRESETS の番号（省略時は0＝終日）
 var vip_only := {}         # [シャフトの種類, 列のx] -> true（VIPの来館中は、VIPだけが乗れる）
+var waiting_counts := {}   # [シャフトの種類, 列のx] -> そのシャフトの乗り場で待っている人の数（1フレームに1回数え直す）
+var hall_waiting := {}     # [乗り場のマス, 方向] -> そこで待っている人の数（同じく1フレームに1回数え直す）
+var waiting_frame := -1    # waiting_counts・hall_waiting を数えたフレーム
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -272,6 +281,37 @@ func get_cars_at(cell: Vector2i) -> Array:
 			result.append(car)
 	return result
 
+# そのマスのシャフトの乗り場（どの階でも）で、カゴを待っている人の数
+# （経路を探すたびに全員を数えると重いので、1フレームに1回だけ数えて覚えておく）
+func waiting_at(cell: Vector2i) -> int:
+	count_waiting()
+	return waiting_counts.get(shaft_key(cell), 0)
+
+# シャフトごとの待っている人の数（[種類, 列] -> 人数。今のフレームの分）
+func waiting_counts_now() -> Dictionary:
+	count_waiting()
+	return waiting_counts
+
+# その乗り場で dir 方向のカゴを待っている人の数
+func waiting_at_hall(cell: Vector2i, dir) -> int:
+	count_waiting()
+	return hall_waiting.get([cell, dir], 0)
+
+# 待っている人を数え直す（このフレームでまだ数えていなければ）
+func count_waiting() -> void:
+	var frame := Engine.get_process_frames()
+	if frame == waiting_frame:
+		return
+	waiting_frame = frame
+	waiting_counts.clear()
+	hall_waiting.clear()
+	for r in world.residents:
+		if is_instance_valid(r) and r.state == r.State.WAITING:
+			var key := shaft_key(r.cell)
+			waiting_counts[key] = waiting_counts.get(key, 0) + 1
+			var hall := [r.cell, r.ride_dir]
+			hall_waiting[hall] = hall_waiting.get(hall, 0) + 1
+
 # シャフトごとのカゴの一覧を作り直す
 func index_cars() -> void:
 	cars_by_shaft.clear()
@@ -327,28 +367,45 @@ func count_extra_cars() -> int:
 # ---------------------------------------------------
 
 # 乗り場でボタンを押す（待っている間は毎フレーム呼ばれる）。
-# まだ割り当てがないか、割り当てたカゴがもう応えられない（呼び出しを取り消した）ときは、カゴを選び直す
+# 割り当てたカゴのうち、もう応えられない（満員になった・呼び出しを取り消した）ものは外し、
+# 待っている人数に空いている席が足りなければ、次に早いカゴも割り当てる（少なくとも1台）
 func request_hall(cell: Vector2i, dir) -> void:
 	var key := [cell, dir]
-	var assigned = hall_assignments.get(key)
-	if is_instance_valid(assigned) and assigned.has_floor(cell.y) and not assigned.is_full() \
-			and (assigned.has_hall_call(cell.y, dir) or assigned.is_doors_open_at(cell.y)):
+	# 同じ乗り場で待っている人が何人いても、見直すのは1フレームに1回だけ（大勢が待つと重いため）
+	var frame := Engine.get_process_frames()
+	if hall_checked.get(key, -1) == frame:
 		return
-	# 割り当てたカゴが満員になった・呼び出しに応えた後などは、割り当て直す
-	if is_instance_valid(assigned) and not assigned.is_doors_open_at(cell.y):
-		assigned.cancel_hall_call(cell.y, dir)
-	var car = choose_car(cell, dir)
-	if car == null:
+	hall_checked[key] = frame
+	var kept: Array = []
+	var seats := 0 # 割り当てたカゴの空いている席の合計
+	for car in hall_assignments.get(key, []):
+		if not is_instance_valid(car):
+			continue
+		if car.has_floor(cell.y) and not car.is_full() and (car.has_hall_call(cell.y, dir) or car.is_doors_open_at(cell.y)):
+			kept.append(car)
+			seats += car.capacity - car.passengers.size()
+		elif not car.is_doors_open_at(cell.y):
+			car.cancel_hall_call(cell.y, dir) # 満員になった・呼び出しに応えた後などは、割り当てから外す
+	var waiting := waiting_at_hall(cell, dir)
+	while kept.is_empty() or seats < waiting:
+		var car = choose_car(cell, dir, kept)
+		if car == null or (not kept.is_empty() and car.is_full()):
+			break # 満員のカゴは、ほかに向かうカゴがないときだけ割り当てる（空くのを待つ）
+		kept.append(car)
+		seats += car.capacity - car.passengers.size()
+		car.call_from_hall(cell.y, dir)
+	if kept.is_empty():
 		hall_assignments.erase(key)
-		return
-	hall_assignments[key] = car
-	car.call_from_hall(cell.y, dir)
+	else:
+		hall_assignments[key] = kept
 
-# 乗り場呼びに応えるカゴを選ぶ（群管理）: 到着までの手間の見積もりが一番小さいカゴ
-func choose_car(cell: Vector2i, dir):
+# 乗り場呼びに応えるカゴを選ぶ（群管理）: 到着までの手間の見積もりが一番小さいカゴ（except のカゴは選ばない）
+func choose_car(cell: Vector2i, dir, except: Array = []):
 	var best = null
 	var best_cost := 0.0
 	for car in get_cars_at(cell):
+		if except.has(car):
+			continue
 		var cost: float = car.estimate_cost(cell.y, dir)
 		if best == null or cost < best_cost:
 			best = car

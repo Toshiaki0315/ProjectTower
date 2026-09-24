@@ -17,7 +17,8 @@ const REQUIREMENTS := {
 	2: {"population": 50, "buildings": ["security"]},
 	3: {"population": 120, "buildings": ["medical", "recycling"]},
 	4: {"population": 250, "buildings": ["subway"], "vip": true, "unhappy": 0.1},
-	5: {"population": 500, "buildings": ["observatory", "wedding"], "unhappy": 0.1}, # 最高評価。屋上の展望台と結婚式場のある、名所のタワー
+	# 最高評価。屋上の展望台と結婚式場のある、名所のタワー。人口が倍になって通勤の混雑が大きいので、満足度は2割まで
+	5: {"population": 500, "buildings": ["observatory", "wedding"], "unhappy": 0.2},
 }
 const MAX_STARS := 5
 const BONUS_PER_STAR := 0.25

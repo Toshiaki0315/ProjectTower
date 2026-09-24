@@ -82,12 +82,12 @@ func process_visitor(_cell: Vector2i, _hall: Dictionary, info: Dictionary, v: Di
 	if not v.spawned:
 		if now >= v.arrive:
 			v.spawned = true
-			var entrance = world.nearest_entrance(v.spot)
-			if entrance != null:
-				v.resident = world.spawn_resident(entrance)
+			var route: Array[Vector2i] = world.path_from_nearest_entrance(v.spot)
+			if not route.is_empty():
+				v.resident = world.spawn_resident(route[0])
 				v.resident.base_color = info.color
 				v.resident.sprite_offset = v.offset
-				v.resident.go_to(v.spot)
+				v.resident.follow_path(route)
 		return
 	var resident = v.resident
 	if not is_instance_valid(resident):
@@ -110,10 +110,12 @@ func process_visitor(_cell: Vector2i, _hall: Dictionary, info: Dictionary, v: Di
 
 # 入口へ向かわせる。たどり着けなければ、その場で帰ったことにする
 func send_to_entrance(v: Dictionary) -> void:
-	var entrance = world.nearest_entrance(v.resident.cell)
-	if entrance == null or (v.resident.cell != entrance and not v.resident.go_to(entrance)):
+	var route: Array[Vector2i] = world.path_to_nearest_entrance(v.resident.cell)
+	if route.is_empty():
 		v.resident.queue_free()
 		v.resident = null
+	elif route.size() > 1: # もう入口にいるなら、そのまま帰る
+		v.resident.follow_path(route)
 
 # 指定した会場に着いている来客の数（会場のどのマスを指定してもよい）
 func count_at_hall(cell: Vector2i) -> int:

@@ -33,7 +33,8 @@ const RIGHT_HOMES := [11, 14, 17, 20]
 const RESERVE := 300000    # 手元に残しておくお金（急な出費のため）
 const CARS_PER_PERSON := 30 # 人口このくらいにつき、カゴを1台足す
 const FLOORS_PER_GUARD := 5 # この階数ごとに警備室を1つ置く（火事を早く消せるように）
-const UNHAPPY_LIMIT := 0.08 # 不満なテナントがこの割合を超えたら、建て増しを止める
+const UNHAPPY_LIMIT := 0.08 # 不満なテナントがこの割合を超えたら、エレベーターを足す
+const UNHAPPY_MARGIN := 0.8 # 不満なテナントが、次の★の条件のこの割合を超えたら、建て増しを止める
 
 var main: Node2D
 var days := 180
@@ -169,7 +170,8 @@ func grow_once() -> bool:
 	if main.rating_system.population() >= 40 and widen_lobby():
 		return true
 	# 次の★に満足度が要るとき（★4・★5）は、不満なテナントが増えてきたら、建て増しを止めて落ち着くのを待つ
-	if main.rating_system.REQUIREMENTS.get(stars + 1, {}).has("unhappy") and main.rating_system.unhappy_rate() > UNHAPPY_LIMIT:
+	var req: Dictionary = main.rating_system.REQUIREMENTS.get(stars + 1, {})
+	if req.has("unhappy") and main.rating_system.unhappy_rate() > req.unhappy * UNHAPPY_MARGIN:
 		return add_any_car()
 	return build_next_unit()
 

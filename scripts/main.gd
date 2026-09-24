@@ -613,17 +613,22 @@ func get_entrances() -> Array[Vector2i]:
 func is_entrance(cell: Vector2i) -> bool:
 	return get_entrances().has(cell)
 
-# 指定マスから一番近い（経路が一番短い）入口。たどり着ける入口がなければnull
+# 指定マスから一番近い（経路の手間が一番小さい）入口。たどり着ける入口がなければnull
 # 経路は行きも帰りも同じなので、ビルに来るときにも帰るときにも使える
 func nearest_entrance(cell: Vector2i):
-	var best = null
-	var best_length := 0
-	for entrance in get_entrances():
-		var path := find_path(cell, entrance)
-		if not path.is_empty() and (best == null or path.size() < best_length):
-			best = entrance
-			best_length = path.size()
-	return best
+	var path := path_to_nearest_entrance(cell)
+	return path[-1] if not path.is_empty() else null
+
+# 指定マスから一番近い入口までの経路（[cell, ..., 入口]。たどり着ける入口がなければ空配列）
+# 人ごとに経路を探さず、入口への道しるべ（pathfinding.entrance_field）をたどる（人が大勢来る時間帯に重くならないように）
+func path_to_nearest_entrance(cell: Vector2i, staff := false, vip := false) -> Array[Vector2i]:
+	return pathfinding.path_to_nearest_entrance(cell, get_entrances(), staff, vip)
+
+# 一番近い入口から指定マスまでの経路（[入口, ..., cell]。たどり着ける入口がなければ空配列）
+func path_from_nearest_entrance(cell: Vector2i, staff := false, vip := false) -> Array[Vector2i]:
+	var route := path_to_nearest_entrance(cell, staff, vip)
+	route.reverse()
+	return route
 
 # 指定マスにいる住人（乗車中の住人は除く。いなければnull）
 func get_resident_at(cell: Vector2i):

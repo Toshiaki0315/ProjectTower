@@ -1547,7 +1547,7 @@ func run_multi_car_scenario() -> bool:
 	# 群管理: 乗り場の呼び出しは、到着までの手間が一番小さいカゴに割り当てる
 	var all_cars: Array = elevators.get_cars_at(Vector2i(8, 15)) # 18階・13階・15階・16階にいる
 	elevators.request_hall(Vector2i(8, 14), ElevatorCar.Direction.UP)
-	var assigned = elevators.hall_assignments.get([Vector2i(8, 14), ElevatorCar.Direction.UP])
+	var assigned = elevators.hall_assignments.get([Vector2i(8, 14), ElevatorCar.Direction.UP], [null])[0]
 	check(assigned != null and assigned.floor_y in [13, 15], "止まっているカゴなら、一番近いカゴ（13階か15階）に割り当てる")
 	assigned.up_calls.clear() # 確認用の呼び出しを取り消す
 	elevators.hall_assignments.clear()
@@ -5263,18 +5263,25 @@ func run_observatory_scenario() -> bool:
 	rating.stars = 4
 	var missing: Array[String] = rating.missing_for_next()
 	check(missing.has("人口500") and missing.has("結婚式場") and not missing.has("展望台"), "★5には人口500・展望台・結婚式場が必要（展望台はもうある）")
-	# 不満なテナント（評価が「悪い」か、退去しそうなオフィス・住宅）が1割を超えていると、★5に上がれない
+	# 不満なテナント（評価が「悪い」か、退去しそうなオフィス・住宅）が2割を超えていると、★5に上がれない（★4は1割）
 	var tenants = main.tenant_system
 	var office_origins: Array[Vector2i] = main.find_office_units()
 	for origin in office_origins:
 		tenants.offices[origin] = tenants.new_tenant()
 	check(rating.unhappy_rate() == 0.0 and not rating.missing_for_next().any(func(m): return m.begins_with("不満なテナント")), "不満なテナントがいなければ、満足度の条件は満たしている")
-	tenants.offices[office_origins[0]].rating = tenants.Rating.BAD
-	tenants.offices[office_origins[1]].bad_days = tenants.LEAVE_AFTER_BAD_DAYS - 1 # 退去しそう
-	tenants.offices[office_origins[2]].vacant = true # 空室は数えない
-	var expected := 2.0 / (office_origins.size() - 1)
+	tenants.offices[office_origins[0]].bad_days = tenants.LEAVE_AFTER_BAD_DAYS - 1 # 退去しそう
+	tenants.offices[office_origins[1]].vacant = true # 空室は数えない
+	var occupied := office_origins.size() - 1
+	var bad_count := ceili(occupied * 0.3) # 3割ほどを不満にする（2割を超える）
+	for i in range(2, bad_count + 1):
+		tenants.offices[office_origins[i]].rating = tenants.Rating.BAD
+	var expected := float(bad_count) / occupied
 	check(is_equal_approx(rating.unhappy_rate(), expected), "不満なテナントの割合は、入居しているオフィス・住宅のうち、悪い評価か退去しそうなもの（%d%%）" % int(round(expected * 100)))
-	check(rating.missing_for_next().has("不満なテナント1割以下（今%d%%）" % int(round(expected * 100))), "不満なテナントが1割を超えていると、★5の条件に足りないものとして出る")
+	check(rating.missing_for_next().has("不満なテナント2割以下（今%d%%）" % int(round(expected * 100))), "不満なテナントが2割を超えていると、★5の条件に足りないものとして出る")
+	# ★4の条件は1割以下
+	rating.stars = 3
+	check(rating.missing_for_next().has("不満なテナント1割以下（今%d%%）" % int(round(expected * 100))), "★4の満足度の条件は、不満なテナント1割以下")
+	rating.stars = 4
 	for origin in office_origins:
 		tenants.offices[origin] = tenants.new_tenant()
 	await wait_frames(2)

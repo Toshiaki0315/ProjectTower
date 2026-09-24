@@ -166,12 +166,12 @@ func is_any_guest_riding(room: Dictionary) -> bool:
 
 # 入口に客を出して部屋へ向かわせる。たどり着けなければnull
 func spawn_guest(cell: Vector2i):
-	var entrance = world.nearest_entrance(cell)
-	if entrance == null:
+	var route: Array[Vector2i] = world.path_from_nearest_entrance(cell)
+	if route.is_empty():
 		return null
-	var guest = world.spawn_resident(entrance)
+	var guest = world.spawn_resident(route[0])
 	guest.base_color = GUEST_COLOR
-	guest.go_to(cell)
+	guest.follow_path(route)
 	return guest
 
 # 掃除待ちの客室か（ゴキブリが残るかどうかの判定用）
@@ -185,8 +185,7 @@ func checkout(cell: Vector2i, room: Dictionary) -> void:
 	revenue_by_day[day] = revenue_by_day.get(day, 0) + ROOM_TYPES[room.type].rate
 	checkouts_by_day[day] = checkouts_by_day.get(day, 0) + 1
 	for guest in room.guests:
-		var entrance = world.nearest_entrance(guest.cell)
-		if entrance != null and guest.go_to(entrance):
+		if guest.go_to_nearest_entrance():
 			leaving_guests.append(guest)
 		else:
 			guest.queue_free()
@@ -200,10 +199,12 @@ func process_leaving_guests() -> void:
 		if not is_instance_valid(guest):
 			leaving_guests.erase(guest)
 		elif not guest.is_moving():
-			var entrance = world.nearest_entrance(guest.cell)
-			if entrance == null or guest.cell == entrance or not guest.go_to(entrance):
+			var route: Array[Vector2i] = world.path_to_nearest_entrance(guest.cell)
+			if route.size() <= 1: # 入口に着いた（または行ける入口がない）
 				guest.queue_free()
 				leaving_guests.erase(guest)
+			else:
+				guest.follow_path(route)
 
 func process_housekeeper(keeper: Dictionary, minutes: float) -> void:
 	var resident = keeper.resident

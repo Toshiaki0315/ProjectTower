@@ -84,22 +84,25 @@ func _process(_delta: float) -> void:
 				send_home(w)
 
 func start_commute(cell: Vector2i, w: Dictionary) -> bool:
-	var entrance = world.nearest_entrance(cell)
-	if entrance == null:
+	# 一番近い入口からオフィスまでの経路（入口への道しるべを逆にたどる）
+	var route: Array[Vector2i] = world.path_from_nearest_entrance(cell)
+	if route.is_empty():
 		return false
-	var resident = world.spawn_resident(entrance)
-	resident.go_to(cell)
+	var resident = world.spawn_resident(route[0])
+	resident.follow_path(route)
 	w.resident = resident
 	w.leaving = false
 	return true
 
 # 入口へ向かわせる。たどり着けなければ、その場で帰ったことにする
 func send_home(w: Dictionary) -> void:
-	var entrance = world.nearest_entrance(w.resident.cell)
-	if entrance == null or (w.resident.cell != entrance and not w.resident.go_to(entrance)):
+	var route: Array[Vector2i] = world.path_to_nearest_entrance(w.resident.cell)
+	if route.is_empty():
 		w.resident.queue_free()
 		w.resident = null
 		w.leaving = false
+	elif route.size() > 1: # もう入口にいるなら、そのまま帰る
+		w.resident.follow_path(route)
 
 # ---------------------------------------------------
 # 集計（UI表示やテスト用）

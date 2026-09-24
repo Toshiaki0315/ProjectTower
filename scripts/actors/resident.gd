@@ -119,13 +119,26 @@ func go_to(target: Vector2i) -> bool:
 	var new_path: Array[Vector2i] = world.find_path(cell, target, staff, vip)
 	if new_path.is_empty():
 		return false
+	follow_path(new_path)
+	return true
+
+# 一番近い入口へ向かう（入口への道しるべをたどる。行ける入口がなければfalse）
+func go_to_nearest_entrance() -> bool:
+	var route: Array[Vector2i] = world.path_to_nearest_entrance(cell, staff, vip)
+	if route.is_empty():
+		return false
+	follow_path(route)
+	return true
+
+# 探しておいた経路（[今いるマス, ..., 目的地]）をたどる（同じ経路を探し直さなくてすむように）
+func follow_path(route: Array[Vector2i]) -> void:
+	var new_path := route.duplicate()
 	new_path.pop_front() # 先頭は現在地なので除く
 	path = new_path
-	goal = target
+	goal = route[-1]
 	state = State.WALKING
 	car = null
 	queue_redraw()
-	return true
 
 func _process(delta: float) -> void:
 	update_stress(delta)

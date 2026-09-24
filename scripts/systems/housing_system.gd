@@ -83,11 +83,13 @@ func process_member(cell: Vector2i, home: Dictionary, m: Dictionary, day: int, n
 	if m.leaving:
 		# 入口に着いたらビルの外へ出る。経路が途切れたら探し直す
 		if not resident.is_moving():
-			var entrance = world.nearest_entrance(resident.cell)
-			if entrance == null or resident.cell == entrance or not resident.go_to(entrance):
+			var route: Array[Vector2i] = world.path_to_nearest_entrance(resident.cell)
+			if route.size() <= 1: # 入口に着いた（または行ける入口がない）
 				resident.queue_free()
 				m.resident = null
 				m.leaving = false
+			else:
+				resident.follow_path(route)
 		return
 
 	var at_home: bool = resident.cell == m.room and not resident.is_moving()
@@ -99,8 +101,7 @@ func process_member(cell: Vector2i, home: Dictionary, m: Dictionary, day: int, n
 	# 朝になったら入口へ出かける（家に着いてから）
 	if at_home and m.out_day != day and now >= leave_minute(m.room, day) and now < return_start(day):
 		m.out_day = day
-		var entrance = world.nearest_entrance(resident.cell)
-		if entrance != null and resident.go_to(entrance):
+		if resident.go_to_nearest_entrance():
 			m.leaving = true
 
 # 家族が退去する（評価の悪い日が続いたとき）。家族はビルから出ていき、住宅は入居前の状態に戻る。
@@ -116,12 +117,12 @@ func move_out(origin: Vector2i) -> int:
 	return SALE_PRICE
 
 func spawn_at_entrance(m: Dictionary) -> void:
-	var entrance = world.nearest_entrance(m.room)
-	if entrance == null:
+	var route: Array[Vector2i] = world.path_from_nearest_entrance(m.room)
+	if route.is_empty():
 		return
-	var resident = world.spawn_resident(entrance)
+	var resident = world.spawn_resident(route[0])
 	resident.base_color = RESIDENT_COLOR
-	resident.go_to(m.room)
+	resident.follow_path(route)
 	m.resident = resident
 
 # 出かける・帰る時刻（平日と休日で時間帯が違う）。家族1人ずつ（部屋ごと）に違う
