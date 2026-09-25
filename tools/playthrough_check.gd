@@ -41,6 +41,8 @@ const UNHAPPY_LIMIT := 0.08 # 不満なテナントがこの割合を超えた�
 const UNHAPPY_MARGIN := 0.8 # 不満なテナントが、次の★の条件のこの割合を超えたら、建て増しを止める
 const GARBAGE_MARGIN := 30  # ゴミがゴミ処理場の処理能力のこの量手前まで増えたら、ゴミ処理場を足す
 const TIME_SCALE := 30.0
+# 次の★ -> この人口まで建て増す（要る人口を少し超えたら止める。建てすぎるとエレベーターが混んで、満足度の条件に届かなくなる）
+const POPULATION_CAP := {2: 80, 3: 150, 4: 300, 5: 550}
 # 屋上庭園（1つにつきビル全体の騒音を3和らげる。住宅はエレベーターのそばだとうるさくて退去してしまうため）。
 # 1階のロビーを左右の端から4マス伸ばし、その上の2階に建てる（上に何も建てないので、ずっと屋上のまま）
 const GARDEN_XS := [LOBBY_RIGHT + 1, LOBBY_LEFT - 4]
@@ -200,6 +202,8 @@ func grow_once() -> bool:
 	var req: Dictionary = main.rating_system.REQUIREMENTS.get(stars + 1, {})
 	if req.has("unhappy") and main.rating_system.unhappy_rate() > req.unhappy * UNHAPPY_MARGIN:
 		return add_any_car()
+	if main.rating_system.population() >= POPULATION_CAP.get(stars + 1, 1 << 30):
+		return add_any_car() # 次の★に要る人口は足りている。建てすぎない
 	return build_next_unit()
 
 # どのシャフトでもよいので、カゴを1台足す（不満なテナントが多いとき）
