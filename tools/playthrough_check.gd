@@ -10,31 +10,40 @@ extends SceneTree
 # 遊んでいるセーブデータには触らない（オートセーブを止めてから始める）。
 #
 # ビルの形（1階は y=18。左右とも同じ列に建て増す）:
-#   地上: 1階はロビー（はじめは x=-8〜7、お金ができたら x=12〜22 まで広げる）。x=8〜10 にエレベーター
-#         （はじめは1本。人口が増えたら SHAFT_POPULATION に合わせて足す）。x=11 は2階へ上がる階段。
+#   地上: 1階はロビー（はじめは x=-8〜7、お金ができたら x=16〜26 まで広げる）。x=8〜14 にエレベーター
+#         （はじめは x=8 の標準1本。人口が増えたら SHAFT_POPULATION に合わせて、x=9・11・13 に大型を足す。
+#         まだ建てていない大型の列は、空きフロアで埋めて左右をつないでおき、あとでその上に建てる）。x=15 は2階へ上がる階段。
 #         2階: 左にオフィス4棟、右にスイート（VIP用。1階から階段で待たずに行ける）・ハウスキーパー室・結婚式場。
-#         3階から上: OFFICE_FLOORS 階まではオフィス、その上は住宅（通勤のラッシュが分かれるように）。
-#         一番上の階の屋根に展望台。
+#         3階から上: OFFICE_FLOORS 階まではオフィス、その上は住宅（住宅の家族は朝に出かけて夕方に帰るので、
+#         オフィスの社員と逆向きになり、カゴが行きも帰りも人を運べる）。
+#         一番上の階の屋根に展望台。★3になったら、1階のロビーを左右の端から4マス伸ばして、その上に屋上庭園を2つ。
 #   地下: 地下1〜4階に警備室・メディカルセンター・ゴミ処理場（ゴミの量に合わせて足す）、地下5階に地下鉄駅。
 # ---------------------------------------------------
 
 const GROUND := 18
 const LOBBY_LEFT := -8
-const LOBBY_RIGHT := 22
-const SHAFT_XS := [8, 9, 10] # エレベーターの列（1本目・2本目・3本目）
-const SHAFT_POPULATION := [0, 150, 300] # この人口になったら、その本数目のエレベーターを建てる
-const STAIRS_X := 11       # 2階のスイートへ上がる階段（1階）
-const OFFICE_FLOORS := 16  # この階までオフィス、その上は住宅
+const LOBBY_RIGHT := 26
+const SHAFT_XS := [8, 9, 11, 13] # エレベーターの列（左端のx。1本目は標準、2〜4本目は横2マスの大型）
+const SHAFT_TYPES := ["elevator", "large_elevator", "large_elevator", "large_elevator"]
+const SHAFT_POPULATION := [0, 100, 200, 300] # この人口になったら、その本数目のエレベーターを建てる
+const SHAFT_COLUMNS := [9, 15] # 大型エレベーターのために空けておく列（x=9〜14。建てるまでは空きフロアで埋める）
+const STAIRS_X := 15       # 2階のスイートへ上がる階段（1階）
+const OFFICE_FLOORS := 9   # この階までオフィス、その上は住宅
 # 部屋は、エレベーターに近い側から外へ建てる（間が空くと、遠い部屋まで歩いて行けないため）
 const LEFT_OFFICES := [4, 0, -4, -8]
-const RIGHT_OFFICES := [11, 15, 19]
+const RIGHT_OFFICES := [15, 19, 23]
 const LEFT_HOMES := [4, 1, -2, -5, -8] # 住宅は横3マス。x=7 は空きフロアで埋めて、エレベーターまで歩けるようにする
-const RIGHT_HOMES := [11, 14, 17, 20]
+const RIGHT_HOMES := [15, 18, 21, 24]
 const RESERVE := 300000    # 手元に残しておくお金（急な出費のため）
 const CARS_PER_PERSON := 30 # 人口このくらいにつき、カゴを1台足す
 const FLOORS_PER_GUARD := 5 # この階数ごとに警備室を1つ置く（火事を早く消せるように）
 const UNHAPPY_LIMIT := 0.08 # 不満なテナントがこの割合を超えたら、エレベーターを足す
 const UNHAPPY_MARGIN := 0.8 # 不満なテナントが、次の★の条件のこの割合を超えたら、建て増しを止める
+const GARBAGE_MARGIN := 30  # ゴミがゴミ処理場の処理能力のこの量手前まで増えたら、ゴミ処理場を足す
+const TIME_SCALE := 30.0
+# 屋上庭園（1つにつきビル全体の騒音を3和らげる。住宅はエレベーターのそばだとうるさくて退去してしまうため）。
+# 1階のロビーを左右の端から4マス伸ばし、その上の2階に建てる（上に何も建てないので、ずっと屋上のまま）
+const GARDEN_XS := [LOBBY_RIGHT + 1, LOBBY_LEFT - 4]
 
 var main: Node2D
 var days := 180
@@ -65,7 +74,9 @@ func _init() -> void:
 	build_start()
 
 	print("日付\t資金\t人口\t★\t収支\t退去間近\t空室\t不満\tゴミ/処理能力\t目標")
-	Engine.time_scale = 60.0
+	# 30倍速（1フレームでゲーム内のおよそ0.5分。16倍速・60fpsで遊ぶのと同じくらいの細かさ）。
+	# これより速いと1フレームで時計が上限（2分）まで進み、カゴの動きが粗くなって、待ち時間が実際より長く出る
+	Engine.time_scale = TIME_SCALE
 	var last_day := 0
 	while main.clock.day <= days:
 		if main.economy_system.last_report.get("day", 0) != last_day and not main.economy_system.last_report.is_empty():
@@ -94,25 +105,39 @@ func build_start() -> void:
 	# 地下に設備を置ける場所（上から順に使う。エレベーターの列は飛ばす。右側はロビーを広げてから）
 	for y in range(GROUND + 1, GROUND + 5):
 		basement_slots.append([y, LOBBY_LEFT, SHAFT_XS[0] - LOBBY_LEFT])          # 左側（x=-8〜7）
-		basement_slots.append([y, STAIRS_X, LOBBY_RIGHT - STAIRS_X + 1])           # 右側（x=11〜22）
+		basement_slots.append([y, STAIRS_X, LOBBY_RIGHT - STAIRS_X + 1])           # 右側（x=15〜26）
 
-# ロビーを右半分に広げる（エレベーター3本ぶんの列と、2階へ上がる階段も）
+# ロビーを右半分に広げる（大型エレベーターの列は空きフロアでつなぎ、2階へ上がる階段も）
 func widen_lobby() -> bool:
 	if not main.is_cell_empty(Vector2i(LOBBY_RIGHT, GROUND)):
 		return false
-	var cost: int = main.BUILDINGS.lobby.cost * (LOBBY_RIGHT - STAIRS_X) + main.BUILDINGS.stairs.cost
+	var cost: int = main.BUILDINGS.lobby.cost * (LOBBY_RIGHT - STAIRS_X) + main.BUILDINGS.stairs.cost \
+		+ main.BUILDINGS.frame.cost * (SHAFT_COLUMNS[1] - SHAFT_COLUMNS[0])
 	if main.funds < cost + RESERVE:
 		return false
+	fill_shaft_columns(GROUND)
 	build("stairs", Vector2i(STAIRS_X, GROUND))
 	for x in range(STAIRS_X + 1, LOBBY_RIGHT + 1):
 		build("lobby", Vector2i(x, GROUND))
 	return true
 
+# その列（左端のx）にエレベーターを建てたか
+func shaft_built(x: int) -> bool:
+	return main.elevator_system.is_shaft_type(main.get_building_type(Vector2i(x, GROUND)))
+
+# 大型エレベーターのために空けておく列のうち、まだ何もないマスを空きフロアで埋める（左右をつないで歩けるように。
+# 下の階が埋まっていないマスは、まだ建てられないので飛ばす）
+func fill_shaft_columns(y: int) -> void:
+	for x in range(SHAFT_COLUMNS[0], SHAFT_COLUMNS[1]):
+		var cell := Vector2i(x, y)
+		if main.is_cell_empty(cell) and main.get_build_problem(cell, "frame") == "":
+			build("frame", cell)
+
 # 人口に合わせて、エレベーターを1本足す（全部の階に通す）
 func add_shaft_if_needed() -> bool:
 	for i in SHAFT_XS.size():
 		var x: int = SHAFT_XS[i]
-		if not main.is_cell_empty(Vector2i(x, GROUND)):
+		if shaft_built(x):
 			continue
 		# 人口が増えたとき、または不満なテナントが多い（エレベーターが混んでいる）ときに足す
 		if main.rating_system.population() < SHAFT_POPULATION[i] and main.rating_system.unhappy_rate() <= UNHAPPY_LIMIT:
@@ -121,9 +146,9 @@ func add_shaft_if_needed() -> bool:
 		for cell: Vector2i in main.building_grid:
 			if cell.x == SHAFT_XS[0] and main.get_building_type(cell) == "elevator":
 				floors += 1
-		if main.funds < main.BUILDINGS.elevator.cost * floors + RESERVE:
+		if main.funds < main.BUILDINGS[SHAFT_TYPES[i]].cost * floors + RESERVE:
 			return false
-		build("elevator", Vector2i(x, GROUND))
+		build(SHAFT_TYPES[i], Vector2i(x, GROUND))
 		var top := GROUND
 		var bottom := GROUND
 		for cell: Vector2i in main.building_grid:
@@ -132,7 +157,7 @@ func add_shaft_if_needed() -> bool:
 				bottom = maxi(bottom, cell.y)
 		extend_shafts(top)
 		extend_shafts(bottom)
-		return not main.is_cell_empty(Vector2i(x, GROUND)) # 建てられなかったら、ほかの建て増しに進む
+		return shaft_built(x) # 建てられなかったら、ほかの建て増しに進む
 	return false
 
 # 毎日の決算のあとに、お金の範囲で建て増す（1日に何回でも）
@@ -161,6 +186,8 @@ func grow_once() -> bool:
 		return try_second_floor("hotel_suite", STAIRS_X)
 	if stars >= 3 and main.find_units_of_type("housekeeping").is_empty():
 		return try_second_floor("housekeeping", STAIRS_X + 4)
+	if stars >= 3 and try_garden():
+		return true
 	if stars >= 4 and missing.has("結婚式場") and try_second_floor("wedding", STAIRS_X + 6):
 		return true
 	if stars >= 4 and missing.has("展望台") and main.rating_system.population() >= 450 and try_observatory():
@@ -179,7 +206,7 @@ func grow_once() -> bool:
 func add_any_car() -> bool:
 	for x in SHAFT_XS:
 		var cell := Vector2i(x, GROUND)
-		if not main.is_cell_empty(cell) and main.elevator_system.get_add_car_problem(cell) == "" \
+		if shaft_built(x) and main.elevator_system.get_add_car_problem(cell) == "" \
 				and main.funds > main.elevator_system.CAR_COST + RESERVE:
 			main.elevator_system.add_car(cell)
 			return true
@@ -204,19 +231,19 @@ func needs_guard() -> bool:
 # ゴミが処理能力を超えそうか（前日の決算のゴミから）
 func needs_recycling() -> bool:
 	var garbage: int = main.economy_system.last_report.get("garbage", 0)
-	return garbage + 10 > main.economy_system.recycling_capacity()
+	return garbage + GARBAGE_MARGIN > main.economy_system.recycling_capacity()
 
 # 人口に合わせてカゴを足す（2本のシャフトに交互に）
 func add_car_if_needed() -> bool:
 	var cars := 0
 	for x in SHAFT_XS:
-		if not main.is_cell_empty(Vector2i(x, GROUND)):
+		if shaft_built(x):
 			cars += main.elevator_system.get_cars_at(Vector2i(x, GROUND)).size()
 	if main.rating_system.population() < cars * CARS_PER_PERSON:
 		return false
 	for x in SHAFT_XS:
 		var cell := Vector2i(x, GROUND)
-		if main.is_cell_empty(cell):
+		if not shaft_built(x):
 			continue
 		if main.elevator_system.get_add_car_problem(cell) == "" and main.funds > main.elevator_system.CAR_COST + RESERVE:
 			main.elevator_system.add_car(cell)
@@ -246,11 +273,12 @@ func build_next_unit() -> bool:
 					plan.append(["housing", x])
 		for item in plan:
 			var cell := Vector2i(item[1], y)
-			if not main.is_cell_empty(cell) and main.get_building_type(cell) != "frame":
+			if not main.is_cell_empty(cell) and (main.get_building_type(cell) != "frame" or item[0] == "frame"):
 				continue # もう建っている
 			if main.funds < main.BUILDINGS[item[0]].cost + RESERVE:
 				return false
 			extend_shafts(y)
+			fill_shaft_columns(y)
 			if main.get_build_problem(cell, item[0]) == "":
 				build(item[0], cell)
 				return true
@@ -304,6 +332,22 @@ func try_subway() -> bool:
 	build("subway", Vector2i(4, GROUND + 5))
 	return main.get_building_type(Vector2i(4, GROUND + 5)) == "subway"
 
+# 屋上庭園を1つ建てる（GARDEN_XS の順に。真下の1階にロビーを伸ばしてから）。建てたら true
+func try_garden() -> bool:
+	for x in GARDEN_XS:
+		var cell := Vector2i(x, GROUND - 1)
+		if main.get_building_type(cell) == "garden":
+			continue
+		var cost: int = main.BUILDINGS.garden.cost + main.BUILDINGS.lobby.cost * 4
+		if main.funds < cost + RESERVE:
+			return false
+		for dx in 4:
+			if main.is_cell_empty(Vector2i(x + dx, GROUND)):
+				build("lobby", Vector2i(x + dx, GROUND))
+		build("garden", cell)
+		return main.get_building_type(cell) == "garden"
+	return false
+
 # 展望台（一番上の階の屋根に）
 func try_observatory() -> bool:
 	if main.funds < main.BUILDINGS.observatory.cost + RESERVE:
@@ -320,13 +364,15 @@ func try_observatory() -> bool:
 
 # 建てたエレベーターのシャフトを、その階まで伸ばす（上にも下にも）
 func extend_shafts(y: int) -> void:
-	for x in SHAFT_XS:
-		if main.is_cell_empty(Vector2i(x, GROUND)):
+	for i in SHAFT_XS.size():
+		var x: int = SHAFT_XS[i]
+		if not shaft_built(x):
 			continue # まだ建てていないエレベーター
 		var step := -1 if y < GROUND else 1
 		for shaft_y in range(GROUND, y + step, step):
-			if main.is_cell_empty(Vector2i(x, shaft_y)):
-				build("elevator", Vector2i(x, shaft_y))
+			var cell := Vector2i(x, shaft_y)
+			if main.get_building_type(cell) != SHAFT_TYPES[i] and main.get_build_problem(cell, SHAFT_TYPES[i]) == "":
+				build(SHAFT_TYPES[i], cell) # 空いているマスか、空きフロアの上に建てる
 
 func build(type: String, cell: Vector2i) -> void:
 	main.select_mode(type)

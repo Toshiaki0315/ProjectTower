@@ -9,7 +9,7 @@ extends SceneTree
 # 実行方法（ウィンドウ付きで起動する）:
 #   godot --path . -s res://tools/transit_check.gd -- <構成> <下のゾーンのオフィス階数> [<上のゾーンのオフィス階数>] [frames]
 # 構成: std3  … 標準エレベーター3本（各4台。全部の階に停まる）
-#       large3 … 大型エレベーター3本（各4台）
+#       large3・large4 … 大型エレベーター3本・4本（各4台）
 #       sky・sky3 … 急行2本で1階とスカイロビー（15階）を結び、下のゾーン（2階〜）と上のゾーン（16階〜）を大型2本・3本ずつで
 # 例: godot --path . -s res://tools/transit_check.gd -- large3 9（社員252人）/ -- sky3 9 9（社員504人）
 # frames を付けると、2日目の朝の通勤の時間帯の1フレームの時間を10分ごとにまとめて出して終わる（重さの確認用）。
@@ -94,9 +94,9 @@ func build(config: String, low_floors: int, high_floors: int) -> void:
 		"std3":
 			for x in [8, 9, 10]:
 				shafts.append(["elevator", x, 1, top_floor])
-		"large3":
-			for x in [8, 10, 12]:
-				shafts.append(["large_elevator", x, 1, top_floor])
+		"large3", "large4":
+			for i in (3 if config == "large3" else 4):
+				shafts.append(["large_elevator", 8 + i * 2, 1, top_floor])
 		"sky", "sky3":
 			top_floor = 15 + high_floors
 			var locals := 2 if config == "sky" else 3 # ゾーンごとの大型エレベーターの本数
