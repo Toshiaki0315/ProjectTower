@@ -53,6 +53,7 @@ var target_y: int  # 移動中に向かっている隣の階
 var state := State.IDLE
 var direction := Direction.NONE
 var door_timer := 0.0
+var opened_frame := -1 # 扉を開けたフレーム（そのフレームのうちは閉めない。待っている人が乗り込めるように）
 var car_calls := {}  # 階 -> true
 var up_calls := {}   # 階 -> true
 var down_calls := {} # 階 -> true
@@ -214,34 +215,48 @@ func cancel_hall_call(y: int, dir: Direction) -> void:
 # 動かし方
 # ---------------------------------------------------
 
+# 1フレームの時間を使い切るまで、扉の開け閉め・次の行き先を決める・動く を続けて進める
+#（1つ切り替えるたびに次のフレームを待つと、早送り中やfpsが低いときほど停まるたびに時間を失い、カゴが遅くなってしまう）
+# ただし扉を開けたフレームのうちは閉めない（待っている人は、扉が開いているのを見て乗り込むため）
+const MAX_STEPS_PER_FRAME := 16 # 1フレームに切り替える回数の上限（念のため）
+
 func _process(delta: float) -> void:
-	match state:
-		State.DOORS_OPEN:
-			door_timer -= delta
-			if door_timer <= 0.0:
-				state = State.IDLE
-		State.IDLE:
+	var time_left := delta
+	for step in MAX_STEPS_PER_FRAME:
+		if time_left <= 0.0:
+			break
+		if state == State.DOORS_OPEN:
+			if opened_frame == Engine.get_process_frames() or door_timer > time_left:
+				door_timer -= time_left
+				break
+			time_left -= door_timer # 前のフレームで扉の時間が切れていたら（マイナス）、その分も今のフレームで進む
+			state = State.IDLE
+		elif state == State.IDLE:
 			decide_next_action()
-		State.MOVING:
-			# 1フレームで階をまたいでも、余った時間ぶんは続けて進む
-			#（そうしないと早送り中やfpsが低いときに1フレーム1階までしか動けず、遅くなってしまう）
-			var time_left := delta
-			while time_left > 0.0 and state == State.MOVING:
-				var target_pos := floor_position(target_y)
-				var distance := position.distance_to(target_pos)
-				if speed * time_left < distance:
-					position = position.move_toward(target_pos, speed * time_left)
-					break
-				position = target_pos
-				time_left -= distance / speed
-				floor_y = target_y
-				if should_stop_at(floor_y):
-					stop_here()
-				elif has_calls_beyond(floor_y, direction):
-					start_moving() # 停まらずに次の階へ
-				else:
-					state = State.IDLE
+			if state == State.IDLE:
+				break # 呼び出しがなく、止まったまま
+		elif state == State.MOVING:
+			time_left = move(time_left)
 	queue_redraw()
+
+# 動く。1フレームで階をまたいでも、余った時間ぶんは続けて進む。停まったら（扉を開けた・止まった）、余った時間を返す
+func move(time_left: float) -> float:
+	while time_left > 0.0 and state == State.MOVING:
+		var target_pos := floor_position(target_y)
+		var distance := position.distance_to(target_pos)
+		if speed * time_left < distance:
+			position = position.move_toward(target_pos, speed * time_left)
+			return 0.0
+		position = target_pos
+		time_left -= distance / speed
+		floor_y = target_y
+		if should_stop_at(floor_y):
+			stop_here()
+		elif has_calls_beyond(floor_y, direction):
+			start_moving() # 停まらずに次の階へ
+		else:
+			state = State.IDLE
+	return time_left
 
 # 停まっているときに、この階で扉を開けるか、どちらへ動くかを決める
 func decide_next_action() -> void:
@@ -299,6 +314,7 @@ func stop_here() -> void:
 		down_calls.erase(floor_y)
 	state = State.DOORS_OPEN
 	door_timer = DOOR_TIME
+	opened_frame = Engine.get_process_frames()
 	arrived.emit(floor_y)
 
 # y階にいるとき、次に進む方向

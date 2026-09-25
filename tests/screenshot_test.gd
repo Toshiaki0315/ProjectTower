@@ -40,7 +40,7 @@ func _init() -> void:
 	var shard_index := (int(shard.split("/")[0]) - 1) if shard.contains("/") else 0
 	var shard_count := int(shard.split("/")[1]) if shard.contains("/") else 1
 	var scenario_index := -1
-	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario, run_elevator_stats_scenario, run_tower_name_scenario, run_mood_scenario, run_cache_scenario]:
+	for scenario in [run_empty_start_scenario, run_build_scenario, run_stairs_scenario, run_camera_scenario, run_ui_scenario, run_elevator_scenario, run_ride_scenario, run_stress_scenario, run_collective_scenario, run_commute_scenario, run_economy_scenario, run_hotel_scenario, run_lunch_scenario, run_recycling_scenario, run_rating_scenario, run_housing_scenario, run_room_types_scenario, run_weekday_scenario, run_event_scenario, run_subway_scenario, run_capacity_scenario, run_multi_car_scenario, run_scroll_sky_scenario, run_night_light_scenario, run_sun_moon_scenario, run_street_lamp_scenario, run_tenant_rating_scenario, run_vacancy_scenario, run_hotel_rating_scenario, run_home_rating_scenario, run_atrium_scenario, run_sky_lobby_scenario, run_express_elevator_scenario, run_support_scenario, run_escalator_scenario, run_home_floor_scenario, run_service_hours_scenario, run_service_elevator_scenario, run_parking_scenario, run_shop_scenario, run_cinema_scenario, run_size_limit_scenario, run_noise_scenario, run_medical_scenario, run_pollution_scenario, run_angry_scenario, run_vip_scenario, run_bomb_scenario, run_fire_scenario, run_roach_scenario, run_treasure_scenario, run_calendar_scenario, run_weather_scenario, run_save_scenario, run_helipad_scenario, run_usability_scenario, run_audio_scenario, run_title_scenario, run_goal_scenario, run_tutorial_scenario, run_effects_scenario, run_garden_scenario, run_fastfood_scenario, run_office_types_scenario, run_frame_scenario, run_large_elevator_scenario, run_routes_scenario, run_menu_scenario, run_demolish_rules_scenario, run_incident_targets_scenario, run_bomb_search_scenario, run_blast_scenario, run_vip_elevator_scenario, run_rent_scenario, run_roach_rooms_scenario, run_review_fixes_scenario, run_entrances_scenario, run_sky_events_scenario, run_save_slots_scenario, run_observatory_scenario, run_overlay_scenario, run_request_scenario, run_season_scenario, run_elevator_stats_scenario, run_tower_name_scenario, run_mood_scenario, run_cache_scenario, run_elevator_speed_scenario]:
 		scenario_index += 1
 		if scenario_index % shard_count != shard_index:
 			continue # ほかの組が受け持つシナリオ
@@ -5656,4 +5656,45 @@ func run_cache_scenario() -> bool:
 	check(elevators.get_cars_at(Vector2i(8, 16)).size() == 2, "カゴを足すと、すぐに見つかる")
 	main.demolish_at(Vector2i(8, 15))
 	check(elevators.get_cars_at(Vector2i(8, 16)).size() == 2 and elevators.get_cars_at(Vector2i(8, 15)).is_empty(), "シャフトを縮めると、なくなった階ではカゴが見つからない")
+	return true
+
+# ---------------------------------------------------
+# 早送りしても、カゴの速さ（ゲーム内の時間で）が変わらない
+# カゴが停まるたびに、扉を閉める・次を決める・動き出す をそれぞれ次のフレームまで待つと、
+# 1フレームが長い早送り中ほど時間を失って遅くなる。1フレームの時間を使い切るまで続けて進める
+# ---------------------------------------------------
+func run_elevator_speed_scenario() -> bool:
+	print("[シナリオ] 早送りしても、カゴの速さは変わらない")
+	main.funds = 10000000
+	var x := 8
+	await choose_mode("elevator")
+	for y in range(18, 10, -1):
+		await click_cell(Vector2i(x, y), MOUSE_BUTTON_LEFT)
+	var car = main.elevator_system.cars[0]
+	check(car.top_y == 11 and car.bottom_y == 18, "シャフトは y=11〜18")
+	var seconds: Array[float] = [] # 運ぶのにかかった時間（実際の秒 × 倍率。カゴはこの時間で動く）
+	# fps が低いほど1フレームが長く、差が出やすい。15fps に抑えて比べる（16倍速なら1フレームがおよそ1秒ぶん）
+	var max_fps := Engine.max_fps
+	Engine.max_fps = 15
+	for scale in [1.0, 16.0]:
+		# 1階（y=18）に戻してから、4つの階に停まりながら上がる
+		car.request_floor(18)
+		await wait_until(func(): return car.floor_y == 18 and car.state == car.State.IDLE, 20.0)
+		Engine.time_scale = scale
+		for y in [16, 14, 12, 11]:
+			car.request_floor(y)
+		var elapsed := 0.0
+		var last := Time.get_ticks_usec()
+		var limit := Time.get_ticks_msec() + 30000
+		while not (car.car_calls.is_empty() and car.state == car.State.IDLE) and Time.get_ticks_msec() < limit:
+			await process_frame
+			var now := Time.get_ticks_usec()
+			elapsed += (now - last) / 1000000.0 * scale
+			last = now
+		seconds.append(elapsed)
+		Engine.time_scale = 1.0
+	Engine.max_fps = max_fps
+	print("  4つの階に停まって上がるのにかかった時間: 1倍速 %.2f秒・16倍速 %.2f秒" % [seconds[0], seconds[1]])
+	check(car.floor_y == 11, "カゴが一番上の行き先（y=11）まで着く")
+	check(seconds[1] <= seconds[0] * 1.15, "16倍速でも、1倍速とほぼ同じ時間で運ぶ（1倍速 %.2f秒・16倍速 %.2f秒）" % [seconds[0], seconds[1]])
 	return true
