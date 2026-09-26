@@ -154,9 +154,17 @@ func settle(day: int) -> void:
 	var message := "%s（%d日目）の決算: %s" % [world.clock.date_text(day), day, " / ".join(items)]
 	if tenants.left > 0 or tenants.moved_in > 0:
 		message += " / オフィス退去 %d棟・入居 %d棟" % [tenants.left, tenants.moved_in]
-	# 評価（★）の判定。昇格したら、メッセージの先頭で知らせる（ボーナスは翌日の決算から）
-	if world.rating_system.evaluate():
-		message = "ビルの評価が★%dに上がりました！ %s" % [world.rating_system.stars, message]
+	# 評価（★）の判定。上がった・下がったら、メッセージの先頭で知らせる（ボーナスは翌日の決算から）
+	var rating = world.rating_system
+	match rating.evaluate():
+		1:
+			message = "ビルの評価が★%dに上がりました！ %s" % [rating.stars, message]
+		-1:
+			message = "★%dの条件を%d日続けて満たせなかったので、ビルの評価が★%dに下がりました… %s" % [rating.stars + 1,
+				rating.DEMOTE_DAYS, rating.stars, message]
+		_:
+			if rating.demotion_warning() != "":
+				message += " / " + rating.demotion_warning()
 	# 入口のあたりに「+◯◯Cr」を浮かせる（黒字のときだけ）
 	var entrance = world.get_entrance()
 	if total > 0 and entrance != null:

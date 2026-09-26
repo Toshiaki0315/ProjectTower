@@ -1065,17 +1065,30 @@ func run_rating_scenario() -> bool:
 	check(rating.missing_for_next().is_empty(), "警備室を置くと★2の条件を満たす")
 	check(rating.stars == 1, "★が上がるのは決算のとき")
 	
-	# 1日目: 決算で★2に上がる（ボーナスはまだ付かない）
+	# 条件を満たした決算が3回続くと★2に上がる（ボーナスはまだ付かない）
+	# このビルにはゴミ処理場がなく衛生が悪化するので、日をまたぐ前に評価の悪い日を0に戻して、退去しないようにする
+	var keep_tenants := func():
+		for origin in main.tenant_system.offices:
+			main.tenant_system.offices[origin].bad_days = 0
 	await run_day(1)
+	check(rating.stars == 1 and rating.qualified_days == 1, "1日目の決算では、まだ★2に上がらない")
+	await wait_frames(2)
+	check(main.stats_label.text.contains("★2の条件達成。あと2日続けば昇格"), "ビルの状況に、昇格まであと何日かが出る")
+	keep_tenants.call()
+	await run_day(2)
+	check(rating.stars == 1, "2日目の決算でも、まだ★2に上がらない")
+	keep_tenants.call()
+	await run_day(3)
 	var report = main.economy_system.last_report
-	check(rating.stars == 2, "1日目の決算で★2に上がる")
+	check(rating.stars == 2, "条件を満たした決算が3回続いたら★2に上がる")
 	check(logged("ビルの評価が★2に上がりました！"), "昇格がメッセージで知らされる")
 	check(report.get("bonus") == 0, "昇格した日の決算にはまだボーナスが付かない")
 	check(report.get("maintenance") == 12000 + 5000, "警備室の維持費5千Crがかかる")
 	await capture("rating_01_star2")
 	
-	# 2日目: 賃料52.4万Crの25% = 13.1万Crのボーナス
-	await run_day(2)
+	# 次の日: 賃料52.4万Crの25% = 13.1万Crのボーナス
+	keep_tenants.call()
+	await run_day(4)
 	report = main.economy_system.last_report
 	check(report.get("bonus") == 131000, "★2では賃料に25%（13.1万Cr）の評価ボーナスが付く")
 	check(main.last_message.contains("評価ボーナス +131,000Cr"), "決算のメッセージに評価ボーナスが出る")
@@ -1086,6 +1099,19 @@ func run_rating_scenario() -> bool:
 	await click_cell(Vector2i(11, 17), MOUSE_BUTTON_LEFT) # 警備室（x=9〜10）の右隣
 	check(main.get_building_type(Vector2i(11, 17)) == "medical", "メディカルセンターを建てられる")
 	check(rating.missing_for_next() == ["人口120", "ゴミ処理場"], "メディカルセンターを置くと★3の条件から外れる")
+
+	# 降格: 今の★の条件（★2なら警備室）を満たさない決算が5回続くと、★が1つ下がる
+	main.funds = 10000000
+	main.demolish_at(Vector2i(9, 17))
+	check(rating.missing_for(2) == ["警備室"], "警備室を撤去すると、★2の条件を満たさなくなる")
+	var results: Array = []
+	for i in rating.DEMOTE_DAYS - 1:
+		results.append(rating.evaluate())
+	check(results.all(func(r): return r == 0) and rating.stars == 2, "条件を満たさない決算が4回までは★2のまま")
+	check(rating.demotion_warning().contains("あと1日続くと★1に下がります"), "★が下がるまであと何日かを知らせる")
+	check(main.ui.warnings().any(func(w): return w.begins_with("★が下がりそう")), "上部バーの⚠にも、★が下がりそうなことが出る")
+	check(rating.evaluate() == -1 and rating.stars == 1, "条件を満たさない決算が5回続くと★1に下がる")
+	check(rating.failing_days == 0 and rating.demotion_warning() == "", "下がったら、数え直す")
 	return true
 
 # ---------------------------------------------------
@@ -3032,7 +3058,9 @@ func run_vip_scenario() -> bool:
 	check(vips.passed, "待たせずに泊まってもらえたので、チェックアウトのときに合格")
 	check(logged("大満足です"), "合格がメッセージで知らされる")
 	check(rating.missing_for_next().is_empty(), "★4の条件がそろう")
-	check(rating.evaluate() and rating.stars == 4, "次の決算で★4に昇格する")
+	rating.qualified_days = 0
+	var results := [rating.evaluate(), rating.evaluate(), rating.evaluate()]
+	check(results == [0, 0, 1] and rating.stars == 4, "★4の条件がそろった決算が3回続くと★4に昇格する（%s）" % [results])
 	await capture("vip_02_passed")
 
 	# 待たせてしまったときは、チェックアウトのときに不合格になる
@@ -3491,6 +3519,8 @@ func run_save_scenario() -> bool:
 	main.build_at(Vector2i(12, 17))
 	main.clock.set_time(7, 15, 30)
 	main.rating_system.stars = 2
+	main.rating_system.qualified_days = 2
+	main.rating_system.failing_days = 1
 	main.economy_system.pollution = 3
 	main.hotel_system.rooms[Vector2i(9, 17)].state = main.hotel_system.RoomState.DIRTY
 	main.housing_system.homes[Vector2i(12, 17)].moved_in = true
@@ -3517,6 +3547,8 @@ func run_save_scenario() -> bool:
 	main.funds = 0
 	main.clock.set_time(1, 7, 30)
 	main.rating_system.stars = 1
+	main.rating_system.qualified_days = 0
+	main.rating_system.failing_days = 0
 	main.economy_system.pollution = 0
 	check(main.building_grid.is_empty(), "いったん更地にする")
 	check(main.save_system.load_game(save_path), "セーブデータを読み込める")
@@ -3524,6 +3556,7 @@ func run_save_scenario() -> bool:
 	check(main.funds == funds_before, "資金が戻る")
 	check(main.clock.day == 7 and main.clock.minute_of_day() == 15 * 60 + 30, "日付と時刻が戻る")
 	check(main.rating_system.stars == 2, "ビルの評価（★）が戻る")
+	check(main.rating_system.qualified_days == 2 and main.rating_system.failing_days == 1, "昇格・降格までの日数も戻る")
 	check(main.economy_system.pollution == 3, "衛生の悪化が戻る")
 	check(main.get_building_type(Vector2i(9, 17)) == "hotel" and main.get_building_type(Vector2i(12, 17)) == "housing", "客室と住宅が元の場所に戻る")
 	check(main.hotel_system.rooms[Vector2i(9, 17)].state == main.hotel_system.RoomState.DIRTY, "客室が清掃待ちのまま戻る")
@@ -3789,23 +3822,23 @@ func run_goal_scenario() -> bool:
 	check(not main.goal_panel.visible, "「つづける」で画面を閉じられる")
 	
 	# 期限を過ぎても、続けて挑戦できる
-	check(goals.current().day == 45, "2つ目の目標は45日目まで")
-	main.clock.set_time(46, 12, 0)
-	goals.check_day(46)
+	check(goals.current().day == 50, "2つ目の目標は50日目まで")
+	main.clock.set_time(51, 12, 0)
+	goals.check_day(51)
 	check(goals.index == 1, "期限を過ぎても目標は変わらない")
 	check(logged("目標の期限"), "期限を過ぎたことを知らせる")
 	main.rating_system.stars = 3
-	goals.check_day(47)
+	goals.check_day(52)
 	check(goals.index == 2, "遅れて達成してもよい")
 	
 	# 全部達成するとクリアの画面が出る
 	main.rating_system.stars = 4
-	goals.check_day(48)
+	goals.check_day(53)
 	main.funds = 50000000
-	goals.check_day(49)
+	goals.check_day(54)
 	check(goals.index == 4 and not goals.cleared, "資金の目標のあとに、最後の目標（★5）が残っている")
 	main.rating_system.stars = 5
-	goals.check_day(50)
+	goals.check_day(55)
 	check(goals.cleared and goals.current() == null, "すべての目標を達成した")
 	check(main.goal_title.text == "タワー完成！" and main.goal_text.text.contains("すべての目標を達成") and main.goal_panel.visible, "クリアの画面（タワー完成）が出る")
 	await wait_frames(2) # 上部バーの表示は次のフレームで更新される
@@ -5268,6 +5301,7 @@ func run_observatory_scenario() -> bool:
 	var office_origins: Array[Vector2i] = main.find_office_units()
 	for origin in office_origins:
 		tenants.offices[origin] = tenants.new_tenant()
+		tenants.offices[origin].days = tenants.SETTLED_DAYS # 入居して落ち着いたテナント
 	check(rating.unhappy_rate() == 0.0 and not rating.missing_for_next().any(func(m): return m.begins_with("不満なテナント")), "不満なテナントがいなければ、満足度の条件は満たしている")
 	tenants.offices[office_origins[0]].bad_days = tenants.LEAVE_AFTER_BAD_DAYS - 1 # 退去しそう
 	tenants.offices[office_origins[1]].vacant = true # 空室は数えない
@@ -5278,9 +5312,25 @@ func run_observatory_scenario() -> bool:
 	var expected := float(bad_count) / occupied
 	check(is_equal_approx(rating.unhappy_rate(), expected), "不満なテナントの割合は、入居しているオフィス・住宅のうち、悪い評価か退去しそうなもの（%d%%）" % int(round(expected * 100)))
 	check(rating.missing_for_next().has("不満なテナント2割以下（今%d%%）" % int(round(expected * 100))), "不満なテナントが2割を超えていると、★5の条件に足りないものとして出る")
+	# 入居したばかりのテナントは数えない（一気に建てて、割合を薄めることはできない）
+	var newcomer: Dictionary = tenants.offices[office_origins[-1]]
+	newcomer.days = tenants.SETTLED_DAYS - 1
+	check(is_equal_approx(rating.unhappy_rate(), float(bad_count) / (occupied - 1)), "入居して%d日たっていないテナントは、不満なテナントの割合に数えない" % tenants.SETTLED_DAYS)
+	newcomer.days = tenants.SETTLED_DAYS
 	# ★4の条件は1割以下
 	rating.stars = 3
 	check(rating.missing_for_next().has("不満なテナント1割以下（今%d%%）" % int(round(expected * 100))), "★4の満足度の条件は、不満なテナント1割以下")
+	# ★4を保つだけなら、不満なテナントは2割以下でよい（取るときより緩い）
+	for origin in office_origins:
+		if tenants.offices[origin].rating == tenants.Rating.BAD:
+			tenants.offices[origin].rating = tenants.Rating.GOOD
+	var keep_unhappy := ceili(occupied * 0.15) # 1割を超えて2割以下にする（退去しそうな1棟も数に入る）
+	for i in range(2, 2 + keep_unhappy - 1):
+		tenants.offices[office_origins[i]].rating = tenants.Rating.BAD
+	var rate: float = rating.unhappy_rate()
+	check(rate > 0.1 and rate <= 0.2, "不満なテナントを1割と2割のあいだにする（%d%%）" % int(round(rate * 100)))
+	var unhappy_item := func(list: Array[String]) -> bool: return list.any(func(m): return m.begins_with("不満なテナント"))
+	check(unhappy_item.call(rating.missing_for(4)) and not unhappy_item.call(rating.missing_for(4, true)), "1割を超えると★4は取れないが、2割以下なら★4は保てる")
 	rating.stars = 4
 	for origin in office_origins:
 		tenants.offices[origin] = tenants.new_tenant()

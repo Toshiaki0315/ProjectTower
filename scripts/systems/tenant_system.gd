@@ -41,6 +41,7 @@ const BAD_FROM := 60.0
 const LEAVE_AFTER_BAD_DAYS := 3 # 評価が悪い日がこの日数続くと退去する
 const VACANT_DAYS := 2          # 空室になってから新しいテナントが入居するまでの日数
 const MAX_LEAVE_PER_DAY := 2    # 1日に退去するテナントの数の上限（一度に全部出ていかないように）
+const SETTLED_DAYS := 3         # 入居してからこの回数の評価を受けるまでは、★の条件の「不満なテナント」に数えない
 const CHECKIN_CHANCE := {Rating.GOOD: 1.0, Rating.NORMAL: 0.6, Rating.BAD: 0.2} # 客室の評価ごとの、客が来る確率
 const RATING_NAMES := {Rating.GOOD: "良い", Rating.NORMAL: "普通", Rating.BAD: "悪い"}
 const WARN_BEFORE_LEAVE := 1 # 退去まで残りこの日数になると、評価のマークが点滅して知らせる
@@ -123,6 +124,7 @@ func evaluate_day(day: int) -> Dictionary:
 		office.average = total / count + world.economy_system.pollution_stress() + world.incident_system.roach_stress(origin) \
 			+ rent_info(origin).stress # 家賃が高いほど不満が増える
 		office.rating = rating_for(office.average)
+		office.days = office.get("days", SETTLED_DAYS) + 1
 		office.bad_days = office.bad_days + 1 if office.rating == Rating.BAD else 0
 		# 評価の悪い日が続いたら退去する（1日に退去するのは MAX_LEAVE_PER_DAY 棟まで）
 		if office.bad_days >= LEAVE_AFTER_BAD_DAYS and result.left < MAX_LEAVE_PER_DAY:
@@ -163,6 +165,7 @@ func evaluate_homes(result: Dictionary) -> void:
 		record.average = total / count + world.noise_system.noise_stress(origin) + world.economy_system.pollution_stress() \
 			+ world.incident_system.roach_stress(origin)
 		record.rating = rating_for(record.average)
+		record.days = record.get("days", SETTLED_DAYS) + 1
 		record.bad_days = record.bad_days + 1 if record.rating == Rating.BAD else 0
 		if record.bad_days >= LEAVE_AFTER_BAD_DAYS and result.homes_left < MAX_LEAVE_PER_DAY:
 			record.vacant = true
@@ -216,8 +219,13 @@ func to_origin(cell: Vector2i) -> Vector2i:
 		return world.building_grid[cell].origin
 	return cell
 
+# days: 入居してから評価を受けた回数（SETTLED_DAYS 回までは、★の条件の「不満なテナント」に数えない）
 func new_tenant() -> Dictionary:
-	return {"rating": Rating.GOOD, "average": 0.0, "bad_days": 0, "vacant": false, "vacant_days": 0}
+	return {"rating": Rating.GOOD, "average": 0.0, "bad_days": 0, "vacant": false, "vacant_days": 0, "days": 0}
+
+# 入居してから SETTLED_DAYS 回の評価を受けたか（前のセーブデータで回数がないものは、落ち着いているとみなす）
+func is_settled(record: Dictionary) -> bool:
+	return record.get("days", SETTLED_DAYS) >= SETTLED_DAYS
 
 # 指定マスのオフィスが空室か（オフィスのどのマスを指定してもよい）
 func is_vacant(cell: Vector2i) -> bool:

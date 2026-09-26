@@ -140,7 +140,7 @@ func process_staying() -> void:
 	if peak <= STRESS_LIMIT:
 		passed = true
 		world.audio_system.play("money")
-		world.show_message("VIPがチェックアウトしました。大満足です！ 条件がそろえば、次の決算で★4に昇格します")
+		world.show_message("VIPがチェックアウトしました。大満足です！ ★4の条件がそろった日が%d日続けば、★4に昇格します" % world.rating_system.PROMOTE_DAYS)
 	else:
 		world.show_message("VIPがチェックアウトしました。待たされて不満でした（ストレス%d）。★4の昇格はおあずけです（明日もう一度来ます）" % int(peak))
 

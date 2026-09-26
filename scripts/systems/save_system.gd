@@ -117,6 +117,8 @@ func collect() -> Dictionary:
 		"day": world.clock.day,
 		"minute": world.clock.minute,
 		"stars": world.rating_system.stars,
+		"qualified_days": world.rating_system.qualified_days,
+		"failing_days": world.rating_system.failing_days,
 		"vip_passed": world.vip_system.passed,
 		"goal_index": world.goal_system.index,
 		"tutorial_step": world.tutorial_system.step,
@@ -194,6 +196,8 @@ func apply(data: Dictionary) -> void:
 	world.clock.day = int(data.day)
 	world.clock.minute = float(data.minute)
 	world.rating_system.stars = int(data.stars)
+	world.rating_system.qualified_days = int(data.get("qualified_days", 0)) # 古いセーブデータにはない
+	world.rating_system.failing_days = int(data.get("failing_days", 0))
 	world.vip_system.passed = bool(data.vip_passed)
 	world.goal_system.index = int(data.get("goal_index", 0))
 	world.goal_system.cleared = world.goal_system.current() == null
@@ -275,7 +279,7 @@ func restore_tenants(list: Array) -> Dictionary:
 		record.erase("x")
 		record.erase("y")
 		# JSONでは数が小数になるので、整数に戻す
-		for key in ["rating", "bad_days", "vacant_days"]:
+		for key in ["rating", "bad_days", "vacant_days", "days"]:
 			if record.has(key):
 				record[key] = int(record[key])
 		records[origin] = record
