@@ -718,6 +718,7 @@ UIやゲームの仕組みはすべてコード（GDScript）で作っていま�
 ProjectTower/
 ├── README.md / Tasks.md / Claude.md   … このファイル・タスク一覧・AIアシスタント向けのルール
 ├── project.godot / icon.svg           … Godot のプロジェクト設定とアイコン
+├── Makefile / export_presets.cfg      … make dev・app・dmg のコマンドと、書き出しの設定
 ├── scenes/     main.tscn               … メインのシーン（タイルマップとカメラ）
 ├── scripts/
 │   ├── main.gd                         … ゲーム全体
@@ -727,7 +728,7 @@ ProjectTower/
 ├── assets/     stairs.svg              … シーンのタイルの元画像（起動時にドット絵に差し替える）
 ├── docs/       仕様書などのドキュメントと、README の画像（images/）
 ├── tests/      画面確認テスト
-└── tools/      README の画像を作るスクリプト
+└── tools/      README の画像を作るスクリプト・計測の道具・テストを並べて流すスクリプト
 ```
 
 | ファイル | 役割 |
@@ -782,7 +783,15 @@ ProjectTower/
 
 1. **エクスポートテンプレートを入れる**（初回だけ）
    Godot エディタの「エディター > エクスポートテンプレートの管理」からダウンロードします（約1GB）。
-2. **書き出す**
+2. **書き出す**（macOS は `make` でもできます）
+
+| コマンド | すること |
+|---|---|
+| `make dev` | ゲームを起動する（開発中の確認用） |
+| `make app` | macOS 用のアプリ `build/ProjectTower.app` を書き出す |
+| `make dmg` | `make app` のあと、配布用のディスクイメージ `build/ProjectTower.dmg` を作る（アプリと「アプリケーション」フォルダへの近道が入っていて、ドラッグで入れられる） |
+
+Godot の場所が違うときは `make app GODOT=/Applications/Godot.app/Contents/MacOS/Godot` のように指定します。make を使わずに書き出すときは、次のコマンドです。
 
 ```bash
 godot --headless --path . --export-release "macOS" build/ProjectTower.app
