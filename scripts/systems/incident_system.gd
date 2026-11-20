@@ -71,6 +71,7 @@ const HELI_MINUTES := 5.0      # 消防ヘリが1マスを消すのにかかる�
 const HELI_SPEED := 90.0       # 消防ヘリの飛ぶ速さ（px/秒）
 const HELI_ARRIVE := 6.0       # このくらいまで近づいたら、消火を始める（px）
 const INCIDENT_COOLDOWN_DAYS := 3 # 事故の後、新しい事故を起こさない日数
+const RETRY_MINUTES := 5.0     # 行ける現場がなかった警備員が、次に探し直すまでの時間（分。毎フレーム探すと重いため）
 
 const ROACH_POLLUTION := 4   # 衛生の悪化がこのレベル以上の日が続くと、ゴキブリが出る
 const ROACH_DAYS := 2        # 続く日数
@@ -109,6 +110,7 @@ var roach_days := 0 # 衛生の悪化が続いている日数
 var roach_day := 0  # 最後にゴキブリの判定をした日
 var dug := {}       # すでに掘った地下のマス -> true（同じマスで2度は見つからない）
 var treasure_total := 0 # これまでに見つけた埋蔵金の合計
+var fire_idle_until := {} # 警備室 -> 行ける火がなかった警備員が、次に探し直す時刻（ゲーム内の、1日目の0時からの分）
 
 func setup(p_world: Node2D) -> void:
 	world = p_world
@@ -120,6 +122,7 @@ func reset_incidents() -> void:
 	if world.ui:
 		world.ui.hide_ransom_panel()
 	fire.clear()
+	fire_idle_until.clear()
 	fire_spread_left = 0.0
 	heli = null
 	bomb_day = 0  # 読み込んだ日に、もう一度その日の判定をする
@@ -247,7 +250,7 @@ func start_bomb(cell) -> void:
 	cell = world.building_grid[cell].origin # 爆弾はテナント（棟）ごとに探すので、左端のマスで持つ
 	var ransom := ransom_for(world.funds)
 	bomb = {"cell": cell, "left": BOMB_LIMIT, "defuse_left": DEFUSE_MINUTES, "guard": null,
-		"ransom": ransom, "decided": false, "found": false, "searched": {}, "search": {}}
+		"ransom": ransom, "decided": false, "found": false, "searched": {}, "search": {}, "idle_until": {}}
 	world.audio_system.play("alert")
 	world.show_message("爆破予告！ ビルのどこかに爆弾を仕掛けたと、テロリストから身代金 %s の要求が届きました"
 		% world.money_text(ransom))
@@ -327,6 +330,8 @@ func process_bomb(minutes: float) -> void:
 
 # 爆弾を探す: 手の空いた警備員が、まだ調べていないテナントを近い順に訪ねて調べる
 func search_bomb(minutes: float) -> void:
+	remove_lost_search_jobs()
+	var now := game_minutes()
 	for origin in guards:
 		var guard = guards[origin].resident
 		if not is_instance_valid(guard):
@@ -334,10 +339,14 @@ func search_bomb(minutes: float) -> void:
 			continue
 		var job = bomb.search.get(origin)
 		if job == null:
+			if now < bomb.idle_until.get(origin, -1.0):
+				continue # さっき探して行ける棟がなかった警備員は、少し待ってから探し直す（毎フレーム探すと重いため）
 			job = next_search_target(guard)
 			if job != null:
 				bomb.search[origin] = job
 				guard.go_to(job.target)
+			else:
+				bomb.idle_until[origin] = now + RETRY_MINUTES
 			continue
 		if guard.is_moving():
 			continue # まだ向かっている途中
@@ -360,20 +369,26 @@ func next_search_target(guard):
 	var taken := {}
 	for job in bomb.search.values():
 		taken[job.target] = true
-	var candidates: Array = []
+	var candidates := {}
 	for type in TARGET_TYPES:
 		for origin in world.find_units_of_type(type):
 			if not bomb.searched.has(origin) and not taken.has(origin):
-				candidates.append(origin)
-	# 近い順（上下の移動は横より手間がかかるので、階の差を重く見る）
-	candidates.sort_custom(func(a, b): return search_distance(guard.cell, a) < search_distance(guard.cell, b))
-	for origin in candidates:
-		if not world.find_path(guard.cell, origin, true).is_empty():
-			return {"target": origin, "work": 0.0}
-	return null
+				candidates[origin] = true
+	# 経路の手間が一番小さい棟（1回の経路探索で、候補のうち一番近いものが見つかる）
+	var path: Array[Vector2i] = world.pathfinding.find_path_to_any(guard.cell, candidates, true)
+	if path.is_empty():
+		return null
+	return {"target": path[-1], "work": 0.0}
 
-func search_distance(from: Vector2i, to: Vector2i) -> int:
-	return absi(to.x - from.x) + absi(to.y - from.y) * 4
+# 撤去した警備室の捜索の担当を外す（残ったままだと、その棟は「担当がいる」とみなされて誰も調べなくなる）
+func remove_lost_search_jobs() -> void:
+	for origin in bomb.search.keys():
+		if not guards.has(origin) or not is_instance_valid(guards[origin].resident):
+			bomb.search.erase(origin)
+
+# ゲーム内の、1日目の0時からの分
+func game_minutes() -> float:
+	return world.clock.day * world.clock.MINUTES_PER_DAY + world.clock.minute
 
 # 調べ終えた棟の数と、調べる棟の数（表示用）
 func search_progress() -> Vector2i:
@@ -387,7 +402,8 @@ func found_bomb(guard) -> void:
 	bomb.found = true
 	bomb.guard = guard
 	for origin in bomb.search.keys():
-		send_guards_home(guards[origin].resident)
+		if guards.has(origin):
+			send_guards_home(guards[origin].resident)
 	bomb.search.clear()
 	world.audio_system.play("alert")
 	world.show_message("警備員が %s の%sで爆弾を見つけました！ 解体を始めます"
@@ -453,6 +469,7 @@ func start_fire(cell) -> void:
 		return
 	last_incident_day = world.clock.day
 	fire.clear()
+	fire_idle_until.clear()
 	fire_seed = hash([world.clock.day, cell, "fire"])
 	fire_spread_count = 0
 	burn(cell)
@@ -559,7 +576,8 @@ func process_heli(minutes: float) -> void:
 		heli.target = target
 		heli.work_left = HELI_MINUTES
 	var goal: Vector2 = world.tile_map.map_to_local(heli.target) + Vector2(0, -12) # マスの少し上でホバリングする
-	heli.pos = heli.pos.move_toward(goal, HELI_SPEED * world.get_process_delta_time() * Engine.time_scale)
+	# get_process_delta_time() にはもうゲームの速さ（Engine.time_scale）がかかっているので、そのまま使う
+	heli.pos = heli.pos.move_toward(goal, HELI_SPEED * world.get_process_delta_time())
 	if heli.pos.distance_to(goal) > HELI_ARRIVE:
 		return
 	# 真上から放水して火を消す
@@ -586,30 +604,31 @@ func dispatch_guards() -> void:
 		var other = guards[origin].resident
 		if is_instance_valid(other) and fire.has(other.goal) and (other.is_moving() or other.cell == other.goal):
 			taken[other.goal] = true
+	var now := game_minutes()
 	for origin in guards:
 		var guard = guards[origin].resident
 		if not is_instance_valid(guard) or guard.is_moving() or fire.has(guard.cell):
 			continue
 		if is_on_bomb_duty(origin):
 			continue # 爆弾の捜索・解体が先
-		var best = null
-		var best_length := 0
-		var best_taken := true
+		if now < fire_idle_until.get(origin, -1.0):
+			continue # さっき探して行ける火がなかったので、少し待ってから探し直す
+		# まだ誰も向かっていないマスのうち一番近いもの。なければ、一番近いマスを手伝う
+		#（どちらも1回の経路探索で、候補のうち一番近いものが見つかる）
+		var free := {}
 		for cell in fire:
-			var path: Array[Vector2i] = world.find_path(guard.cell, cell, true)
-			if path.is_empty():
-				continue
-			# まだ誰も向かっていないマスを先に選ぶ（どこにも向かっていなければ、一番近いマスを手伝う）
-			var is_taken: bool = taken.has(cell)
-			if best == null or (best_taken and not is_taken) or (is_taken == best_taken and path.size() < best_length):
-				best = cell
-				best_length = path.size()
-				best_taken = is_taken
-		if best != null:
-			taken[best] = true
-			guard.go_to(best)
-		elif guard.cell != guards[origin].home:
-			guard.go_to(guards[origin].home) # 行ける火がなければ警備室で待つ
+			if not taken.has(cell):
+				free[cell] = true
+		var path: Array[Vector2i] = world.pathfinding.find_path_to_any(guard.cell, free, true)
+		if path.is_empty():
+			path = world.pathfinding.find_path_to_any(guard.cell, fire, true)
+		if not path.is_empty():
+			taken[path[-1]] = true
+			guard.follow_path(path)
+		else:
+			fire_idle_until[origin] = now + RETRY_MINUTES
+			if guard.cell != guards[origin].home:
+				guard.go_to(guards[origin].home) # 行ける火がなければ警備室で待つ
 
 # ---------------------------------------------------
 # 埋蔵金の発見

@@ -82,31 +82,39 @@ func plan_visitors(day: int) -> void:
 	visitors = visitors.filter(func(v): return is_instance_valid(v.resident)) # 前日の残りは帰るまで残す
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([day, "parking"])
+	var seats := shop_seats() # 店の席（全部の店で同じなので、1回だけ集める）
+	var seat_of := {} # 停めるマス -> 一番近い席（同じマスに停める人の分は探し直さない）
 	for unit in usable_units:
 		var spots: Array[Vector2i] = world.get_unit_cells(unit)
 		for car in CARS_PER_UNIT:
 			var arrive := rng.randi_range(VISIT_START, VISIT_END - 1)
 			for i in PEOPLE_PER_CAR:
 				var spot: Vector2i = spots[car % spots.size()] # 停める（＝現れて、帰っていく）マス
-				var seat = find_seat(spot)
+				if not seat_of.has(spot):
+					seat_of[spot] = find_seat(spot, seats)
+				var seat = seat_of[spot]
 				if seat == null:
 					continue # 行ける店がなければ来ない
 				var visit: Dictionary = world.visitor_system.add_visit(spot, seat[0], seat[1], arrive, Vector2(-4 + 8 * i, 0))
 				visit.color = VISITOR_COLOR # 車で来た客は緑
 				visitors.append(visit)
 
-# 停めたマスから一番近い店の席（[席のマス, 店の種類]。行ける店がなければnull）
-func find_seat(from: Vector2i):
-	var best = null
-	var best_length := 0
+# 店（飲食店・ショップ・展望台）の席のマスの一覧（マス -> true）
+func shop_seats() -> Dictionary:
+	var seats := {}
 	for type in world.visitor_system.SHOP_TYPES:
 		for unit in world.find_units_of_type(type):
 			for seat in world.get_unit_cells(unit):
-				var path: Array[Vector2i] = world.find_path(from, seat)
-				if not path.is_empty() and (best == null or path.size() < best_length):
-					best = [seat, type]
-					best_length = path.size()
-	return best
+				seats[seat] = true
+	return seats
+
+# 停めたマスから一番近い店の席（[席のマス, 店の種類]。行ける店がなければnull）。
+# 席ごとに経路を探すと、来客の数×席の数だけ探すことになって重いので、全部の席を一度に探す
+func find_seat(from: Vector2i, seats = null):
+	var path: Array[Vector2i] = world.pathfinding.find_path_to_any(from, seats if seats != null else shop_seats())
+	if path.is_empty():
+		return null
+	return [path[-1], world.get_building_type(path[-1])]
 
 # 今ビルの中にいる、車で来たお客さんの数
 func count_visitors() -> int:

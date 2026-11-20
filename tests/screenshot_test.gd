@@ -534,7 +534,8 @@ func run_elevator_scenario() -> bool:
 	check(arrivals == [15], "呼んだ階(y=15)に停まる")
 	check(car.position == main.tile_map.map_to_local(Vector2i(x, 15)), "カゴが階の位置にぴったり停まる")
 	check(car.state == car.State.DOORS_OPEN, "停まったら扉が開く")
-	check(main.last_message.contains("到着"), "到着メッセージが出る")
+	# 到着はチャイムだけで知らせる（メッセージの欄が到着の知らせで埋まらないように）
+	check(main.audio_system.last_played.has("chime") and not main.last_message.contains("到着"), "到着はチャイムで知らせ、メッセージは出さない")
 	await capture("elevator_02_arrived")
 	
 	# 集合制御: 下(18)へ向かう途中で17を呼ぶ → 先に17に寄ってから18へ

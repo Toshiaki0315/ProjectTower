@@ -65,6 +65,10 @@ func _process(_delta: float) -> void:
 					lunch.phase = Phase.EATING
 					lunch.eat_left = RESTAURANTS[world.get_building_type(lunch.restaurant)].minutes
 			Phase.EATING:
+				# 食事中に店がなくなった（撤去・焼失で空きフロアや焼け跡になった）ら、代金を払わずに戻る
+				if not RESTAURANTS.has(world.get_building_type(lunch.restaurant)):
+					go_back(lunch, resident, office)
+					continue
 				lunch.eat_left -= minutes
 				if lunch.eat_left <= 0.0:
 					revenue_by_day[day] = revenue_by_day.get(day, 0) + RESTAURANTS[world.get_building_type(lunch.restaurant)].price
@@ -88,21 +92,19 @@ func lunch_minute(office: Vector2i, day: int) -> int:
 
 # 経路が一番短い飲食店の左端のマス（たどり着ける店がなければnull）
 # ゴキブリのいる店は、ほかに行ける店がないときだけ選ぶ
+# （店ごとに経路を探すと、昼に社員の数×店の数だけ探すことになって重いので、候補を一度に探す）
 func find_nearest_restaurant(from: Vector2i):
-	var best = null
-	var best_length := 0
-	var best_dirty := true
+	var clean := {}
+	var all := {}
 	for type in RESTAURANTS:
 		for cell: Vector2i in world.find_units_of_type(type):
-			var path: Array[Vector2i] = world.find_path(from, cell)
-			if path.is_empty():
-				continue
-			var dirty: bool = world.incident_system.roaches.has(cell)
-			if best == null or (best_dirty and not dirty) or (dirty == best_dirty and path.size() < best_length):
-				best = cell
-				best_length = path.size()
-				best_dirty = dirty
-	return best
+			all[cell] = true
+			if not world.incident_system.roaches.has(cell):
+				clean[cell] = true
+	var path: Array[Vector2i] = world.pathfinding.find_path_to_any(from, clean)
+	if path.is_empty():
+		path = world.pathfinding.find_path_to_any(from, all)
+	return path[-1] if not path.is_empty() else null
 
 # 指定した飲食店で食事中の客の数（店のどのマスを指定してもよい）
 func count_eating_at(cell: Vector2i) -> int:

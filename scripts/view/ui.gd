@@ -118,7 +118,8 @@ func update() -> void:
 	if not warning_list.is_empty():
 		stats_button.text += " ⚠%d" % warning_list.size() # 気をつけることがあるときは★の横に出す
 	set_warning_outline(stats_button, not warning_list.is_empty())
-	update_stats_panel(warning_list)
+	if stats_panel.visible: # 中身を組み立てるのは重いので、開いている間だけ（閉じている間は main.stats_label を読むときに作る）
+		update_stats_panel(warning_list)
 	tutorial_label.text = world.tutorial_system.current_text()
 	tutorial_panel.visible = tutorial_label.text != ""
 
@@ -874,6 +875,10 @@ func update_stats_panel(warning_list: Array[String]) -> void:
 		lines.append("⚠ " + w)
 	stats_label.text = "\n".join(lines)
 
+# ビルの状況の中身を、今の状態で作り直す
+func refresh_stats_panel() -> void:
+	update_stats_panel(warnings())
+
 # ★を押したときに、くわしい状況を開け閉めする
 func toggle_stats_panel() -> void:
 	stats_panel.visible = not stats_panel.visible
@@ -930,13 +935,19 @@ func update_funds_display():
 		funds_change_label.text = "（前日 %s）" % world.money_text(total, true)
 		funds_change_label.add_theme_color_override("font_color", GAIN_COLOR if total >= 0 else LOSS_COLOR)
 
+var scroll_rows := Vector2i.ZERO # 建物の一番上と一番下の行（x: 上 / y: 下）
+var scroll_rows_version := -1   # scroll_rows を数えたときの world.building_version
+
 func update_scrollbar():
 	var tile_h: float = world.tile_map.tile_set.tile_size.y
-	var top_row: int = world.ground_y
-	var bottom_row: int = world.ground_y
-	for cell: Vector2i in world.building_grid:
-		top_row = mini(top_row, cell.y)
-		bottom_row = maxi(bottom_row, cell.y)
+	# 建物の上下の端は、建物が変わったときだけ数え直す（大きなビルで毎フレーム全部のマスを調べると重いため）
+	if scroll_rows_version != world.building_version:
+		scroll_rows_version = world.building_version
+		scroll_rows = Vector2i(world.ground_y, world.ground_y)
+		for cell: Vector2i in world.building_grid:
+			scroll_rows = Vector2i(mini(scroll_rows.x, cell.y), maxi(scroll_rows.y, cell.y))
+	var top_row: int = scroll_rows.x
+	var bottom_row: int = scroll_rows.y
 	var page: float = world.get_viewport_rect().size.y / world.camera.zoom.y # 画面に映っている高さ
 	var view_top: float = world.camera.position.y - page / 2.0
 	# 範囲を変えると値が範囲内に押し戻されて value_changed が出るので、合わせている間は通知を止める

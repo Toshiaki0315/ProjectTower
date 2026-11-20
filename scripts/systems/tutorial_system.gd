@@ -41,7 +41,7 @@ func is_step_done(index: int) -> bool:
 		0:
 			return not world.find_cells_of_type("lobby").is_empty()
 		1:
-			for type in ["stairs", "escalator", "elevator", "express_elevator", "service_elevator"]:
+			for type in ["stairs", "escalator", "elevator", "express_elevator", "large_elevator", "service_elevator"]:
 				if not world.find_cells_of_type(type).is_empty():
 					return true
 			return false

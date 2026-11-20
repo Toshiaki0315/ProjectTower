@@ -113,12 +113,14 @@ func is_present(origin: Vector2i, records: String) -> bool:
 	return true
 
 # 上下 RESTAURANT_FLOORS 階以内に、歩いて行ける飲食店・ファストフードがあるか
+#（店ごとに経路を探さず、近い階の店を一度に探す）
 func has_restaurant_near(origin: Vector2i) -> bool:
+	var targets := {}
 	for type in RESTAURANT_TYPES:
 		for unit in world.find_units_of_type(type):
-			if absi(unit.y - origin.y) <= RESTAURANT_FLOORS and not world.find_path(origin, unit).is_empty():
-				return true
-	return false
+			if absi(unit.y - origin.y) <= RESTAURANT_FLOORS:
+				targets[unit] = true
+	return not world.pathfinding.find_path_to_any(origin, targets).is_empty()
 
 # 頼みごとがかなっているか
 func is_met() -> bool:

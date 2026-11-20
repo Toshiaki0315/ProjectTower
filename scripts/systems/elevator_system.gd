@@ -248,9 +248,9 @@ func create_car(type: String, x: int, top: int, bottom: int, start_y: int):
 	var car = ElevatorCar.new()
 	car.setup(world, x, top, bottom, start_y)
 	car.set_shaft_type(type)
-	car.arrived.connect(func(y):
-		world.audio_system.play("chime")
-		world.show_message("エレベーターが %s に到着しました" % Vector2i(car.column, y)))
+	# 到着はチャイムだけで知らせる（停まるたびにメッセージを出すと、カゴの多いビルでは
+	# メッセージの欄と記録が到着の知らせで埋まり、決算や火事などの大事な知らせが流れてしまうため）
+	car.arrived.connect(func(_y): world.audio_system.play("chime"))
 	world.tile_map.add_child(car)
 	return car
 
@@ -264,13 +264,19 @@ func find_shafts() -> Array:
 	for type in SHAFT_TYPES:
 		for cell: Vector2i in world.find_units_of_type(type): # 大型は左端のマスだけ見る
 			# シャフトの最下段のマスからだけ数え始める
-			if world.get_building_type(cell + Vector2i.DOWN) == type:
+			if is_same_shaft_unit(cell + Vector2i.DOWN, type, cell.x):
 				continue
 			var top: int = cell.y
-			while world.get_building_type(Vector2i(cell.x, top - 1)) == type:
+			while is_same_shaft_unit(Vector2i(cell.x, top - 1), type, cell.x):
 				top -= 1
 			result.append({"type": type, "x": cell.x, "top": top, "bottom": cell.y})
 	return result
+
+# そのマスが、左端の列が x の type のシャフトの一部か
+#（横2マスの大型エレベーターを1マスずらして積んだときは、別のシャフトとして扱う。
+#  同じシャフトとみなすと、ずれた上の分にカゴが来なくなるため）
+func is_same_shaft_unit(cell: Vector2i, type: String, x: int) -> bool:
+	return world.get_building_type(cell) == type and world.building_grid[cell].origin.x == x
 
 # 指定したマスを含むシャフトのカゴの一覧
 func get_cars_at(cell: Vector2i) -> Array:

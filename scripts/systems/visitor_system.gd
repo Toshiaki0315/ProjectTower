@@ -127,7 +127,8 @@ func _process(_delta: float) -> void:
 	var plan_from: int = mini(start, showtimes(day)[0] - CINEMA.arrive_before)
 	if plan_day != day and now >= plan_from and now < end:
 		plan_day = day
-		visits = visits.filter(func(v): return is_instance_valid(v.resident)) # 前日の残りは帰るまで動かす
+		# 前日の残りは帰るまで動かす。今日の分でまだ来ていない人は残す（駐車場の客は parking_system が先に足すこともある）
+		visits = visits.filter(func(v): return is_instance_valid(v.resident) or (not v.spawned and v.day == day))
 		plan_shop_visits(day, start, end)
 		plan_cinema_visits(day)
 	for v in visits:
@@ -182,7 +183,7 @@ func add_visit(start_cell: Vector2i, seat: Vector2i, type: String, arrive: int, 
 	var visit := {
 		"start": start_cell, "seat": seat, "type": type, "arrive": arrive, "offset": offset,
 		"color": visit_info(type).color, "stay_left": 0.0, "phase": Phase.GOING,
-		"resident": null, "spawned": false, "paid": false,
+		"resident": null, "spawned": false, "paid": false, "day": world.clock.day,
 	}
 	visits.append(visit)
 	return visit

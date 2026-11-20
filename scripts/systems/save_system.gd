@@ -4,8 +4,10 @@ extends Node
 # セーブ／ロード：ビルの状態をファイル（JSON）に保存して、後から続きを遊べるようにする。
 #   保存するもの: 建物の配置・資金・日付と時刻・ビルの評価（★）・VIPの合否・
 #                 エレベーターの設定（待機階・稼働時間帯・カゴの数）・テナントの評価・
-#                 客室と住宅の状態・衛生の悪化・ゴキブリ・掘った地下のマス。
-#   保存しないもの: 今ビルの中を歩いている人（読み込んだ後、各システムがまた出してくる）。
+#                 客室と住宅の状態・衛生の悪化・ゴキブリ・掘った地下のマス・
+#                 まだ決算していない日の売上や人数（economy_system.DAY_RECORDS）。
+#   保存しないもの: 今ビルの中を歩いている人（読み込んだ後、各システムがまた出してくる。
+#                   宿泊中の部屋の客だけは、読み込むときに部屋の中へ置き直す）。
 # 保存先（Godotのユーザーデータのフォルダ）:
 #   セーブの枠 1〜SLOT_COUNT … save.json（枠1）・save_2.json・save_3.json（⌘S で枠を選んで保存する）
 #   オートセーブ           … autosave.json（毎日0時の決算のあとに、自動で上書きする）
@@ -140,7 +142,21 @@ func collect() -> Dictionary:
 			func(cell): return world.housing_system.homes[cell].moved_in)),
 		"roaches": collect_cells(world.incident_system.roaches.keys()),
 		"dug": collect_cells(world.incident_system.dug.keys()),
+		"day_records": collect_day_records(),
 	}
+
+# まだ決算していない日（economy_system.last_day 以降）の売上や人数。"システム.記録" -> [{"day", "value"}, ...]
+func collect_day_records() -> Dictionary:
+	var economy = world.economy_system
+	var result := {}
+	for entry in economy.DAY_RECORDS:
+		var records: Dictionary = economy.day_records(entry)
+		var list := []
+		for d in records:
+			if d >= economy.last_day:
+				list.append({"day": d, "value": records[d]})
+		result["%s.%s" % entry] = list
+	return result
 
 func collect_units() -> Array:
 	var units := []
@@ -181,7 +197,8 @@ func collect_hotel_rooms() -> Array:
 	var list := []
 	for cell in world.hotel_system.rooms:
 		var room: Dictionary = world.hotel_system.rooms[cell]
-		list.append({"x": cell.x, "y": cell.y, "state": room.state, "dirty_day": room.get("dirty_day", 0)})
+		list.append({"x": cell.x, "y": cell.y, "state": room.state, "dirty_day": room.get("dirty_day", 0),
+			"checkin_day": room.checkin_day, "stay_peak": room.stay_peak})
 	return list
 
 # ---------------------------------------------------
@@ -213,7 +230,18 @@ func apply(data: Dictionary) -> void:
 	apply_elevators(data)
 	apply_tenants(data)
 	apply_cells(data)
+	apply_day_records(data)
 	world.update_funds_display()
+
+# 日ごとの記録を、セーブデータの分だけにする（読み込む前に遊んでいた分を持ち込まない）
+func apply_day_records(data: Dictionary) -> void:
+	var economy = world.economy_system
+	var saved: Dictionary = data.get("day_records", {}) # 古いセーブデータにはない
+	for entry in economy.DAY_RECORDS:
+		var records: Dictionary = economy.day_records(entry)
+		records.clear()
+		for record in saved.get("%s.%s" % entry, []):
+			records[int(record.day)] = int(record.value)
 
 func apply_elevators(data: Dictionary) -> void:
 	var elevators = world.elevator_system
@@ -261,9 +289,17 @@ func apply_tenants(data: Dictionary) -> void:
 	for record in data.hotel_rooms:
 		var cell := Vector2i(int(record.x), int(record.y))
 		if world.hotel_system.rooms.has(cell):
-			var room: Dictionary = world.hotel_system.rooms[cell]
+			var hotel = world.hotel_system
+			var room: Dictionary = hotel.rooms[cell]
 			room.state = int(record.state)
-			if room.state == world.hotel_system.RoomState.DIRTY:
+			room.checkin_day = int(record.get("checkin_day", 0))
+			if room.state == hotel.RoomState.OCCUPIED:
+				# 泊まっている客を部屋に置き直す（置き直さないと、客のいない部屋はすぐ清掃待ちになり、宿泊料が入らない）。
+				# 古いセーブデータでチェックインした日がなければ、チェックインの時刻より前なら前の日に来たことにする
+				var checkin_day := int(record.get("checkin_day",
+					world.clock.day if world.clock.minute_of_day() >= hotel.CHECKIN_START else world.clock.day - 1))
+				hotel.restore_stay(cell, checkin_day, float(record.get("stay_peak", 0.0)))
+			if room.state == hotel.RoomState.DIRTY:
 				# 掃除されないまま日がたつとゴキブリが出るので、いつから汚れているかも戻す（古いセーブデータは読み込んだ日から）
 				room.dirty_day = int(record.get("dirty_day", world.clock.day))
 	for record in data.moved_in_homes:

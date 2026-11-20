@@ -65,6 +65,20 @@ const GARBAGE_PER_POLLUTION := 5 # 処理しきれないゴミがこの量にな
 const POLLUTION_MAX := 5         # 悪化のレベルの上限
 const POLLUTION_STRESS := 5.0    # 悪化のレベル1につき、テナントの評価に足されるストレス
 const UNCLEAN_PER_POLLUTION := 2 # 決算のときに掃除されていない客室が、この数ごとに悪化のレベルが1上がる
+# 各システムが持つ日ごとの記録（日 -> 金額・人数）: [システムの変数名, 記録の変数名]。
+# 決算で読み、まだ決算していない日の分はセーブにも入れる（途中でセーブしても、その日の売上が消えないように）。
+# 決算から DAY_RECORDS_KEEP 日より前の分は消す（長く遊んでも記録が増え続けないように）
+const DAY_RECORDS := [
+	["hotel_system", "revenue_by_day"], ["hotel_system", "checkouts_by_day"],
+	["commerce_system", "revenue_by_day"], ["commerce_system", "meals_by_day"],
+	["housing_system", "revenue_by_day"],
+	["event_system", "revenue_by_day"], ["event_system", "visitors_by_day"],
+	["visitor_system", "revenue_by_day"], ["visitor_system", "cinema_revenue_by_day"],
+	["visitor_system", "cinema_audience_by_day"], ["visitor_system", "observatory_revenue_by_day"],
+	["visitor_system", "customers_by_day"],
+	["parking_system", "visitors_by_day"],
+]
+const DAY_RECORDS_KEEP := 7
 
 var world: Node2D # main.gd
 var last_day := 1 # 最後に決算した日の翌日（= 今日）
@@ -173,7 +187,20 @@ func settle(day: int) -> void:
 	world.show_message(message)
 	world.goal_system.check_day(day) # 目標を達成したか確かめる
 	world.request_system.check_day(day) # テナントからの頼みごとが、かなったか・期限が切れたか
+	prune_day_records(day)
 	world.save_system.autosave() # 決算のあとの状態を、オートセーブの枠に保存する
+
+# 日ごとの記録の1つ（DAY_RECORDS の1行が指す辞書）
+func day_records(entry: Array) -> Dictionary:
+	return world.get(entry[0]).get(entry[1])
+
+# 決算した日から DAY_RECORDS_KEEP 日より前の記録を消す
+func prune_day_records(day: int) -> void:
+	for entry in DAY_RECORDS:
+		var records := day_records(entry)
+		for d in records.keys():
+			if d <= day - DAY_RECORDS_KEEP:
+				records.erase(d)
 
 # オフィスの1マスの1日の賃料（オフィスの種類で変わる）
 func office_rent(cell: Vector2i) -> int:

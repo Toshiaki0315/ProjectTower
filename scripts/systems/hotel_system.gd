@@ -32,6 +32,7 @@ const ROOM_TYPES := {
 }
 const GUEST_COLOR := Color(0.85, 0.75, 1.0)
 const HOUSEKEEPER_COLOR := Color(0.5, 0.9, 1.0)
+const RETRY_MINUTES := 5.0 # 清掃待ちの部屋に行けなかった清掃員が、次に探し直すまでの時間（分。毎フレーム探すと重いため）
 
 var world: Node2D # main.gd
 
@@ -41,9 +42,10 @@ var world: Node2D # main.gd
 #   checkin_day: 最後に客が来た日（同じ日に2人来ないため）
 #   cleaner:     この部屋の清掃を担当している清掃員の情報（いなければnull）
 var rooms: Dictionary = {}
-# ハウスキーパー室のマス -> {home, resident, room, clean_left}
+# ハウスキーパー室のマス -> {home, resident, room, clean_left, idle_until}
 #   room:        担当している部屋のマス（なければnull）
 #   clean_left:  清掃の残り時間（ゲーム内の分）
+#   idle_until:  清掃待ちの部屋に行けなかったとき、次に探し直す時刻（ゲーム内の、1日目の0時からの分）
 var housekeepers: Dictionary = {}
 var leaving_guests: Array = [] # チェックアウトして入口へ向かっている宿泊客
 var revenue_by_day: Dictionary = {} # 日 -> その日の宿泊料の合計
@@ -87,6 +89,20 @@ func rebuild() -> void:
 			if is_instance_valid(keeper.resident):
 				keeper.resident.queue_free()
 			housekeepers.erase(cell)
+
+# 宿泊中の部屋に、客を部屋の中に置き直す（セーブデータの読み込み用。泊まっている人は保存しないため）
+func restore_stay(cell: Vector2i, checkin_day: int, stay_peak: float) -> void:
+	var room: Dictionary = rooms[cell]
+	var unit_cells: Array[Vector2i] = world.get_unit_cells(cell)
+	var count: int = ROOM_TYPES[room.type].guests
+	room.guests = []
+	for i in count:
+		var guest = world.spawn_resident(unit_cells[i * unit_cells.size() / count])
+		guest.base_color = GUEST_COLOR
+		room.guests.append(guest)
+	room.state = RoomState.OCCUPIED
+	room.checkin_day = checkin_day
+	room.stay_peak = stay_peak
 
 func spawn_housekeeper(home: Vector2i):
 	var resident = world.spawn_resident(home)
@@ -232,25 +248,29 @@ func process_housekeeper(keeper: Dictionary, minutes: float) -> void:
 	elif not resident.is_moving() and not resident.go_to(keeper.room):
 		release_room(keeper)
 
-# まだ誰も担当していない清掃待ちの部屋のうち、経路が一番短い部屋を担当する
+# まだ誰も担当していない清掃待ちの部屋のうち、経路が一番近い部屋を担当する
+#（部屋ごとに経路を探さず、候補を一度に探す。行ける部屋がなければ、少し待ってから探し直す）
 func assign_nearest_dirty_room(keeper: Dictionary) -> bool:
-	var best = null
-	var best_length := 0
+	var now: float = world.clock.day * world.clock.MINUTES_PER_DAY + world.clock.minute
+	if now < keeper.get("idle_until", -1.0):
+		return false
+	var targets := {}
 	for cell in rooms:
 		var room = rooms[cell]
-		if room.state != RoomState.DIRTY or room.cleaner != null:
-			continue
-		var path: Array[Vector2i] = world.find_path(keeper.resident.cell, cell, true)
-		if not path.is_empty() and (best == null or path.size() < best_length):
-			best = cell
-			best_length = path.size()
-	if best == null:
+		if room.state == RoomState.DIRTY and room.cleaner == null:
+			targets[cell] = true
+	if targets.is_empty():
 		return false
+	var path: Array[Vector2i] = world.pathfinding.find_path_to_any(keeper.resident.cell, targets, true)
+	if path.is_empty():
+		keeper.idle_until = now + RETRY_MINUTES
+		return false
+	var best: Vector2i = path[-1]
 	keeper.room = best
 	keeper.clean_left = ROOM_TYPES[rooms[best].type].cleaning
 	rooms[best].cleaner = keeper
-	if keeper.resident.cell != best:
-		keeper.resident.go_to(best)
+	if path.size() > 1:
+		keeper.resident.follow_path(path)
 	return true
 
 func release_room(keeper: Dictionary) -> void:

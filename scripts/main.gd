@@ -76,7 +76,11 @@ var funds_label: Label:
 var clock_label: Label:
 	get: return ui.clock_label
 var stats_label: Label:
-	get: return ui.stats_label
+	get:
+		# ビルの状況は、閉じている間は毎フレーム組み立てないので、読むときに今の中身にする
+		if ui.stats_label:
+			ui.refresh_stats_panel()
+		return ui.stats_label
 var stats_button: Button:
 	get: return ui.stats_button
 var stats_panel: Control:
@@ -133,6 +137,11 @@ var building_grid: Dictionary = {} # マス -> {type, origin}
 var units_cache := {} # 種類 -> 左端のマスの一覧
 var cells_cache := {} # 種類 -> マスの一覧
 var building_version := 0 # 建物が変わるたびに1つ増える（見た目の計算を覚えておく部品が、作り直すかを判断する）
+# 入口の一覧（人が出入りするたびに何度も使うので、建物か使える駐車場が変わったときだけ作り直す）
+var entrances_cache: Array[Vector2i] = []
+var entrances_key := [] # [作ったときの building_version, 使える駐車場の一覧]
+var recover_rate_cache := 1.0 # ストレスの回復の速さ（住人ごとに毎フレーム使うので覚えておく）
+var recover_rate_version := -1
 var residents: Array = []          # 配置済みの住人
 var selected_resident = null       # 行き先の指示を待っている住人
 var started := false               # ゲームが始まっているか（タイトル画面の間は false）
@@ -550,9 +559,12 @@ func get_hover_footprint(cell: Vector2i) -> Array[Vector2i]:
 
 # ストレスの回復の速さ（メディカルセンターがあるほど速い。1.0が標準）
 func stress_recover_rate() -> float:
-	var medical := find_units_of_type("medical").size()
-	var garden := find_units_of_type("garden").size()
-	return minf(1.0 + MEDICAL_RECOVER_BONUS * medical + GARDEN_RECOVER_BONUS * garden, MEDICAL_RECOVER_MAX)
+	if recover_rate_version != building_version:
+		recover_rate_version = building_version
+		var medical := find_units_of_type("medical").size()
+		var garden := find_units_of_type("garden").size()
+		recover_rate_cache = minf(1.0 + MEDICAL_RECOVER_BONUS * medical + GARDEN_RECOVER_BONUS * garden, MEDICAL_RECOVER_MAX)
+	return recover_rate_cache
 
 func spawn_resident(cell: Vector2i):
 	var resident = Resident.new()
@@ -599,6 +611,14 @@ func get_ground_entrances() -> Array[Vector2i]:
 # 入口の一覧。人はビルの外からここに現れ、ここから帰る（一番近い入口を使う）
 #   1階の左右の出入り口・地下鉄駅（左端のマス）・地下駐車場（車で下りてこられるもの。左端のマス）の4種類
 func get_entrances() -> Array[Vector2i]:
+	var key := [building_version, parking_system.usable_units]
+	if key != entrances_key:
+		entrances_cache = find_entrances()
+		entrances_key = [building_version, parking_system.usable_units.duplicate()]
+	return entrances_cache.duplicate() # 呼んだ側が書き換えても、覚えている一覧は変わらないように
+
+# 入口の一覧を作る（建物全体を調べるので、get_entrances() が覚えておく）
+func find_entrances() -> Array[Vector2i]:
 	var entrances: Array[Vector2i] = get_ground_entrances()
 	entrances.append_array(find_units_of_type("subway"))
 	# 地下駐車場は、階ごとに1つ（同じ階の駐車場はつながっているので、1つあれば足りる。
@@ -726,7 +746,7 @@ func click_cell(map_pos: Vector2i, button: int) -> void:
 #   ⌘+ / ⌘-: ゲーム画面の拡大・縮小 / ⌘0: 拡大率をもとに戻す
 #   ⌘S: セーブ / ⌘O: セーブデータの読み込み
 # ヘルプと音を⌘と組み合わせないのは、macOSの⌘H（隠す）・⌘M（しまう）とぶつかるため。
-# このゲームは文字を打つところがないので、単体のキーで受けてよい。
+# 文字を打つのはビルの名前の入力欄だけで、入力中のキーは入力欄が受け取ってここには来ないので、単体のキーで受けてよい。
 func handle_shortcut(event: InputEventKey) -> bool:
 	if not (event.meta_pressed or event.ctrl_pressed):
 		match event.keycode:

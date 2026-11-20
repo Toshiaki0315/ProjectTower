@@ -5,7 +5,8 @@ extends Node2D
 # TileMapLayerの子として追加するので、positionはタイルマップ座標系。
 #
 # 待機階（ホーム）: 設定すると、呼び出しがなくなったカゴはその階に戻って待つ。
-# 稼働時間帯: 決めた時間帯の外では、呼び出しを受け付けず、待機階に戻って止まる。
+# 稼働時間帯: 決めた時間帯の外では、呼び出しを受け付けず、待機階に戻って止まる
+#             （そのとき乗っている人がいれば、行き先で全員を降ろしてから戻る）。
 #
 # 集合制御（実際のエレベーターと同じ動かし方）:
 #   - 進んでいる方向の先に呼び出しがある限り、その方向へ進み続け、途中の呼ばれた階に寄る
@@ -137,7 +138,10 @@ func floor_position(y: int) -> Vector2:
 
 # カゴ呼び（行き先ボタン）。停まれない階（シャフトの範囲外・急行の途中の階）ならfalse
 func request_floor(y: int) -> bool:
-	if not in_service or not is_stop_floor(y):
+	if not is_stop_floor(y):
+		return false
+	# 稼働時間帯の外でも、乗っている人の行き先ボタンは受け付ける（降ろし終えるまでは動く）
+	if not in_service and not has_passengers():
 		return false
 	car_calls[y] = true
 	return true
@@ -160,6 +164,11 @@ func is_doors_open_at(y: int) -> bool:
 func is_full() -> bool:
 	passengers = passengers.filter(is_instance_valid) # いなくなった住人を除く
 	return passengers.size() >= capacity
+
+# 誰か乗っているか
+func has_passengers() -> bool:
+	passengers = passengers.filter(is_instance_valid)
+	return not passengers.is_empty()
 
 # dir方向へ行きたい人が、この階で乗れるか（扉が開いていて、同じ方向へ進むか行き先が未定で、満員でない）
 func can_board(y: int, dir: Direction) -> bool:
@@ -260,16 +269,18 @@ func move(time_left: float) -> float:
 
 # 停まっているときに、この階で扉を開けるか、どちらへ動くかを決める
 func decide_next_action() -> void:
-	# 稼働時間帯の外: 呼び出しを捨てて、待機階に戻って止まる
+	# 稼働時間帯の外: 乗り場呼びは捨てる。乗っている人がいる間は、行き先ボタンだけで動いて全員を降ろし
+	# （捨てると、乗っていた人が次の稼働時間まで閉じ込められてしまう）、降ろし終えたら待機階に戻って止まる
 	if not in_service:
-		car_calls.clear()
 		up_calls.clear()
 		down_calls.clear()
-		direction = Direction.NONE
-		if wants_to_go_home():
-			direction = Direction.UP if home_y < floor_y else Direction.DOWN
-			start_moving()
-		return
+		if not has_passengers():
+			car_calls.clear()
+			direction = Direction.NONE
+			if wants_to_go_home():
+				direction = Direction.UP if home_y < floor_y else Direction.DOWN
+				start_moving()
+			return
 	var next_dir := choose_direction(floor_y)
 	if car_calls.has(floor_y) or wants_hall_stop(floor_y, next_dir) \
 			or (next_dir == Direction.NONE and wants_any_hall_stop(floor_y)):

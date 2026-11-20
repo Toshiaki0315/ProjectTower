@@ -79,7 +79,6 @@ func setup(p_world: Node2D) -> void:
 	z_index = 9 # カゴより手前、住人より奥
 
 func _process(_delta: float) -> void:
-	queue_redraw() # 退去が近いテナントのマークを点滅させるため、毎フレーム描き直す
 	# 社員ごとに、今日たまったストレスの一番高い値を記録する
 	var workers: Dictionary = world.commute_system.workers
 	for cell in workers:
@@ -91,7 +90,7 @@ func _process(_delta: float) -> void:
 		for m in home.members:
 			if is_instance_valid(m.resident):
 				day_peak_stress[m.room] = maxf(day_peak_stress.get(m.room, 0.0), m.resident.stress)
-	queue_redraw()
+	queue_redraw() # 退去が近いテナントのマークを点滅させるため、毎フレーム描き直す
 
 # 決算のときに呼ばれる: その日のストレスからオフィス・住宅の評価を決め、退去・入居を行う
 # 戻り値: {"left": 退去したオフィスの数, "moved_in": 入居したオフィスの数,
