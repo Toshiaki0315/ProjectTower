@@ -46,6 +46,9 @@ const GARBAGE_MARGIN := 30  # ゴミがゴミ処理場の処理能力のこの�
 const TIME_SCALE := 30.0
 # 次の★ -> この人口まで建て増す（要る人口を少し超えたら止める。建てすぎるとエレベーターが混んで、満足度の条件に届かなくなる）
 const POPULATION_CAP := {2: 80, 3: 150, 4: 300, 5: 550, 6: 600} # 6 は★5になったあと（★5を保てる大きさまで）
+# 1日に増やす人口（建てた部屋の定員）の上限。★が上がって上限が一気に広がったときに、1日で100人近く建て増して
+# エレベーターが運びきれなくなり、不満なテナントが7割を超えて★が下がっていたため、少しずつ増やす
+const GROWTH_PER_DAY := 40
 # 屋上庭園（1つにつきビル全体の騒音を3和らげる。住宅はエレベーターのそばだとうるさくて退去してしまうため）。
 # 1階のロビーを左右の端から4マス伸ばし、その上の2階に建てる（上に何も建てないので、ずっと屋上のまま）
 const GARDEN_XS := [LOBBY_RIGHT + 1, LOBBY_RIGHT + 5]
@@ -61,6 +64,7 @@ var days := 180
 var start_funds := -1 # 最初の資金（2つ目の引数。-1ならゲームのまま）
 var star_days := {}        # ★ -> 上がった日
 var basement_slots: Array = [] # 地下に設備を置ける場所 [y, 左端のx, 横幅] の残り
+var grow_start_population := 0 # その日の建て増しを始めたときの、人口の見込み
 
 func _init() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -173,6 +177,7 @@ func add_shaft_if_needed() -> bool:
 
 # 毎日の決算のあとに、お金の範囲で建て増す（1日に何回でも）
 func grow() -> void:
+	grow_start_population = planned_population()
 	for i in 30:
 		if not grow_once():
 			return
@@ -213,6 +218,8 @@ func grow_once() -> bool:
 		return add_any_car()
 	if planned_population() >= POPULATION_CAP.get(stars + 1, 1 << 30):
 		return add_any_car() # 次の★に要る人口は足りている。建てすぎない
+	if planned_population() - grow_start_population >= GROWTH_PER_DAY:
+		return false # 今日はもう十分増やした（エレベーターが追いつくのを待つ）
 	return build_next_unit()
 
 # これからの人口の見込み（今の人口に、建てたけれどまだ入居していない住宅の家族を足す。
